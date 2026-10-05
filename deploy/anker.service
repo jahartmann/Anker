@@ -1,0 +1,24 @@
+[Unit]
+Description=Anker host configuration backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=anker
+Group=anker
+EnvironmentFile=/etc/anker/service.env
+ExecStart=/usr/local/bin/anker --data /srv/anker --listen ${ANKER_LISTEN} serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/anker
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

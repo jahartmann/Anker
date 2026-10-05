@@ -2,7 +2,8 @@ package anker
 
 import "fmt"
 
-func recoveryGuide(m Manifest)string{return fmt.Sprintf(`# Anker Wiederherstellung
+func recoveryGuide(m Manifest) string {
+	return fmt.Sprintf(`# Anker Wiederherstellung
 
 Host: %s · Sicherung: %s · Proxmox: %s
 Status: %s. Erfassung: %s bis %s.
@@ -34,4 +35,5 @@ Quell- und Zielversion samt Debian-Basis vergleichen. Bei anderer Hauptversion K
 Warnungen: %v
 Konsistenz: %s
 Ein Live-Dateibaum außerhalb der SQLite-Sicherung ist kein global atomarer Hostzustand. Für Migrationen den finalen Stand im Änderungsstopp sichern.
-`,m.Inventory.Hostname,m.ID,m.Inventory.PVEVersion,m.Status,m.CreatedAt,m.CompletedAt,m.Warnings,m.Consistency)}
+`, m.Inventory.Hostname, m.ID, m.Inventory.PVEVersion, m.Status, m.CreatedAt, m.CompletedAt, m.Warnings, m.Consistency)
+}
