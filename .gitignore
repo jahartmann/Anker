@@ -1,0 +1,10 @@
+/bin/
+/var/
+/.cache/
+/.superpowers/
+/web/node_modules/
+/web/test-results/
+/web/playwright-report/
+*.pyc
+__pycache__/
+.DS_Store
