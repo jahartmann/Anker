@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ import (
 const FormatVersion = 1
 
 type Host struct {
+	RestoreSSHUser string     `json:"restore_ssh_user,omitempty"`
+	RestoreKeyPath string     `json:"restore_key_path,omitempty"`
 	ID             string     `json:"id"`
 	Name           string     `json:"name"`
 	Address        string     `json:"address"`
@@ -200,15 +203,16 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
-	Root      string
-	Store     *Store
-	Collector Collector
-	mu        sync.Mutex
-	locks     map[string]bool
-	cancels   map[string]context.CancelFunc
-	Demo      bool
-	jobMu     sync.Mutex
-	notifyMu  sync.Mutex
+	backupLocks map[string]*sync.RWMutex
+	Root        string
+	Store       *Store
+	Collector   Collector
+	mu          sync.Mutex
+	locks       map[string]bool
+	cancels     map[string]context.CancelFunc
+	Demo        bool
+	jobMu       sync.Mutex
+	notifyMu    sync.Mutex
 }
 
 func ID() string {
@@ -284,6 +288,9 @@ func atomicWrite(p string, b []byte, mode os.FileMode) error {
 	if err == nil {
 		err = os.Rename(name, p)
 	}
+	if err == nil {
+		err = syncDir(filepath.Dir(p))
+	}
 	return err
 }
 func Fingerprint(i Inventory) string {
@@ -292,6 +299,13 @@ func Fingerprint(i Inventory) string {
 	stable := map[string]json.RawMessage{}
 	for _, key := range []string{"file_hashes", "boot_id", "addresses", "routes", "packages", "manual_packages", "pci", "boot"} {
 		if v, ok := i.Details[key]; ok {
+			if key == "addresses" {
+				var value any
+				if json.Unmarshal(v, &value) == nil {
+					value = stableNetwork(value)
+					v, _ = json.Marshal(value)
+				}
+			}
 			stable[key] = v
 		}
 	}
@@ -299,17 +313,41 @@ func Fingerprint(i Inventory) string {
 	b, _ := json.Marshal(i)
 	return Hash(b)
 }
-func isSecret(p string) bool {
-	p = strings.ToLower(p)
-	return strings.Contains(p, "priv/") || strings.Contains(p, ".ssh/") || strings.Contains(p, "secret") || strings.Contains(p, "password") || strings.Contains(p, "shadow") || strings.HasSuffix(p, ".key") || strings.Contains(p, "authkey") || strings.Contains(p, "credential") || strings.Contains(p, "token")
-}
-
-func secretContent(data []byte) bool {
-	v := strings.ToLower(string(data))
-	for _, p := range []string{"private key", "password=", "password:", "secret=", "secret:", "token=", "token:", "apikey=", "api_key="} {
-		if strings.Contains(v, p) {
-			return true
+func stableNetwork(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, item := range x {
+			if k == "valid_life_time" || k == "preferred_life_time" {
+				delete(x, k)
+			} else {
+				x[k] = stableNetwork(item)
+			}
+		}
+	case []any:
+		for i, item := range x {
+			x[i] = stableNetwork(item)
 		}
 	}
-	return false
+	return v
+}
+func isSecret(p string) bool {
+	p = strings.ToLower(p)
+	if strings.Contains(p, "priv/") || strings.Contains(p, ".ssh/") || strings.Contains(p, "wireguard/") || strings.Contains(p, "secret") || strings.Contains(p, "password") || strings.Contains(p, "shadow") || strings.Contains(p, "credential") || strings.Contains(p, "token") || strings.HasSuffix(p, ".key") || strings.HasSuffix(p, ".keyring") || strings.HasSuffix(p, ".pem") {
+		return true
+	}
+	// Unknown configuration is restricted until explicitly known to be suitable for readers.
+	switch p {
+	case "etc/hostname", "etc/hosts", "etc/fstab", "etc/resolv.conf", "etc/debian_version", "etc/network/interfaces", "etc/ssh/sshd_config", "etc/pve/storage.cfg":
+		return false
+	}
+	if strings.HasPrefix(p, "etc/sysctl.d/") || strings.HasPrefix(p, "etc/network/interfaces.d/") {
+		return false
+	}
+	return true
+}
+
+var secretAssignment = regexp.MustCompile(`(?im)["']?\b(?:password|passwd|passphrase|psk|secret|token|apikey|api_key|privatekey|private_key|key)["']?\s*[:=]`)
+
+func secretContent(data []byte) bool {
+	return strings.Contains(strings.ToLower(string(data)), "private key") || secretAssignment.Match(data)
 }

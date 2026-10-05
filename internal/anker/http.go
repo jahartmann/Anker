@@ -32,8 +32,23 @@ func input(r *http.Request, v any) error {
 	}
 	return nil
 }
+
+type responseState struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *responseState) WriteHeader(status int) {
+	w.started = true
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *responseState) Write(p []byte) (int, error) {
+	w.started = true
+	return w.ResponseWriter.Write(p)
+}
 func Handler(s *Service, a *Auth, local bool) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(original http.ResponseWriter, r *http.Request) {
+		w := &responseState{ResponseWriter: original}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
@@ -98,11 +113,14 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 				return
 			}
 		}
-		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/api/logout" && !userAllows(u, "restore") {
+		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/api/logout" && r.URL.Path != "/api/backups/diff" && !userAllows(u, "restore") {
 			jsonError(w, fail(403, "Keine Schreibberechtigung"))
 			return
 		}
 		if err := handleAPI(s, a, u, w, r); err != nil {
+			if w.started {
+				panic(http.ErrAbortHandler)
+			}
 			jsonError(w, err)
 		}
 	})
@@ -183,6 +201,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		for i := range hosts {
 			if u.Role != "admin" {
 				hosts[i].KeyPath = ""
+				hosts[i].RestoreKeyPath = ""
 				hosts[i].KnownHostsPath = ""
 			}
 		}
@@ -196,6 +215,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			for i := range hosts {
 				if u.Role != "admin" {
 					hosts[i].KeyPath = ""
+					hosts[i].RestoreKeyPath = ""
 					hosts[i].KnownHostsPath = ""
 				}
 			}
@@ -317,9 +337,12 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		}
 		for i := range v {
 			if !v[i].Secret {
-				left, _, _ := s.ReadFile(in.From, v[i].Path)
-				right, _, _ := s.ReadFile(in.To, v[i].Path)
-				v[i].Diff = lineDiff(string(left), string(right))
+				left, leftEntry, _ := s.ReadFile(in.From, v[i].Path)
+				right, rightEntry, _ := s.ReadFile(in.To, v[i].Path)
+				v[i].Secret = leftEntry.Secret || rightEntry.Secret
+				if !v[i].Secret {
+					v[i].Diff = lineDiff(string(left), string(right))
+				}
 			}
 		}
 		return jsonOut(w, v)
@@ -381,6 +404,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		if method == "GET" {
 			if u.Role != "admin" {
 				h.KeyPath = ""
+				h.RestoreKeyPath = ""
 				h.KnownHostsPath = ""
 			}
 			return jsonOut(w, h)
@@ -478,6 +502,13 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				Pinned bool `json:"pinned"`
 			}
 			if err = input(r, &in); err != nil {
+				return err
+			}
+			lock := s.backupLock(id)
+			lock.Lock()
+			defer lock.Unlock()
+			b, err = s.Backup(id)
+			if err != nil {
 				return err
 			}
 			b.Pinned = in.Pinned

@@ -159,6 +159,8 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			f.StringVar(&h.SSHUser, "user", "anker", "SSH-Benutzer")
 			f.IntVar(&h.SSHPort, "port", 22, "SSH-Port")
 			f.StringVar(&h.KeyPath, "key", "", "privater Keypfad")
+			f.StringVar(&h.RestoreKeyPath, "restore-key", "", "separater Wiederherstellungsschlüssel")
+			f.StringVar(&h.RestoreSSHUser, "restore-user", "anker-restore", "separater Wiederherstellungsbenutzer")
 			f.StringVar(&h.KnownHostsPath, "known-hosts", "", "Known-Hosts-Pfad")
 			f.StringVar(&h.Schedule, "schedule", "", "HH:MM")
 			f.BoolVar(&h.Enabled, "enabled", true, "Zeitplan aktiv")

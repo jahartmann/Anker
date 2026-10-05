@@ -145,3 +145,16 @@ func TestReindexPreservesPinAndRejectsChangedManifest(t *testing.T) {
 		t.Fatal("catalog trust silently replaced")
 	}
 }
+
+func TestKnownSecretFormatsStayProtected(t *testing.T) {
+	for _, p := range []string{"etc/ceph/ceph.client.admin.keyring", "etc/wireguard/wg0.conf", "etc/ssl/private/server.pem"} {
+		if !isSecret(p) {
+			t.Fatal("secret path not classified", p)
+		}
+	}
+	for _, v := range []string{"password = password123", "PrivateKey = abc", "key = AQxxx", `"token": "value"`} {
+		if !secretContent([]byte(v)) {
+			t.Fatal("secret content not classified", v)
+		}
+	}
+}

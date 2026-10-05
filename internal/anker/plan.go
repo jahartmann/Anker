@@ -99,10 +99,12 @@ func lineDiff(before, after string) string {
 	return b.String()
 }
 func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
-	if err := s.EnsureReadable(r.BackupID); err != nil {
+	release, err := s.readableLease(r.BackupID)
+	if err != nil {
 		return Plan{}, err
 	}
-	if err := s.VerifyBackup(r.BackupID); err != nil {
+	defer release()
+	if err := s.verifyBackupUnlocked(r.BackupID); err != nil {
 		return Plan{}, err
 	}
 	b, err := s.Backup(r.BackupID)
@@ -127,6 +129,11 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	}
 	target.Fingerprint = Fingerprint(target)
 	p := Plan{ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	if _, real := s.Collector.(SSHCollector); real {
+		if _, authErr := RestoreSSHArgs(h); authErr != nil {
+			p.Blockers = append(p.Blockers, "Für die Ausführung ist ein separat berechtigter Wiederherstellungszugang erforderlich")
+		}
+	}
 	if m.Status != "successful" {
 		p.Blockers = append(p.Blockers, "Sicherung hat Pflichtlücken; nur manueller Export ist erlaubt")
 	}
@@ -176,15 +183,16 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		if e.Type == "directory" {
 			continue
 		}
-		if len(selected) > 0 && !selected[e.Path] {
+		if len(r.Files) > 0 && !selected[e.Path] {
 			continue
 		}
 		delete(selected, e.Path)
 		step := Step{Path: e.Path, Action: "apply", Secret: e.Secret}
-		data, _, readErr := s.ReadFile(b.ID, e.Path)
+		data, fileEntry, readErr := s.readFileUnlocked(b.ID, e.Path, 64<<20)
 		if readErr != nil {
 			return p, readErr
 		}
+		step.Secret = step.Secret || fileEntry.Secret
 		prepared := data
 		if e.Type != "file" || protectedPath(e.Path) || len(e.XAttrs) > 0 {
 			step.Action = "manual"
@@ -241,13 +249,22 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if err = atomicWrite(filepath.Join(root, "manifest.json"), data, 0600); err != nil {
 		return p, err
 	}
-	if err = s.savePlan(p); err != nil {
+	if err = writeJSON(filepath.Join(root, "plan.json"), p); err != nil {
 		return p, err
 	}
 	if err = writeJSON(filepath.Join(root, "mapping.json"), p.Mapping); err != nil {
 		return p, err
 	}
 	if err = atomicWrite(filepath.Join(root, "WIEDERHERSTELLUNG.md"), []byte(planGuide(p, m)), 0600); err != nil {
+		return p, err
+	}
+	if err = syncTree(root); err != nil {
+		return p, err
+	}
+	if err = syncDir(filepath.Dir(root)); err != nil {
+		return p, err
+	}
+	if err = s.Store.Put("plans", p.ID, p); err != nil {
 		return p, err
 	}
 	cleanup = false
@@ -281,10 +298,12 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err = s.EnsureReadable(p.BackupID); err != nil {
+	release, err := s.readableLease(p.BackupID)
+	if err != nil {
 		return err
 	}
-	if err = s.VerifyBackup(p.BackupID); err != nil {
+	defer release()
+	if err = s.verifyBackupUnlocked(p.BackupID); err != nil {
 		return err
 	}
 	tw := tar.NewWriter(w)

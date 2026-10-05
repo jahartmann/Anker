@@ -28,6 +28,8 @@ export interface Inventory {
   details?: Record<string, unknown>;
 }
 export interface Host {
+  restore_key_path?: string;
+  restore_ssh_user?: string;
   id: string;
   name: string;
   address: string;
@@ -153,12 +155,21 @@ export async function api<T>(
   if (!response.ok) throw new Error(value.error || "Anfrage fehlgeschlagen");
   return value as T;
 }
+let displayTimezone = "Europe/Berlin";
+export function configureTimezone(v: string) {
+  try {
+    new Intl.DateTimeFormat("de-DE", { timeZone: v });
+    displayTimezone = v;
+  } catch {
+    displayTimezone = "Europe/Berlin";
+  }
+}
 export const date = (v?: string) =>
   v
     ? new Intl.DateTimeFormat("de-DE", {
         dateStyle: "short",
         timeStyle: "short",
-        timeZone: "Europe/Berlin",
+        timeZone: displayTimezone,
       }).format(new Date(v))
     : "—";
 export function bytes(v: number) {

@@ -123,3 +123,73 @@ test("file restore plans and executes only after exact confirmation", async ({
     .click();
   await expect(page.getByText("Abgeschlossen", { exact: true })).toBeVisible();
 });
+
+test("backup queue and changed-file comparison use the service", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", { name: "pve-berlin-01", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Jetzt sichern", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Sicherung gestartet");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Aufträge", exact: true })
+    .click();
+  await expect(
+    page.getByText("Abgeschlossen", { exact: true }).first(),
+  ).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  const state = await (await page.request.get("/api/status")).json();
+  const backups = state.backups
+    .filter((b: { host_name: string }) => b.host_name === "pve-berlin-01")
+    .sort((a: { created_at: string }, b: { created_at: string }) =>
+      a.created_at.localeCompare(b.created_at),
+    );
+  await page.getByLabel("Vergleich von").selectOption(backups[0].id);
+  await page.getByLabel("Vergleich bis").selectOption(backups[1].id);
+  await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "etc/sysctl.d/99-anker.conf",
+  );
+});
+
+test("removing a test host requires its name and keeps backups", async ({
+  page,
+}) => {
+  const before = await (await page.request.get("/api/status")).json();
+  await page
+    .getByRole("button", { name: "pve-browser-test", exact: true })
+    .click();
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Host entfernen", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Host entfernen",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Host entfernen", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByLabel("Hostnamen bestätigen").fill("pve-browser-test");
+  await dialog
+    .getByRole("button", { name: "Host entfernen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Hosts", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "pve-browser-test", exact: true }),
+  ).toHaveCount(0);
+  const after = await (await page.request.get("/api/status")).json();
+  expect(after.backups.length).toBe(before.backups.length);
+});

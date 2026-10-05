@@ -13,6 +13,7 @@ export default function Settings({ notify }: { notify: Notify }) {
     { at: string; action: string; object: string; user_id: string }[]
   >([]);
   const [doctor, setDoctor] = useState<unknown>(null);
+  const [resetUser, setResetUser] = useState<User | null>(null);
   const [form, setForm] = useState(false);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -260,6 +261,7 @@ export default function Settings({ notify }: { notify: Notify }) {
                   <th>Name</th>
                   <th>Rolle</th>
                   <th>Geschützte Inhalte</th>
+                  <th className="right">Aktionen</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,14 +276,21 @@ export default function Settings({ notify }: { notify: Notify }) {
                           : "Lesen"}
                     </td>
                     <td>{u.secrets ? "Freigegeben" : "Verdeckt"}</td>
+                    <td className="right">
+                      <button
+                        className="text-button"
+                        onClick={() => setResetUser(u)}
+                      >
+                        Passwort ändern
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="table-footnote">
-            Passwörter lassen sich am Server mit „anker user password“
-            zurücksetzen.
+            Ein neues Passwort beendet bestehende Sitzungen dieses Benutzers.
           </p>
         </section>
       )}
@@ -326,6 +335,13 @@ export default function Settings({ notify }: { notify: Notify }) {
             </table>
           </div>
         </section>
+      )}
+      {resetUser && (
+        <ResetPassword
+          user={resetUser}
+          notify={notify}
+          onClose={() => setResetUser(null)}
+        />
       )}
       {form && (
         <Dialog
@@ -382,5 +398,73 @@ export default function Settings({ notify }: { notify: Notify }) {
         </Dialog>
       )}
     </>
+  );
+}
+
+function ResetPassword({
+  user,
+  notify,
+  onClose,
+}: {
+  user: User;
+  notify: Notify;
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [repeat, setRepeat] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api("users/" + encodeURIComponent(user.id) + "/password", "POST", {
+        password,
+      });
+      notify("Passwort geändert; bestehende Sitzungen beendet");
+      onClose();
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title="Passwort ändern" onClose={onClose}>
+      <p className="dialog-intro">
+        Neues Passwort für {user.name}. Bestehende Sitzungen dieses Benutzers
+        werden beendet.
+      </p>
+      <form onSubmit={save}>
+        <Field label="Neues Passwort" hint="Mindestens 12 Zeichen.">
+          <input
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={12}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="Passwort wiederholen">
+          <input
+            type="password"
+            autoComplete="new-password"
+            required
+            value={repeat}
+            onChange={(e) => setRepeat(e.target.value)}
+          />
+        </Field>
+        <footer className="dialog-footer">
+          <button className="secondary" type="button" onClick={onClose}>
+            Abbrechen
+          </button>
+          <button
+            disabled={busy || password.length < 12 || password !== repeat}
+          >
+            Passwort speichern
+          </button>
+        </footer>
+      </form>
+    </Dialog>
   );
 }

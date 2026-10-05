@@ -3,13 +3,15 @@ import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { labels } from "../api";
 export type Notify = (message: string, error?: boolean) => void;
-export function State({ value }: { value: string }) {
+export function State({ value, label }: { value: string; label?: string }) {
   const tone = ["successful", "demo_applied"].includes(value)
     ? "success"
     : ["failed", "interrupted", "blocked"].includes(value)
       ? "warning"
       : "muted";
-  return <span className={"state " + tone}>{labels[value] || value}</span>;
+  return (
+    <span className={"state " + tone}>{label || labels[value] || value}</span>
+  );
 }
 export function Heading({
   title,

@@ -37,3 +37,22 @@ func TestSecretPermissionIsSeparateFromRole(t *testing.T) {
 		}
 	}
 }
+
+func TestPasswordResetRevokesSessions(t *testing.T) {
+	s := testService(t)
+	a := NewAuth(s.Store)
+	a.CreateUser("reader", "long-test-password", "reader", false)
+	token, _, _ := a.Login("reader", "long-test-password")
+	if e := a.SetPassword("reader", "replacement-password"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := a.Session(token, time.Now()); e == nil {
+		t.Fatal("old session remains authorized")
+	}
+	if _, _, e := a.Login("reader", "long-test-password"); e == nil {
+		t.Fatal("old password remains valid")
+	}
+	if _, _, e := a.Login("reader", "replacement-password"); e != nil {
+		t.Fatal(e)
+	}
+}

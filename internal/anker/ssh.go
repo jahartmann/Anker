@@ -18,17 +18,34 @@ import (
 
 type SSHCollector struct{}
 
-func SSHArgs(h Host) ([]string, error) {
+func SSHArgs(h Host) ([]string, error) { return sshArgs(h, true) }
+func RestoreSSHArgs(h Host) ([]string, error) {
+	if h.RestoreKeyPath == "" || h.RestoreSSHUser == "" || h.RestoreKeyPath == h.KeyPath || h.RestoreSSHUser == h.SSHUser {
+		return nil, errors.New("separater Wiederherstellungszugang erforderlich")
+	}
+	h.KeyPath = h.RestoreKeyPath
+	h.SSHUser = h.RestoreSSHUser
+	return sshArgs(h, false)
+}
+func sshArgs(h Host, readOnly bool) ([]string, error) {
 	if !safeHost.MatchString(h.Address) || !safeHost.MatchString(h.SSHUser) || strings.Contains(h.SSHUser, ":") || h.SSHPort < 1 || h.SSHPort > 65535 {
 		return nil, errors.New("ungültiges SSH-Ziel")
 	}
 	if h.KeyPath == "" || h.KnownHostsPath == "" || !filepath.IsAbs(h.KeyPath) || !filepath.IsAbs(h.KnownHostsPath) {
 		return nil, errors.New("absolute SSH-Key- und Known-Hosts-Pfade erforderlich")
 	}
-	return []string{"-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2", "-o", "ForwardAgent=no", "-o", "UserKnownHostsFile=" + h.KnownHostsPath, "-i", h.KeyPath, "-p", strconv.Itoa(h.SSHPort), h.SSHUser + "@" + h.Address, "sudo -n /usr/local/lib/anker/anker-host"}, nil
+	command := "sudo -n /usr/local/lib/anker/anker-host"
+	if readOnly {
+		command += " --read-only"
+	}
+	return []string{"-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2", "-o", "ForwardAgent=no", "-o", "UserKnownHostsFile=" + h.KnownHostsPath, "-i", h.KeyPath, "-p", strconv.Itoa(h.SSHPort), h.SSHUser + "@" + h.Address, command}, nil
 }
 func sshRun(ctx context.Context, h Host, request any, consume func(io.Reader) error) error {
 	args, err := SSHArgs(h)
+	if requestMap, ok := request.(map[string]any); ok && requestMap["operation"] == "apply" {
+		args, err = RestoreSSHArgs(h)
+		h.KeyPath = h.RestoreKeyPath
+	}
 	if err != nil {
 		return err
 	}

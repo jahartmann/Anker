@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, Search, ChevronRight } from "lucide-react";
 import { api, bytes, date, hostState } from "../api";
 import type { Host, Status } from "../api";
 import { Dialog, Empty, Field, Heading } from "../components/shared";
@@ -130,6 +130,22 @@ export function HostForm({
                 placeholder="/etc/anker/keys/pve-berlin-01"
               />
             </Field>
+            <Field
+              label="Wiederherstellungsschlüssel"
+              hint="Optionaler, separat berechtigter SSH-Schlüssel. Der Sicherungsschlüssel kann nur lesen."
+            >
+              <input
+                value={value.restore_key_path || ""}
+                onChange={(e) => set("restore_key_path", e.target.value)}
+                placeholder="/etc/anker/keys/restore-host"
+              />
+            </Field>
+            <Field label="Wiederherstellungsbenutzer">
+              <input
+                value={value.restore_ssh_user || "anker-restore"}
+                onChange={(e) => set("restore_ssh_user", e.target.value)}
+              />
+            </Field>
             <Field label="Verifizierte Hostschlüssel">
               <input
                 value={value.known_hosts_path}
@@ -186,6 +202,7 @@ export default function Hosts({
   notify,
   refresh,
   canEdit,
+  canOperate = canEdit,
   openBackup,
   onRestore,
 }: {
@@ -193,6 +210,7 @@ export default function Hosts({
   notify: Notify;
   refresh: () => void;
   canEdit: boolean;
+  canOperate?: boolean;
   openBackup: (id: string) => void;
   onRestore: (id: string) => void;
 }) {
@@ -201,6 +219,8 @@ export default function Hosts({
   const [selected, setSelected] = useState("");
   const [tab, setTab] = useState("Übersicht");
   const [form, setForm] = useState<Host | "new" | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeName, setRemoveName] = useState("");
   const host = status.hosts.find((h) => h.id === selected);
   const groups = Array.from(
     new Set(status.hosts.map((h) => h.group).filter(Boolean)),
@@ -234,7 +254,7 @@ export default function Hosts({
             title={host.name}
             description={host.address + (host.group ? " · " + host.group : "")}
             action={
-              canEdit && (
+              canOperate && (
                 <>
                   <button
                     className="secondary"
@@ -309,17 +329,20 @@ export default function Hosts({
                 Eine Sicherung auswählen, das Ziel prüfen und die Unterschiede
                 vor der Übernahme ansehen.
               </p>
-              <button
-                className="secondary"
-                disabled={!status.backups.some((b) => b.host_id === host.id)}
-                onClick={() =>
-                  onRestore(
-                    status.backups.find((b) => b.host_id === host.id)?.id || "",
-                  )
-                }
-              >
-                Wiederherstellung planen
-              </button>
+              {canOperate && (
+                <button
+                  className="secondary"
+                  disabled={!status.backups.some((b) => b.host_id === host.id)}
+                  onClick={() =>
+                    onRestore(
+                      status.backups.find((b) => b.host_id === host.id)?.id ||
+                        "",
+                    )
+                  }
+                >
+                  Wiederherstellung planen
+                </button>
+              )}
             </div>
           )}
           {tab === "Sicherungen" && (
@@ -328,7 +351,7 @@ export default function Hosts({
               notify={notify}
               refresh={refresh}
               openBackup={openBackup}
-              canEdit={canEdit}
+              canEdit={canOperate}
               onRestore={onRestore}
             />
           )}{" "}
@@ -411,9 +434,20 @@ export default function Hosts({
                 </dd>
               </dl>
               {canEdit && (
-                <button className="secondary" onClick={() => setForm(host)}>
-                  Host bearbeiten
-                </button>
+                <div className="inline-form">
+                  <button className="secondary" onClick={() => setForm(host)}>
+                    Host bearbeiten
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setRemoving(true);
+                      setRemoveName("");
+                    }}
+                  >
+                    Host entfernen
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -430,13 +464,16 @@ export default function Hosts({
             }
           />
           <div className="toolbar">
-            <input
-              className="search"
-              aria-label="Hosts durchsuchen"
-              placeholder="Hosts durchsuchen"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <div className="search-field">
+              <Search size={15} aria-hidden="true" />
+              <input
+                className="search"
+                aria-label="Hosts durchsuchen"
+                placeholder="Hosts durchsuchen"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
             <select
               aria-label="Gruppe filtern"
               value={group}
@@ -494,7 +531,7 @@ export default function Hosts({
                               setTab("Übersicht");
                             }}
                           >
-                            Öffnen
+                            Öffnen <ChevronRight size={14} aria-hidden="true" />
                           </button>
                         </td>
                       </tr>
@@ -519,6 +556,42 @@ export default function Hosts({
             {status.hosts.length - saved} ohne aktuellen Sicherungsstand
           </p>
         </>
+      )}
+      {removing && host && (
+        <Dialog title="Host entfernen" onClose={() => setRemoving(false)}>
+          <p className="dialog-intro">
+            Zeitplan und Zugangseintrag für {host.name} entfernen. Vorhandene
+            Sicherungen bleiben erhalten.
+          </p>
+          <Field label="Hostnamen bestätigen">
+            <input
+              value={removeName}
+              onChange={(e) => setRemoveName(e.target.value)}
+              placeholder={host.name}
+            />
+          </Field>
+          <footer className="dialog-footer">
+            <button className="secondary" onClick={() => setRemoving(false)}>
+              Abbrechen
+            </button>
+            <button
+              disabled={removeName !== host.name}
+              onClick={async () => {
+                try {
+                  await api("hosts/" + host.id, "DELETE");
+                  setRemoving(false);
+                  setSelected("");
+                  notify("Host entfernt");
+                  refresh();
+                } catch (e) {
+                  notify((e as Error).message, true);
+                }
+              }}
+            >
+              Host entfernen
+            </button>
+          </footer>
+        </Dialog>
       )}
       {form && (
         <HostForm

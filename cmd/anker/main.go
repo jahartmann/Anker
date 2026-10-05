@@ -67,6 +67,11 @@ func run(args []string) error {
 		}
 		return c.Run(context.Background(), command)
 	}
+	unlock, err := anker.InstanceLock(root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))
 	if err != nil {
 		return err
@@ -97,9 +102,6 @@ func run(args []string) error {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, "Lokale Demo · keine echten Hosts verbunden\nAnmeldung: demo / anker-demo-2026")
-	}
-	if err = s.RecoverJobs(); err != nil {
-		return err
 	}
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil {
@@ -132,6 +134,11 @@ func run(args []string) error {
 	}
 	unix, err := net.Listen("unix", *socket)
 	if err != nil {
+		return err
+	}
+	if err = s.RecoverJobs(); err != nil {
+		unix.Close()
+		os.Remove(*socket)
 		return err
 	}
 	defer unix.Close()

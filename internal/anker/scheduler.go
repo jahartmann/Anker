@@ -145,14 +145,25 @@ func (s *Service) Maintain(at time.Time) error {
 		}
 		for _, b := range backups {
 			if !keep[b.ID] {
-				if err = s.acquire("backup:" + b.ID); err != nil {
+				lock := s.backupLock(b.ID)
+				lock.Lock()
+				current, _ := s.Backup(b.ID)
+				referenced := current.Pinned
+				freshPlans, _ := s.Plans()
+				for _, p := range freshPlans {
+					if p.BackupID == b.ID {
+						referenced = true
+					}
+				}
+				if referenced {
+					lock.Unlock()
 					continue
 				}
 				err = os.RemoveAll(s.backupDir(b))
 				if err == nil {
 					err = s.Store.Delete("backups", b.ID)
 				}
-				s.release("backup:" + b.ID)
+				lock.Unlock()
 				if err != nil {
 					return err
 				}
@@ -184,7 +195,7 @@ func (s *Service) Reindex() (int, error) {
 		if err = decodeJSON(data, &m); err != nil {
 			return count, err
 		}
-		if m.Version != FormatVersion || !validID(m.ID) || !validID(m.HostID) || filepath.Base(filepath.Dir(p)) != m.ID {
+		if m.Version != FormatVersion || !validID(m.ID) || !validID(m.HostID) || filepath.Base(filepath.Dir(p)) != m.ID || filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(p)))) != m.HostID {
 			return count, fmt.Errorf("ungültiges Manifest %s", p)
 		}
 		b := Backup{ID: m.ID, HostID: m.HostID, HostName: m.Inventory.Hostname, CreatedAt: m.CreatedAt, Status: m.Status, Files: len(m.Entries), ManifestSHA: Hash(data), Warnings: m.Warnings}
@@ -199,10 +210,27 @@ func (s *Service) Reindex() (int, error) {
 		}
 		_, err = os.Stat(filepath.Join(filepath.Dir(p), "files"))
 		b.Archived = os.IsNotExist(err)
-		if err = s.Store.Put("backups", b.ID, b); err != nil {
-			return count, err
+		lock := s.backupLock(b.ID)
+		lock.Lock()
+		if current, e := s.Backup(b.ID); e == nil {
+			b.Pinned = current.Pinned
 		}
-		if err = s.VerifyBackup(b.ID); err != nil {
+		_, err = os.Stat(filepath.Join(filepath.Dir(p), "files"))
+		b.Archived = os.IsNotExist(err)
+		if b.Archived {
+			var temp string
+			temp, err = s.extractArchive(b)
+			if temp != "" {
+				os.RemoveAll(temp)
+			}
+		} else {
+			err = s.verifyAtRecord(b, filepath.Dir(p))
+		}
+		if err == nil {
+			err = s.Store.Put("backups", b.ID, b)
+		}
+		lock.Unlock()
+		if err != nil {
 			return count, err
 		}
 		count++

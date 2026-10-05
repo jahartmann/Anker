@@ -33,3 +33,28 @@ class HostHelperTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    with self.assertRaises(ValueError):helper.apply_files(pathlib.Path(d),[{'path':'../escape','content':'eA=='}],test_mode=True)
 if __name__=='__main__':unittest.main()
+
+class BackupAuthorityTests(unittest.TestCase):
+ def test_read_only_channel_rejects_apply(self):
+  with self.assertRaises(ValueError):helper.authorize('apply',read_only=True)
+  helper.authorize('probe',read_only=True);helper.authorize('collect',read_only=True)
+
+class CompletenessTests(unittest.TestCase):
+ def test_metadata_read_failure_is_not_silent(self):
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as d:
+   p=pathlib.Path(d)/'config';p.write_text('test')
+   with patch.object(helper.os,'listxattr',side_effect=PermissionError('metadata denied'),create=True):
+    self.assertIn('metadata_warning',helper.entry_meta(p,'etc/config'))
+ def test_external_secret_dependency_is_reported(self):
+  with tempfile.TemporaryDirectory() as d:
+   out=pathlib.Path(d);(out/'files/etc').mkdir(parents=True);(out/'files/etc/app.conf').write_text('keyfile = /opt/secrets/app.key\n')
+   warnings=helper.dependency_warnings(out,[{'path':'etc/app.conf','type':'file','size':40}])
+   self.assertTrue(any('/opt/secrets/app.key' in w for w in warnings))
+ def test_proxmox_hookscript_dependency_is_reported(self):
+  with tempfile.TemporaryDirectory() as d:
+   out=pathlib.Path(d);(out/'files/etc/pve/qemu-server').mkdir(parents=True)
+   (out/'files/etc/pve/storage.cfg').write_text('dir: local\n    path /var/lib/vz\n')
+   (out/'files/etc/pve/qemu-server/100.conf').write_text('hookscript: local:snippets/hook.sh\n')
+   warnings=helper.dependency_warnings(out,[{'path':'etc/pve/qemu-server/100.conf','type':'file','size':40}])
+   self.assertTrue(any('/var/lib/vz/snippets/hook.sh' in w for w in warnings))

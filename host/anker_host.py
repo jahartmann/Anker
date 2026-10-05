@@ -2,7 +2,7 @@
 """Anker host protocol v1. Install root-owned; stdin JSON, stdout JSON or tar.
 No daemon, no user-supplied commands, no shell interpolation.
 """
-import base64, hashlib, json, os, pathlib, shutil, socket, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
+import re, errno, base64, hashlib, json, os, pathlib, shutil, socket, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_REQUEST = 32 * 1024 * 1024
@@ -91,7 +91,8 @@ def entry_meta(p,rel):
  else:return None
  try:
   for name in os.listxattr(p,follow_symlinks=False):e['xattrs'][name]=base64.b64encode(os.getxattr(p,name,follow_symlinks=False)).decode()
- except (OSError,AttributeError):pass
+ except (OSError,AttributeError) as exc:
+  if not isinstance(exc,OSError) or exc.errno not in (errno.ENOTSUP,errno.EOPNOTSUPP):e['metadata_warning']=str(exc)
  return e
 
 def snapshot_db(src,out):
@@ -139,6 +140,7 @@ def collect(root,out,paths,test_mode=False):
   try:
    e=entry_meta(p,rel)
    if not e:warnings.append('Unsupported file type: /'+rel);return
+   if e.get('metadata_warning'):warnings.append('Metadata capture incomplete: /'+rel+': '+e.pop('metadata_warning'))
    dest=confined(out/'files',rel)
    if e['type']=='directory':
     dest.mkdir(parents=True,exist_ok=True)
@@ -164,7 +166,45 @@ def collect(root,out,paths,test_mode=False):
   snapshot_db(db,out/'recovery/config.db')
   entries.extend(decode_db(out/'recovery/config.db',out))
  except (sqlite3.Error,OSError,ValueError) as exc:warnings.append('config.db capture failed: '+str(exc))
+ warnings.extend(dependency_warnings(out,entries))
  return {'inventory':probe(root,test_mode),'entries':entries,'warnings':warnings}
+
+def dependency_warnings(out,entries):
+ """Bounded discovery of Proxmox hooks and explicit config/secret file references."""
+ known={e['path'] for e in entries};warnings=[];storage={}
+ p=out/'files/etc/pve/storage.cfg'
+ if p.exists():
+  current=None
+  for line in p.read_text(errors='replace').splitlines():
+   match=re.match(r'^dir:\s*(\S+)',line)
+   if match:current=match.group(1)
+   elif line and not line[0].isspace():current=None
+   elif current:
+    match=re.match(r'^\s+path\s+(\S+)',line)
+    if match:storage[current]=match.group(1)
+ for e in entries:
+  if e.get('type')!='file' or not e['path'].startswith('etc/'):continue
+  if e.get('size',0)>1024*1024:continue
+  p=out/'files'/e['path']
+  try:data=p.read_text(errors='replace')
+  except OSError:continue
+  if '\x00' in data:continue
+  for line in data.splitlines():
+   line=line.strip()
+   if not line or line.startswith(('#',';')):continue
+   hook=re.match(r'^hookscript\s*:\s*(\S+)',line)
+   if hook:
+    ref=hook.group(1);parts=ref.split(':',1)
+    if len(parts)==2 and parts[0] in storage:
+     candidate=storage[parts[0]].rstrip('/')+'/'+parts[1]
+     if candidate.lstrip('/') not in known:warnings.append('Referenced hookscript is not captured: '+candidate+' ('+e['path']+')')
+    else:warnings.append('Unresolved hookscript dependency: '+ref+' ('+e['path']+')')
+   match=re.search(r'(?i)\b(?:keyfile|key_file|ssl_keyfile|privatekeyfile|certificatefile|certfile|ca_file|credentials|secret_file|include|source|script)\s*(?:[:=]\s*|\s+)["\']?(/[^\s"\';]+)',line)
+   if match:
+    candidate=match.group(1)
+    if '*' in candidate or '?' in candidate:continue
+    if candidate.lstrip('/') not in known:warnings.append('Referenced config/secret is not captured: '+candidate+' ('+e['path']+')')
+ return sorted(set(warnings))
 
 def apply_files(root,items,test_mode=False):
  root=pathlib.Path(root);prepared=[]
@@ -201,12 +241,17 @@ def apply_files(root,items,test_mode=False):
   (rollback/'failure.json').write_text(json.dumps({'applied':applied,'error':str(exc)}))
   raise
 
+def authorize(operation,read_only=False):
+ if operation not in ("probe","collect","apply"):raise ValueError("unknown operation")
+ if read_only and operation=="apply":raise ValueError("read-only backup authority cannot restore")
+
 def main():
  if os.geteuid()!=0 or sys.platform!='linux':raise ValueError('host helper requires root on Linux')
- if len(sys.argv)>1:raise ValueError('no arguments allowed')
+ if sys.argv[1:] not in ([],['--read-only']):raise ValueError('invalid arguments')
+ read_only=sys.argv[1:]==['--read-only']
  data=sys.stdin.buffer.readline(MAX_REQUEST+1)
  if len(data)>MAX_REQUEST:raise ValueError('request too large')
- request=json.loads(data);op=request.get('operation')
+ request=json.loads(data);op=request.get('operation');authorize(op,read_only)
  if request.get('version')!=1:raise ValueError('unsupported protocol version')
  root=pathlib.Path('/')
  if op=='probe':print(json.dumps(probe()))
@@ -228,7 +273,7 @@ def main():
   stable=('file_hashes','boot_id','addresses','routes','packages','manual_packages','pci','boot')
   for inv in (expected,current):inv['details']={k:v for k,v in inv.get('details',{}).items() if k in stable}
   def normalize(v):
-   if isinstance(v,dict):return {k:normalize(x) for k,x in v.items() if x not in ('',None,[],{})}
+   if isinstance(v,dict):return {k:normalize(x) for k,x in v.items() if k not in ('valid_life_time','preferred_life_time') and x not in ('',None,[],{})}
    if isinstance(v,list):return [normalize(x) for x in v]
    return v
   if normalize(expected)!=normalize(current):raise ValueError('target inventory changed')

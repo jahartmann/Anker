@@ -8,6 +8,7 @@ import (
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
 )
@@ -26,6 +27,7 @@ type Model struct {
 	rows    []string
 	ids     []string
 	cursor  int
+	offset  int
 	tab     int
 	width   int
 	height  int
@@ -62,6 +64,10 @@ func (m Model) execute(cmd string) tea.Cmd {
 	}
 }
 func (m *Model) buildRows() {
+	previous := ""
+	if m.cursor >= 0 && m.cursor < len(m.ids) {
+		previous = m.ids[m.cursor]
+	}
 	m.rows = nil
 	m.ids = nil
 	key := []string{"hosts", "backups", "plans", "jobs", "settings"}[m.tab]
@@ -84,6 +90,14 @@ func (m *Model) buildRows() {
 	if m.tab == 4 {
 		m.rows = []string{"Einstellungen über / settings show anzeigen und / settings save DATEI.json ändern.", "Benutzer: / user list · / user add NAME ROLE", "Alle Befehle: / help"}
 		m.ids = nil
+	}
+	if previous != "" {
+		for i, id := range m.ids {
+			if id == previous {
+				m.cursor = i
+				break
+			}
+		}
 	}
 	if m.cursor >= len(m.rows) {
 		m.cursor = 0
@@ -114,8 +128,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.load(), tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tick(t) }))
 	case tea.MouseMsg:
 		if !m.editing && v.Button == tea.MouseButtonLeft && v.Action == tea.MouseActionPress {
-			index := v.Y - 5
-			if index >= 0 && index < len(m.rows) {
+			index := m.offset + v.Y - 4
+			if v.Y >= 4 && v.Y < 4+m.capacity() && index >= 0 && index < len(m.rows) {
 				m.cursor = index
 			}
 		}
@@ -191,7 +205,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input = "host add --name  --address "
 		}
 	}
+	m.ensureVisible()
 	return m, nil
+}
+func (m Model) capacity() int {
+	n := m.height - 12
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+func (m *Model) ensureVisible() {
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+m.capacity() {
+		m.offset = m.cursor - m.capacity() + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
 }
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -207,16 +240,14 @@ func (m Model) View() string {
 	tabs[m.tab] = lipgloss.NewStyle().Bold(true).Underline(true).Render(tabs[m.tab])
 	var b strings.Builder
 	b.WriteString(title + "\n\n" + strings.Join(tabs, "   ") + "\n\n")
-	for i, row := range m.rows {
+	for i := m.offset; i < len(m.rows) && i < m.offset+m.capacity(); i++ {
+		row := ansi.Truncate(clean(m.rows[i]), m.width-2, "…")
 		prefix := "  "
 		if i == m.cursor {
 			prefix = "› "
 		}
-		if i > m.height-12 {
-			break
-		}
 		if i == m.cursor {
-			row = lipgloss.NewStyle().Bold(true).Render(clean(row))
+			row = lipgloss.NewStyle().Bold(true).Render(ansi.Truncate(clean(row), m.width-2, "…"))
 		}
 		b.WriteString(prefix + row + "\n")
 	}

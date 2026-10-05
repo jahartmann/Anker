@@ -4,11 +4,13 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -113,10 +115,12 @@ func tarTree(tw *tar.Writer, root string) error {
 	})
 }
 func (s *Service) ExportBackup(id string, w io.Writer) error {
-	if err := s.EnsureReadable(id); err != nil {
+	release, err := s.readableLease(id)
+	if err != nil {
 		return err
 	}
-	if err := s.VerifyBackup(id); err != nil {
+	defer release()
+	if err := s.verifyBackupUnlocked(id); err != nil {
 		return err
 	}
 	b, _ := s.Backup(id)
@@ -182,6 +186,9 @@ func (s *Service) verifyAt(id, root string) error {
 	if err != nil {
 		return err
 	}
+	return s.verifyAtRecord(b, root)
+}
+func (s *Service) verifyAtRecord(b Backup, root string) error {
 	data, err := os.ReadFile(filepath.Join(root, "manifest.json"))
 	if err != nil {
 		return err
@@ -189,9 +196,12 @@ func (s *Service) verifyAt(id, root string) error {
 	if Hash(data) != b.ManifestSHA {
 		return errors.New("Archivmanifest verändert")
 	}
-	m, err := s.Manifest(id)
-	if err != nil {
+	var m Manifest
+	if err = json.Unmarshal(data, &m); err != nil {
 		return err
+	}
+	if m.ID != b.ID || m.HostID != b.HostID || m.Version != FormatVersion {
+		return errors.New("ungültiges Archivmanifest")
 	}
 	for _, e := range m.Entries {
 		if e.Type == "directory" {
@@ -241,7 +251,7 @@ func (s *Service) extractArchive(b Backup) (string, error) {
 		gz.Close()
 	}
 	if err == nil {
-		err = s.verifyAt(b.ID, temp)
+		err = s.verifyAtRecord(b, temp)
 	}
 	if err != nil {
 		os.RemoveAll(temp)
@@ -253,10 +263,9 @@ func (s *Service) ArchiveBackup(id string) error {
 	if err := s.CheckSpace(64 << 20); err != nil {
 		return err
 	}
-	if err := s.acquire("backup:" + id); err != nil {
-		return err
-	}
-	defer s.release("backup:" + id)
+	lock := s.backupLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	b, err := s.Backup(id)
 	if err != nil {
 		return err
@@ -267,7 +276,7 @@ func (s *Service) ArchiveBackup(id string) error {
 	if b.Pinned {
 		return errors.New("markierte Sicherung wird nicht archiviert")
 	}
-	if err = s.VerifyBackup(id); err != nil {
+	if err = s.verifyBackupUnlocked(id); err != nil {
 		return err
 	}
 	p := filepath.Join(s.backupDir(b), "archive.tar.gz")
@@ -295,6 +304,9 @@ func (s *Service) ArchiveBackup(id string) error {
 	if err = os.Rename(temp.Name(), p); err != nil {
 		return err
 	}
+	if err = syncDir(filepath.Dir(p)); err != nil {
+		return err
+	}
 	check, err := s.extractArchive(b)
 	if err != nil {
 		os.Remove(p)
@@ -305,9 +317,18 @@ func (s *Service) ArchiveBackup(id string) error {
 	if err = s.Store.Put("backups", id, b); err != nil {
 		return err
 	}
-	return os.RemoveAll(filepath.Join(s.backupDir(b), "files"))
+	if err = os.RemoveAll(filepath.Join(s.backupDir(b), "files")); err != nil {
+		return err
+	}
+	return syncDir(s.backupDir(b))
 }
 func (s *Service) EnsureReadable(id string) error {
+	lock := s.backupLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	return s.ensureReadableUnlocked(id)
+}
+func (s *Service) ensureReadableUnlocked(id string) error {
 	b, err := s.Backup(id)
 	if err != nil {
 		return err
@@ -315,10 +336,6 @@ func (s *Service) EnsureReadable(id string) error {
 	if !b.Archived {
 		return nil
 	}
-	if err = s.acquire("backup:" + id); err != nil {
-		return err
-	}
-	defer s.release("backup:" + id)
 	temp, err := s.extractArchive(b)
 	if err != nil {
 		return err
@@ -328,6 +345,12 @@ func (s *Service) EnsureReadable(id string) error {
 		if err = os.Rename(filepath.Join(temp, "files"), filepath.Join(s.backupDir(b), "files")); err != nil {
 			return err
 		}
+	}
+	if err = syncTree(filepath.Join(s.backupDir(b), "files")); err != nil {
+		return err
+	}
+	if err = syncDir(s.backupDir(b)); err != nil {
+		return err
 	}
 	b.Archived = false
 	return s.Store.Put("backups", id, b)
@@ -367,7 +390,7 @@ func (s *Service) DiffBackups(from, to, p string) ([]FileDiff, error) {
 		}
 		a, okA := left[path]
 		b, okB := right[path]
-		if okA && okB && a.SHA256 == b.SHA256 && a.Mode == b.Mode && a.Link == b.Link {
+		if okA && okB && a.SHA256 == b.SHA256 && a.Mode == b.Mode && a.Link == b.Link && a.UID == b.UID && a.GID == b.GID && a.Type == b.Type && a.MTime == b.MTime && reflect.DeepEqual(a.XAttrs, b.XAttrs) {
 			continue
 		}
 		kind := "changed"
@@ -377,7 +400,7 @@ func (s *Service) DiffBackups(from, to, p string) ([]FileDiff, error) {
 		if !okB {
 			kind = "removed"
 		}
-		out = append(out, FileDiff{Path: path, Change: kind, Secret: a.Secret || b.Secret})
+		out = append(out, FileDiff{Path: path, Change: kind, Secret: a.Secret || b.Secret || isSecret(path)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil

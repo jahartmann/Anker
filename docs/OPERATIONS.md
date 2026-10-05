@@ -42,6 +42,8 @@ Archivierte Sicherungen enthalten weiterhin Manifest und `archive.tar.gz`. Für 
 
 ## Zugänge
 
-Webrollen: `reader`, `restore`, `admin`; Secretfreigabe wird separat vergeben. Reader können keine Mutationen ausführen. Originalexports erfordern Secretfreigabe. Vorschauen bleiben auch für Administratoren zunächst verdeckt. Das Anzeigen geschützter Inhalte wird protokolliert. Unix-Socketzugang erlaubt volle Administration; Dateirechte sind deshalb eine Berechtigungsgrenze.
+Webrollen: `reader`, `restore`, `admin`; Secretfreigabe wird separat vergeben. Reader können keine Mutationen ausführen. Originalexports erfordern Secretfreigabe. Vorschauen bleiben auch für Administratoren zunächst verdeckt. Unbekannte Configpfade werden vorsorglich als geschützt behandelt; nur bekannte allgemeine Systemdateien sind ohne Secretfreigabe lesbar. Das Anzeigen geschützter Inhalte wird protokolliert. Unix-Socketzugang erlaubt volle Administration; Dateirechte sind deshalb eine Berechtigungsgrenze.
 
 Das Dateisystem enthält absichtlich nutzbare Originale. Vertraulichkeit des Speichers braucht verschlüsselte Serverdatenträger, kontrollierten Serverzugang und die bestehenden betrieblichen Sicherungen. Anker verwaltet keine Festplattenverschlüsselung. Kein HTTP auf einer ungeschützten Netzadresse betreiben; der Dienst verlangt dort standardmäßig TLS.
+
+Referenzen auf Proxmox-Hooks sowie explizite Config-/Schlüsselpfade werden begrenzt gescannt. Nicht erfasste Referenzen erscheinen als Pflichtlücken. Anwendungsspezifische indirekte Referenzen und große/binäre Configs müssen zusätzlich im root-eigenen Hostprofil angegeben und manuell geprüft werden. Metadaten-/ACL-Lesefehler erzeugen ebenfalls eine unvollständige Sicherung.

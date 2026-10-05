@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Menu, ChevronRight, LogOut, X } from "lucide-react";
 import {
-  LayoutGrid,
-  Server,
-  FolderArchive,
-  RotateCcw,
-  ListTodo,
-  Settings as SettingsIcon,
-  Menu,
-  ChevronRight,
-  LogOut,
-  X,
-} from "lucide-react";
-import { api, date, emptyStatus, hostState, labels } from "./api";
+  api,
+  date,
+  configureTimezone,
+  emptyStatus,
+  hostState,
+  labels,
+} from "./api";
 import type { Status, User } from "./api";
 import { Empty, Field, Heading, State } from "./components/shared";
 import Hosts from "./views/Hosts";
@@ -20,12 +16,12 @@ import Backups, { FileBrowser } from "./views/Backups";
 import Restore from "./views/Restore";
 import Settings from "./views/Settings";
 const pages = [
-  ["Übersicht", LayoutGrid],
-  ["Hosts", Server],
-  ["Sicherungen", FolderArchive],
-  ["Wiederherstellung", RotateCcw],
-  ["Aufträge", ListTodo],
-  ["Einstellungen", SettingsIcon],
+  "Übersicht",
+  "Hosts",
+  "Sicherungen",
+  "Wiederherstellung",
+  "Aufträge",
+  "Einstellungen",
 ] as const;
 function Login({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) {
   const [name, setName] = useState("");
@@ -100,6 +96,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const s = await api<Status>("status");
+      configureTimezone(s.timezone);
       setStatus({
         ...s,
         hosts: s.hosts || [],
@@ -179,8 +176,8 @@ export default function App() {
         <div className="brand">Anker</div>
         <nav aria-label="Hauptnavigation">
           {pages
-            .filter(([p]) => p !== "Einstellungen" || user.role === "admin")
-            .map(([p]) => (
+            .filter((p) => p !== "Einstellungen" || user.role === "admin")
+            .map((p) => (
               <button
                 key={p}
                 className={page === p ? "active" : ""}
@@ -232,7 +229,11 @@ export default function App() {
         <main key={page}>
           <div className="content">
             {page === "Hosts" && (
-              <Hosts {...common} canEdit={user.role === "admin"} />
+              <Hosts
+                {...common}
+                canEdit={user.role === "admin"}
+                canOperate={user.role !== "reader"}
+              />
             )}{" "}
             {page === "Sicherungen" && <Backups {...common} />}{" "}
             {page === "Wiederherstellung" && (
@@ -398,7 +399,10 @@ function Jobs({
                 </div>
               </td>
               <td>
-                <State value={j.state} />
+                <State
+                  value={j.state}
+                  label={j.state === "successful" ? "Erfolgreich" : undefined}
+                />
               </td>
               <td className="date">{date(j.created_at)}</td>
               <td>

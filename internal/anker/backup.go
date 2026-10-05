@@ -57,6 +57,14 @@ func (s *Service) SaveHost(h Host) error {
 	if !safeHost.MatchString(h.SSHUser) || strings.Contains(h.SSHUser, ":") {
 		return errors.New("SSH-Benutzer ungültig")
 	}
+	if h.RestoreKeyPath != "" {
+		if h.RestoreSSHUser == "" {
+			h.RestoreSSHUser = "anker-restore"
+		}
+		if h.RestoreKeyPath == h.KeyPath || h.RestoreSSHUser == h.SSHUser || !filepath.IsAbs(h.RestoreKeyPath) || !safeHost.MatchString(h.RestoreSSHUser) || strings.Contains(h.RestoreSSHUser, ":") {
+			return errors.New("separater gültiger Wiederherstellungszugang erforderlich")
+		}
+	}
 	if h.SSHPort == 0 {
 		h.SSHPort = 22
 	}
@@ -83,7 +91,11 @@ func (s *Service) Host(id string) (Host, error) {
 	err := s.Store.Get("hosts", id, &h)
 	return h, err
 }
-func (s *Service) Hosts() ([]Host, error) { return records[Host](s.Store, "hosts") }
+func (s *Service) Hosts() ([]Host, error) {
+	hosts, err := records[Host](s.Store, "hosts")
+	sort.Slice(hosts, func(i, j int) bool { return hosts[i].Name < hosts[j].Name })
+	return hosts, err
+}
 func (s *Service) ListBackups(hostID string) ([]Backup, error) {
 	all, err := records[Backup](s.Store, "backups")
 	if err != nil {
@@ -255,7 +267,13 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if err = os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		return b, err
 	}
+	if err = syncTree(stage); err != nil {
+		return b, err
+	}
 	if err = os.Rename(stage, target); err != nil {
+		return b, err
+	}
+	if err = syncDir(filepath.Dir(target)); err != nil {
 		return b, err
 	}
 	if err = s.Store.Put("backups", b.ID, b); err != nil {
@@ -291,6 +309,12 @@ func (s *Service) Manifest(id string) (Manifest, error) {
 	return m, nil
 }
 func (s *Service) VerifyBackup(id string) error {
+	lock := s.backupLock(id)
+	lock.RLock()
+	defer lock.RUnlock()
+	return s.verifyBackupUnlocked(id)
+}
+func (s *Service) verifyBackupUnlocked(id string) error {
 	b, err := s.Backup(id)
 	if err != nil {
 		return err
@@ -339,9 +363,14 @@ func (s *Service) VerifyBackup(id string) error {
 	return nil
 }
 func (s *Service) ReadFile(id, p string) ([]byte, Entry, error) {
-	if err := s.EnsureReadable(id); err != nil {
+	release, err := s.readableLease(id)
+	if err != nil {
 		return nil, Entry{}, err
 	}
+	defer release()
+	return s.readFileUnlocked(id, p, 8<<20)
+}
+func (s *Service) readFileUnlocked(id, p string, limit int64) ([]byte, Entry, error) {
 	m, err := s.Manifest(id)
 	if err != nil {
 		return nil, Entry{}, err
@@ -362,12 +391,13 @@ func (s *Service) ReadFile(id, p string) ([]byte, Entry, error) {
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	if selected.Size > 8<<20 {
+	if selected.Size > limit {
 		return nil, Entry{}, errors.New("Datei zu groß für Vorschau; vollständigen Export verwenden")
 	}
 	data, err := os.ReadFile(full)
 	if err == nil && Hash(data) != selected.SHA256 {
 		err = errors.New("Datei-Prüfsumme falsch")
 	}
+	selected.Secret = selected.Secret || isSecret(selected.Path) || secretContent(data)
 	return data, *selected, err
 }

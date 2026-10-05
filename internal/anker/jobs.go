@@ -40,6 +40,9 @@ func (s *Service) RecoverJobs() error {
 func (s *Service) QueueBackup(hostID string) (Job, error) {
 	return s.queue(hostID, "backup", func(ctx context.Context) (string, error) {
 		b, err := s.CreateBackup(ctx, hostID)
+		if err != nil {
+			return "", err
+		}
 		if err == nil && b.Status == "partial" {
 			return b.ID, errors.New("Sicherung hat Pflichtlücken; Warnungen im Sicherungsstand prüfen")
 		}
@@ -65,7 +68,10 @@ func (s *Service) QueueProbe(hostID string) (Job, error) {
 		if err == nil {
 			err = saveErr
 		}
-		return h.ID, err
+		if err != nil {
+			return "", err
+		}
+		return h.ID, nil
 	})
 }
 func (s *Service) QueueApply(id, confirmation string) (Job, error) {

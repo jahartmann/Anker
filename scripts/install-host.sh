@@ -12,7 +12,7 @@ if [ ! -e /etc/anker-host.json ]; then
  printf '%s\n' '{"paths":["/etc","/usr/local"]}' >/etc/anker-host.json
  chmod 0600 /etc/anker-host.json
 fi
-printf '%s\n' 'anker ALL=(root) NOPASSWD: /usr/local/lib/anker/anker-host ""' >/etc/sudoers.d/anker
+printf '%s\n' 'anker ALL=(root) NOPASSWD: /usr/local/lib/anker/anker-host --read-only' >/etc/sudoers.d/anker
 chmod 0440 /etc/sudoers.d/anker
 visudo -cf /etc/sudoers.d/anker
 install -d -o root -g root -m 0755 /var/lib/anker-ssh/.ssh
@@ -21,3 +21,13 @@ if [ ! -e /var/lib/anker-ssh/.ssh/authorized_keys ]; then
  chown root:root /var/lib/anker-ssh/.ssh/authorized_keys; chmod 0644 /var/lib/anker-ssh/.ssh/authorized_keys
 fi
 printf '%s\n' 'Helper installiert. Öffentlichen Schlüssel mit erzwungenem Kommando hinzufügen; SSH-Hostfingerprint unabhängig prüfen. Siehe README.'
+
+if [ "${1:-}" = "--enable-restore" ]; then
+ id anker-restore >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/anker-restore-ssh --shell /bin/sh anker-restore
+ printf '%s\n' 'anker-restore ALL=(root) NOPASSWD: /usr/local/lib/anker/anker-host ""' >/etc/sudoers.d/anker-restore
+ chmod 0440 /etc/sudoers.d/anker-restore; visudo -cf /etc/sudoers.d/anker-restore
+ install -d -o root -g root -m 0755 /var/lib/anker-restore-ssh/.ssh
+ touch /var/lib/anker-restore-ssh/.ssh/authorized_keys
+ chown root:root /var/lib/anker-restore-ssh/.ssh/authorized_keys; chmod 0644 /var/lib/anker-restore-ssh/.ssh/authorized_keys
+ printf '%s\n' 'Separater Restorezugang vorbereitet. Nur dedizierten Restore-Schlüssel mit erzwungenem Helferkommando eintragen.'
+fi

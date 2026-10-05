@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -75,4 +76,42 @@ func TestSchedulerRunsOncePerLocalDay(t *testing.T) {
 		t.Fatal(len(jobs))
 	}
 	time.Sleep(200 * time.Millisecond)
+}
+
+type transientCollector struct {
+	fixtureCollector
+	calls int
+}
+
+func (c *transientCollector) Collect(ctx context.Context, h Host, d string) (Collection, error) {
+	c.calls++
+	if c.calls == 1 {
+		return Collection{}, fmt.Errorf("temporary SSH failure")
+	}
+	return c.fixtureCollector.Collect(ctx, h, d)
+}
+func TestBackupRetriesTemporaryFailure(t *testing.T) {
+	s := testService(t)
+	s.Collector = &transientCollector{}
+	j, err := s.QueueBackup("host1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.StopJobs(context.Background())
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		var v Job
+		s.Store.Get("jobs", j.ID, &v)
+		if v.State == "failed" {
+			t.Fatal("temporary failure not retried", v)
+		}
+		if v.State == "successful" {
+			if v.Attempts != 2 {
+				t.Fatal(v)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("retry did not complete")
 }

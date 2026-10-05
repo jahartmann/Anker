@@ -6,4 +6,4 @@ Die ursprüngliche visuelle Richtung wurde nach Nutzerfeedback ersetzt. Referenz
 
 Abweichungen vom Konzept: `tar.gz` statt `tar.zst` für portable Standardwerkzeuge; manuell geführte Gesamtrecovery bis zur realen Laborabnahme; keine automatische Entscheidung über Disk-/Storage-Neuanlage; Secretfreigabe separat von Rollen. Terminalformulare können über den gemeinsamen Befehlseingang bedient werden. Details und Grenzen stehen in `SUPPORT.md` und `OPERATIONS.md`.
 
-Tests, Browserprüfung und unabhängige Gesamtprüfung werden im Abschluss dieser Implementierung dokumentiert. Automatische Langzeit-/SFTP-/Hardwareabnahme wird durch lokale Fixturetests nicht ersetzt.
+Abschluss: Go-Tests einschließlich Race Detector und Vet, neun Python-Helfertests, sieben Browserabläufe, Typecheck/Webbuild sowie Linux-Crossbuild für amd64 und arm64. Der unabhängige Gesamtprüfer fand Fehler; die Korrekturen und zugehörigen Regressionen stehen in `REVIEW.md`. Desktop, Dialoge und Mobilansicht wurden zusätzlich im eingebauten Browser geprüft. Langzeit-/SFTP-/Hardwareabnahme wird durch lokale Fixturetests nicht ersetzt.

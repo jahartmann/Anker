@@ -89,3 +89,11 @@ func TestFingerprintIgnoresActivityButDetectsConfigDrift(t *testing.T) {
 		t.Fatal("configuration drift ignored")
 	}
 }
+
+func TestNetworkLeaseLifetimeDoesNotInvalidatePlan(t *testing.T) {
+	a := Inventory{Details: map[string]json.RawMessage{"addresses": json.RawMessage(`[{"addr_info":[{"local":"192.0.2.2","valid_life_time":100,"preferred_life_time":50}]}]`)}}
+	b := Inventory{Details: map[string]json.RawMessage{"addresses": json.RawMessage(`[{"addr_info":[{"local":"192.0.2.2","valid_life_time":90,"preferred_life_time":40}]}]`)}}
+	if Fingerprint(a) != Fingerprint(b) {
+		t.Fatal("lease clock counted as configuration drift")
+	}
+}

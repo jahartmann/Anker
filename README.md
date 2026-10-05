@@ -55,11 +55,13 @@ Direkter LAN-/VPN-Zugriff verlangt TLS. In `/etc/anker/service.env` die Listen-A
 3. Den öffentlichen Schlüssel auf dem Host in `/var/lib/anker-ssh/.ssh/authorized_keys` mit folgender Beschränkung eintragen:
 
 ```text
-restrict,command="sudo -n /usr/local/lib/anker/anker-host" ssh-ed25519 PUBLIC_KEY ANKER
+restrict,command="sudo -n /usr/local/lib/anker/anker-host --read-only" ssh-ed25519 PUBLIC_KEY ANKER
 ```
 
 4. Den SSH-Hostfingerprint über eine unabhängige, vertrauenswürdige Verbindung prüfen. Erst danach den Hostschlüssel in `/etc/anker/known_hosts` hinterlegen. Ein ungeprüftes `ssh-keyscan` ist keine Identitätsprüfung.
 5. In Anker Hostname, Adresse, Gruppe, SSH-Schlüssel und `known_hosts` eintragen. „Verbindung prüfen“, danach „Jetzt sichern“ ausführen. Auftrag, Pflichtlücken und gespeicherte Dateien prüfen.
+
+Für automatische Einzeldateiübernahme zusätzlich auf dem Ziel `sudo ./scripts/install-host.sh --enable-restore` ausführen. Ein **anderes** Schlüsselpaar in `/var/lib/anker-restore-ssh/.ssh/authorized_keys` mit `restrict,command="sudo -n /usr/local/lib/anker/anker-host"` eintragen. In den erweiterten Hosteinstellungen Benutzer `anker-restore` und den eigenen Wiederherstellungsschlüssel hinterlegen. Der normale `anker`-Zugang kann ausschließlich Probe/Collect ausführen. Der Restorezugang kann privilegierte Konfiguration ändern und wird deshalb separat vergeben und geschützt. Ohne Restorezugang bleiben Planung und Export möglich; der Plan erklärt die fehlende Freigabe und sperrt die Ausführung.
 
 Passwortlose Synchronisation verwendet hier **SSH-Schlüssel**, keine Zertifikate. SSH-Zertifikate sind bei einer vorhandenen SSH-CA optional möglich, aber nicht Teil dieses Installationswegs. TLS-Zertifikate sichern den Webzugriff.
 
