@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -179,6 +180,8 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	}()
 	targetHashes := fileHashes(target)
 	count := 0
+	targetData, _ := json.Marshal(target)
+	requestBytes := len(targetData) + (1 << 20)
 	for _, e := range m.Entries {
 		if e.Type == "directory" {
 			continue
@@ -208,6 +211,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 			step.Reason = "Portzuordnung geprüft; Aktivierung und Erreichbarkeit über Konsole prüfen"
 		}
 		if step.Action == "apply" {
+			requestBytes += 4*((len(prepared)+2)/3) + 4096
 			if target.Details["file_hashes"] == nil {
 				p.Blockers = append(p.Blockers, "Ziel liefert keine Dateiprüfsummen für sichere Vorbedingungen")
 			}
@@ -230,6 +234,9 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	}
 	if len(selected) > 0 {
 		return p, errors.New("Dateiauswahl enthält nicht gesicherte Dateien")
+	}
+	if requestBytes > 32<<20 {
+		p.Blockers = append(p.Blockers, "Dateiauswahl überschreitet das 32-MiB-Limit des Hostprotokolls. Kleinere Einzeldateipläne erstellen oder Dateien manuell herunterladen und übernehmen.")
 	}
 	sort.Slice(p.Steps, func(i, j int) bool { return p.Steps[i].Path < p.Steps[j].Path })
 	if count == 0 {
@@ -294,6 +301,9 @@ func planGuide(p Plan, m Manifest) string {
 	return b.String()
 }
 func (s *Service) ExportPlan(id string, w io.Writer) error {
+	lock := s.planLock(id)
+	lock.RLock()
+	defer lock.RUnlock()
 	p, err := s.Plan(id)
 	if err != nil {
 		return err
@@ -304,6 +314,9 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	}
 	defer release()
 	if err = s.verifyBackupUnlocked(p.BackupID); err != nil {
+		return err
+	}
+	if err = s.verifyPlanFiles(p); err != nil {
 		return err
 	}
 	tw := tar.NewWriter(w)
@@ -318,6 +331,48 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 		return err
 	}
 	return tw.Close()
+}
+func (s *Service) verifyPlanFiles(p Plan) error {
+	root := filepath.Join(s.Root, "plans", p.ID)
+	for name, expected := range map[string]any{"plan.json": p, "mapping.json": p.Mapping} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return err
+		}
+		want, _ := json.Marshal(expected)
+		var actual, original any
+		if json.Unmarshal(data, &actual) != nil || json.Unmarshal(want, &original) != nil || !reflect.DeepEqual(actual, original) {
+			return fmt.Errorf("Planbestandteil wurde verändert: %s", name)
+		}
+	}
+	b, err := s.Backup(p.BackupID)
+	if err != nil {
+		return err
+	}
+	manifest, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err != nil {
+		return err
+	}
+	if Hash(manifest) != b.ManifestSHA {
+		return errors.New("Planmanifest wurde verändert")
+	}
+	for _, step := range p.Steps {
+		if step.Action != "apply" {
+			continue
+		}
+		file, err := safeJoin(filepath.Join(root, "prepared-files"), step.Path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		if Hash(data) != step.PreparedSHA {
+			return fmt.Errorf("Vorbereitete Datei wurde verändert: %s", step.Path)
+		}
+	}
+	return nil
 }
 func tarPrefix(w *tar.Writer, root, prefix string) error {
 	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {

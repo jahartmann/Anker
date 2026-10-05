@@ -21,6 +21,9 @@ func (s *Service) notifyJob(j Job) {
 	if err != nil {
 		return
 	}
+	if settings.Webhook == "" && (settings.SMTPServer == "" || settings.MailTo == "") {
+		return
+	}
 	jobs, _ := s.Jobs()
 	var previous *Job
 	for _, v := range jobs {
@@ -34,9 +37,91 @@ func (s *Service) notifyJob(j Job) {
 	}
 	h, _ := s.Host(j.HostID)
 	message := fmt.Sprintf("Anker: %s — %s (%s)", h.Name, j.State, j.ID)
-	s.SendNotification(settings, message)
+	s.sendOperationalNotification(settings, message)
+}
+
+type staleNotice struct {
+	Alerted   bool   `json:"alerted"`
+	AttemptAt string `json:"attempt_at"`
+}
+
+// One overdue/recovery pair per incident, persisted across daemon restarts.
+func (s *Service) CheckStaleBackups(at time.Time) error {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	settings, err := s.Settings()
+	if err != nil {
+		return err
+	}
+	if settings.Webhook == "" && (settings.SMTPServer == "" || settings.MailTo == "") {
+		return nil
+	}
+	hosts, err := s.Hosts()
+	if err != nil {
+		return err
+	}
+	for _, h := range hosts {
+		if !h.Enabled {
+			continue
+		}
+		backups, err := s.ListBackups(h.ID)
+		if err != nil {
+			return err
+		}
+		stale := true
+		for _, b := range backups {
+			if b.Status != "successful" {
+				continue
+			}
+			created, err := time.Parse(time.RFC3339Nano, b.CreatedAt)
+			if err == nil {
+				stale = at.Sub(created) > time.Duration(settings.StaleHours)*time.Hour
+			}
+			break
+		}
+		var notice staleNotice
+		s.Store.Get("stale_notifications", h.ID, &notice)
+		if notice.Alerted == stale {
+			continue
+		}
+		if previous, err := time.Parse(time.RFC3339Nano, notice.AttemptAt); err == nil && at.Sub(previous) < time.Hour {
+			continue
+		}
+		message := "Anker: " + h.Name + " — Sicherung überfällig oder noch kein vollständiger Stand vorhanden"
+		if !stale {
+			message = "Anker: " + h.Name + " — wieder aktuell gesichert"
+		}
+		err = s.sendOperationalNotification(settings, message)
+		if err == nil {
+			notice.Alerted = stale
+			notice.AttemptAt = ""
+		} else {
+			notice.AttemptAt = at.Format(time.RFC3339Nano)
+		}
+		if putErr := s.Store.Put("stale_notifications", h.ID, notice); putErr != nil {
+			return putErr
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (s *Service) sendOperationalNotification(settings Settings, message string) error {
+	err := s.SendNotification(settings, message)
+	state := map[string]string{"at": now(), "error": ""}
+	if err != nil {
+		state["error"] = err.Error()
+	}
+	if putErr := s.Store.Put("health", "notifications", state); err == nil {
+		err = putErr
+	}
+	return err
 }
 func (s *Service) SendNotification(settings Settings, message string) error {
+	if settings.Webhook == "" && (settings.SMTPServer == "" || settings.MailTo == "") {
+		return fmt.Errorf("Kein Benachrichtigungsziel eingerichtet")
+	}
 	if settings.Webhook != "" {
 		b, _ := json.Marshal(map[string]string{"text": message})
 		client := &http.Client{Timeout: 10 * time.Second}

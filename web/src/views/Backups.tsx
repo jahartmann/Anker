@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api, bytes, date } from "../api";
 import type { Backup, Entry, Status, User } from "../api";
 import { Dialog, Download, Empty, Heading, State } from "../components/shared";
@@ -9,6 +9,7 @@ export function BackupTable({
   refresh,
   openBackup,
   canEdit,
+  canDownload = false,
   onRestore,
 }: {
   backups: Backup[];
@@ -16,8 +17,10 @@ export function BackupTable({
   refresh: () => void;
   openBackup: (id: string) => void;
   canEdit: boolean;
+  canDownload?: boolean;
   onRestore: (id: string) => void;
 }) {
+  const [visible, setVisible] = useState(50);
   async function act(b: Backup, action: string) {
     try {
       await api(
@@ -40,72 +43,98 @@ export function BackupTable({
     }
   }
   return backups.length ? (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Host / Zeitpunkt</th>
-            <th>Status</th>
-            <th>Umfang</th>
-            <th className="right">Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          {backups.map((b) => (
-            <tr key={b.id}>
-              <td>
-                <strong>{b.host_name}</strong>
-                <div className="secondary-line">
-                  {date(b.created_at)}
-                  {b.pinned ? " · Geschützt" : ""}
-                  {b.archived ? " · Archiv" : ""}
-                </div>
-              </td>
-              <td>
-                <State value={b.status} />
-                {b.warnings?.length > 0 && (
-                  <div className="secondary-line warning">
-                    {b.warnings.length} Hinweise
-                  </div>
-                )}
-              </td>
-              <td>
-                {b.files} Dateien
-                <div className="secondary-line">{bytes(b.size)}</div>
-              </td>
-              <td className="right">
-                <div className="row-actions">
-                  <button
-                    className="text-button"
-                    onClick={() => openBackup(b.id)}
-                  >
-                    Dateien
-                  </button>
-                  {canEdit && (
-                    <details className="action-menu">
-                      <summary aria-label={"Aktionen für " + b.id}>•••</summary>
-                      <div>
-                        <button onClick={() => onRestore(b.id)}>
-                          Wiederherstellen
-                        </button>
-                        <button onClick={() => act(b, "verify")}>
-                          Prüfsummen prüfen
-                        </button>
-                        <button onClick={() => act(b, "pin")}>
-                          {b.pinned ? "Schutz aufheben" : "Stand schützen"}
-                        </button>
-                        <button onClick={() => act(b, "archive")}>
-                          Archivieren
-                        </button>
-                      </div>
-                    </details>
-                  )}
-                </div>
-              </td>
+    <div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Host / Zeitpunkt</th>
+              <th>Status</th>
+              <th>Umfang</th>
+              <th className="right">Aktionen</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {backups.slice(0, visible).map((b) => (
+              <tr key={b.id}>
+                <td>
+                  <strong>{b.host_name}</strong>
+                  <div className="secondary-line">
+                    {date(b.created_at)}
+                    {b.pinned ? " · Geschützt" : ""}
+                    {b.archived ? " · Archiv" : ""}
+                  </div>
+                </td>
+                <td>
+                  <State value={b.status} />
+                  {b.verification_error && (
+                    <div className="secondary-line warning">
+                      Prüfung fehlgeschlagen
+                    </div>
+                  )}
+                  {b.warnings?.length > 0 && (
+                    <div className="secondary-line warning">
+                      {b.warnings.length} Hinweise
+                    </div>
+                  )}
+                </td>
+                <td>
+                  {b.files} Dateien
+                  <div className="secondary-line">{bytes(b.size)}</div>
+                </td>
+                <td className="right">
+                  <div className="row-actions">
+                    {canDownload && (
+                      <Download
+                        path={"backups/" + b.id + "/download"}
+                        compact
+                        notify={notify}
+                      >
+                        Herunterladen
+                      </Download>
+                    )}
+                    <button
+                      className="text-button"
+                      onClick={() => openBackup(b.id)}
+                    >
+                      Dateien
+                    </button>
+                    {canEdit && (
+                      <details className="action-menu">
+                        <summary aria-label={"Aktionen für " + b.id}>
+                          •••
+                        </summary>
+                        <div>
+                          <button onClick={() => onRestore(b.id)}>
+                            Wiederherstellen
+                          </button>
+                          <button onClick={() => act(b, "verify")}>
+                            Prüfsummen prüfen
+                          </button>
+                          <button onClick={() => act(b, "pin")}>
+                            {b.pinned ? "Schutz aufheben" : "Stand schützen"}
+                          </button>
+                          <button onClick={() => act(b, "archive")}>
+                            Archivieren
+                          </button>
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {backups.length > visible && (
+        <button
+          className="text-button"
+          onClick={() => setVisible((v) => v + 50)}
+        >
+          Weitere Sicherungen anzeigen ({backups.length - visible})
+        </button>
+      )}
     </div>
   ) : (
     <Empty title="Noch keine Sicherungen">
@@ -122,6 +151,7 @@ export default function Backups({
   refresh: () => void;
   openBackup: (id: string) => void;
   canEdit: boolean;
+  canDownload?: boolean;
   onRestore: (id: string) => void;
 }) {
   const [host, setHost] = useState("");
@@ -142,6 +172,10 @@ export default function Backups({
     }
   }
   const backups = status.backups.filter((b) => !host || b.host_id === host);
+  const knownHosts = new Map(status.hosts.map((h) => [h.id, h.name]));
+  for (const b of status.backups)
+    if (!knownHosts.has(b.host_id))
+      knownHosts.set(b.host_id, b.host_name + " · entfernt");
   return (
     <>
       <Heading
@@ -159,9 +193,9 @@ export default function Backups({
           }}
         >
           <option value="">Alle Hosts</option>
-          {status.hosts.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
+          {Array.from(knownHosts).map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
             </option>
           ))}
         </select>
@@ -260,9 +294,13 @@ export function FileBrowser({
     content: string;
     masked: boolean;
   } | null>(null);
+  const request = useRef(0);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
+    request.current++;
+    setSelected("");
+    setPreview(null);
     api<Entry[]>("backups/" + backup.id + "/files")
       .then((v) => {
         if (active) setFiles(v);
@@ -270,26 +308,31 @@ export function FileBrowser({
       .catch((e) => notify(e.message, true));
     return () => {
       active = false;
+      request.current++;
     };
   }, [backup.id, notify]);
   async function open(path: string, reveal = false) {
+    const sequence = ++request.current;
     setSelected(path);
     setPreview(null);
     setBusy(true);
     try {
-      setPreview(
-        await api(
-          "backups/" +
-            backup.id +
-            "/file?path=" +
-            encodeURIComponent(path) +
-            (reveal ? "&reveal=1" : ""),
-        ),
+      const result = await api<{
+        entry: Entry;
+        content: string;
+        masked: boolean;
+      }>(
+        "backups/" +
+          backup.id +
+          "/file?path=" +
+          encodeURIComponent(path) +
+          (reveal ? "&reveal=1" : ""),
       );
+      if (sequence === request.current) setPreview(result);
     } catch (e) {
-      notify((e as Error).message, true);
+      if (sequence === request.current) notify((e as Error).message, true);
     } finally {
-      setBusy(false);
+      if (sequence === request.current) setBusy(false);
     }
   }
   return (
@@ -369,9 +412,23 @@ export function FileBrowser({
         </div>
       </div>
       <footer className="dialog-footer">
+        {selected &&
+          (user.secrets || !files.find((f) => f.path === selected)?.secret) && (
+            <Download
+              path={
+                "backups/" +
+                backup.id +
+                "/file-download?path=" +
+                encodeURIComponent(selected)
+              }
+              notify={notify}
+            >
+              Datei herunterladen
+            </Download>
+          )}
         {user.secrets && (
-          <Download path={"backups/" + backup.id + "/download"}>
-            Stand exportieren
+          <Download path={"backups/" + backup.id + "/download"} notify={notify}>
+            Stand herunterladen
           </Download>
         )}
         {user.role !== "reader" && (

@@ -5,6 +5,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -23,6 +24,24 @@ func InstanceLock(root string) (func(), error) {
 	}
 	return func() { unix.Flock(fd, unix.LOCK_UN); unix.Close(fd) }, nil
 }
+
+// Call only during daemon startup, under the exclusive InstanceLock.
+func (s *Service) RecoverStaging() error {
+	root := filepath.Join(s.Root, "staging")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !validID(e.Name()) && !strings.HasPrefix(e.Name(), "archive-") {
+			continue
+		}
+		if err = os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
+			return err
+		}
+	}
+	return syncDir(root)
+}
 func (s *Service) backupLock(id string) *sync.RWMutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -33,6 +52,17 @@ func (s *Service) backupLock(id string) *sync.RWMutex {
 		s.backupLocks[id] = &sync.RWMutex{}
 	}
 	return s.backupLocks[id]
+}
+func (s *Service) planLock(id string) *sync.RWMutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.planLocks == nil {
+		s.planLocks = map[string]*sync.RWMutex{}
+	}
+	if s.planLocks[id] == nil {
+		s.planLocks[id] = &sync.RWMutex{}
+	}
+	return s.planLocks[id]
 }
 
 // A readable lease prevents archiving or pruning until the caller releases it.

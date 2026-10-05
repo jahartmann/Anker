@@ -8,6 +8,9 @@ import (
 )
 
 func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan, error) {
+	lock := s.planLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	p, err := s.Plan(id)
 	if err != nil {
 		return p, err
@@ -23,6 +26,9 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	}
 	defer s.release(p.TargetID)
 	if err = s.VerifyBackup(p.BackupID); err != nil {
+		return p, err
+	}
+	if err = s.verifyPlanFiles(p); err != nil {
 		return p, err
 	}
 	h, err := s.Host(p.TargetID)

@@ -141,6 +141,11 @@ func run(args []string) error {
 		os.Remove(*socket)
 		return err
 	}
+	if err = s.RecoverStaging(); err != nil {
+		unix.Close()
+		os.Remove(*socket)
+		return err
+	}
 	defer unix.Close()
 	defer os.Remove(*socket)
 	if err = os.Chmod(*socket, 0600); err != nil {

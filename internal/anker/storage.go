@@ -13,6 +13,9 @@ type DiskUsage struct {
 }
 
 func (s *Service) DiskUsage() (DiskUsage, error) {
+	if s.diskUsage != nil {
+		return s.diskUsage()
+	}
 	var stat unix.Statfs_t
 	if err := unix.Statfs(s.Root, &stat); err != nil {
 		return DiskUsage{}, err

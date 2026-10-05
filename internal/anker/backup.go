@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -29,7 +31,10 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 		}
 	}
 	var settings Settings
-	if store.Get("settings", "main", &settings) != nil {
+	if err = store.Get("settings", "main", &settings); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("Betriebseinstellungen sind nicht lesbar; Katalog prüfen: %w", err)
+		}
 		if err = store.Put("settings", "main", Settings{Timezone: "Europe/Berlin", Schedule: "02:00", Parallel: 4, Retries: 3, Daily: 30, Weekly: 12, Monthly: 12, ArchiveDays: 90, StaleHours: 26}); err != nil {
 			return nil, err
 		}
@@ -45,6 +50,39 @@ func (s *Service) Settings() (Settings, error) {
 var safeHost = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]*$`)
 
 func (s *Service) SaveHost(h Host) error {
+	s.hostMu.Lock()
+	defer s.hostMu.Unlock()
+	// Operator forms may be older than the last completed probe/backup.
+	if current, err := s.Host(h.ID); err == nil {
+		h.Inventory, h.LastProbe, h.ProbeError = current.Inventory, current.LastProbe, current.ProbeError
+		if !sameProbeTarget(current, h) {
+			h.Inventory = nil
+			h.LastProbe = ""
+			h.ProbeError = ""
+		}
+	}
+	return s.saveHost(h)
+}
+func sameProbeTarget(a, b Host) bool {
+	return a.Name == b.Name && a.Address == b.Address && a.SSHPort == b.SSHPort && a.SSHUser == b.SSHUser && a.KeyPath == b.KeyPath && a.KnownHostsPath == b.KnownHostsPath
+}
+func (s *Service) updateHostInventory(expected Host, inv *Inventory, probeError string) error {
+	s.hostMu.Lock()
+	defer s.hostMu.Unlock()
+	h, err := s.Host(expected.ID)
+	if err != nil {
+		return err
+	}
+	if !sameProbeTarget(expected, h) {
+		return nil
+	}
+	if inv != nil {
+		h.Inventory = inv
+	}
+	h.LastProbe, h.ProbeError = now(), probeError
+	return s.saveHost(h)
+}
+func (s *Service) saveHost(h Host) error {
 	if h.ID == "" {
 		h.ID = ID()
 	}
@@ -279,10 +317,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if err = s.Store.Put("backups", b.ID, b); err != nil {
 		return b, err
 	}
-	h.Inventory = &c.Inventory
-	h.LastProbe = now()
-	h.ProbeError = ""
-	if err = s.SaveHost(h); err != nil {
+	if err = s.updateHostInventory(h, &c.Inventory, ""); err != nil {
 		return b, err
 	}
 	return b, nil
@@ -315,6 +350,32 @@ func (s *Service) VerifyBackup(id string) error {
 	return s.verifyBackupUnlocked(id)
 }
 func (s *Service) verifyBackupUnlocked(id string) error {
+	err := s.checkBackupUnlocked(id)
+	b, getErr := s.Backup(id)
+	if getErr != nil {
+		return err
+	}
+	// Resource/access failures do not establish corruption.
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EACCES) {
+		return err
+	}
+	b.VerifiedAt = now()
+	if err != nil {
+		b.Status, b.VerificationError = "damaged", err.Error()
+	} else {
+		b.VerificationError = ""
+		if b.Status == "damaged" {
+			if m, e := s.Manifest(id); e == nil {
+				b.Status = m.Status
+			}
+		}
+	}
+	if storeErr := s.Store.Put("backups", id, b); err == nil {
+		err = storeErr
+	}
+	return err
+}
+func (s *Service) checkBackupUnlocked(id string) error {
 	b, err := s.Backup(id)
 	if err != nil {
 		return err

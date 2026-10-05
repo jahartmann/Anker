@@ -200,7 +200,7 @@ func (s *Service) SeedDemo(a *Auth) error {
 			group = "Cluster Berlin"
 			cluster = "berlin"
 		}
-		h := Host{ID: id, Name: name, Address: fmt.Sprintf("192.0.2.%d", 11+i), Group: group, ClusterID: cluster, SSHUser: "anker", SSHPort: 22, Enabled: false}
+		h := Host{ID: id, Name: name, Address: fmt.Sprintf("192.0.2.%d", 11+i), Group: group, ClusterID: cluster, SSHUser: "anker", SSHPort: 22, Enabled: true}
 		if err := s.SaveHost(h); err != nil {
 			return err
 		}

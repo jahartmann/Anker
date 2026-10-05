@@ -70,7 +70,7 @@ Das Hostprofil `/etc/anker-host.json` enthält beispielsweise `{"paths":["/etc",
 ## Bedienung
 
 - **Hosts:** Verbindung, Inventar, Sicherungszeit und zusätzliche Pflichtpfade.
-- **Sicherungen:** Dateien ansehen, Stände vergleichen, Prüfsummen prüfen, schützen, archivieren und exportieren.
+- **Sicherungen:** Dateien ansehen, Stände vergleichen, Prüfsummen prüfen, schützen, archivieren und herunterladen. „Herunterladen“ in der Liste liefert einen vollständigen TAR-Stand mit Inventar, Manifest, Anleitung und Originaldateien. „Datei herunterladen“ im Dateidialog liefert unveränderte Originalbytes, auch ohne Textvorschau. „Plan herunterladen“ liefert vorbereitete Dateien und den ursprünglichen Stand.
 - **Wiederherstellung:** Einzeldateien, neue Hardware, Standalone-, Cluster- und Versionsszenarien planen. Ziel wird neu gelesen; Drift blockiert die Ausführung.
 - **Aufträge:** Fortschritt, Abbruch und Fehler; unterbrochene Aufträge bleiben nach Neustart erkennbar.
 - **Einstellungen:** Zeitplan, Aufbewahrung, E-Mail/Webhook, Benutzer und Aktivitätsprotokoll.
@@ -119,3 +119,5 @@ cd web && npm ci && npm run build && npx playwright install chromium && npm test
 ```
 
 Die Browsertests starten eine isolierte Demo auf Port 8088 mit einem neuen Datenordner unter `/tmp`. Sie verändern weder Produktionshosts noch die normale Demo. Python-Helfertests verwenden ebenfalls ausschließlich temporäre lokale Verzeichnisse.
+
+Die zusätzliche Betriebsprüfung simuliert 90 tägliche Stände, 3.600 Einträge im Webinterface und gezielte Fehler bei Download, Planung, Archivierung, Zeitplan und Wiederanlauf. Gefundene Probleme, Korrekturen und verbleibende Laborfälle stehen in [Unterstützung](docs/SUPPORT.md).

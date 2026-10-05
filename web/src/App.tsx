@@ -81,6 +81,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<Status>(emptyStatus);
+  const [connectionError, setConnectionError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState("");
   const [page, setPage] = useState("Hosts");
   const [nav, setNav] = useState(false);
   const [file, setFile] = useState("");
@@ -97,6 +99,8 @@ export default function App() {
     try {
       const s = await api<Status>("status");
       configureTimezone(s.timezone);
+      setConnectionError("");
+      setUpdatedAt(new Date().toISOString());
       setStatus({
         ...s,
         hosts: s.hosts || [],
@@ -106,9 +110,20 @@ export default function App() {
       });
     } catch (e) {
       if ((e as Error).message === "Anmeldung erforderlich") setUser(null);
-      else notify((e as Error).message, true);
+      else setConnectionError((e as Error).message);
     }
   }, [notify]);
+  useEffect(() => {
+    const expired = () => {
+      setUser(null);
+      setStatus(emptyStatus);
+      setFile("");
+      setRestoreBackup("");
+      setPage("Hosts");
+    };
+    window.addEventListener("anker:session-expired", expired);
+    return () => window.removeEventListener("anker:session-expired", expired);
+  }, []);
   useEffect(() => {
     api<{ user: User; demo: boolean }>("me")
       .then((me) => {
@@ -154,11 +169,12 @@ export default function App() {
     notify,
     refresh,
     canEdit: user.role !== "reader",
+    canDownload: user.secrets,
     openBackup: setFile,
     onRestore: restore,
   };
   const overdue = status.hosts.filter(
-    (h) => hostState(h, status).tone !== "success",
+    (h) => h.enabled && hostState(h, status).tone !== "success",
   );
   const active = status.jobs.filter((j) =>
     ["queued", "running"].includes(j.state),
@@ -228,6 +244,23 @@ export default function App() {
         </div>
         <main key={page}>
           <div className="content">
+            {status.maintenance_health?.error && user.role === "admin" && (
+              <p className="notice warning" role="alert">
+                Wartung nicht abgeschlossen: {status.maintenance_health.error}.
+                Sicherungsablage und Katalog prüfen.
+              </p>
+            )}
+            {status.notification_health?.error && user.role === "admin" && (
+              <p className="notice warning" role="alert">
+                Benachrichtigung konnte nicht zugestellt werden:{" "}
+                {status.notification_health.error}. Einstellungen prüfen.
+              </p>
+            )}
+            {connectionError && (
+              <p className="notice warning" role="alert">
+                {connectionError} Angezeigte Daten: {date(updatedAt)}.
+              </p>
+            )}
             {page === "Hosts" && (
               <Hosts
                 {...common}
@@ -257,8 +290,10 @@ export default function App() {
                 <section className="overview-summary">
                   <p>
                     <strong>
-                      {status.hosts.length - overdue.length} von{" "}
-                      {status.hosts.length} Hosts
+                      {status.hosts.filter((h) => h.enabled).length -
+                        overdue.length}{" "}
+                      von {status.hosts.filter((h) => h.enabled).length} aktiven
+                      Hosts
                     </strong>{" "}
                     haben eine aktuelle Sicherung.
                   </p>
@@ -374,68 +409,79 @@ function Jobs({
   canEdit: boolean;
   limit?: number;
 }) {
+  const [visible, setVisible] = useState(50);
   const jobs = [...status.jobs]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, limit);
+    .slice(0, limit || visible);
   return jobs.length ? (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Auftrag</th>
-            <th>Status</th>
-            <th>Start</th>
-            <th>Ergebnis</th>
-          </tr>
-        </thead>
-        <tbody>
-          {jobs.map((j) => (
-            <tr key={j.id}>
-              <td>
-                <strong>{labels[j.kind] || j.kind}</strong>
-                <div className="secondary-line">
-                  {status.hosts.find((h) => h.id === j.host_id)?.name ||
-                    j.host_id}
-                </div>
-              </td>
-              <td>
-                <State
-                  value={j.state}
-                  label={j.state === "successful" ? "Erfolgreich" : undefined}
-                />
-              </td>
-              <td className="date">{date(j.created_at)}</td>
-              <td>
-                {j.error ? (
-                  <span className="warning">{j.error}</span>
-                ) : j.state === "successful" ? (
-                  "Abgeschlossen"
-                ) : j.state === "running" ? (
-                  "Versuch " + j.attempts
-                ) : (
-                  "—"
-                )}
-                {canEdit && ["queued", "running"].includes(j.state) && (
-                  <button
-                    className="text-button"
-                    onClick={async () => {
-                      try {
-                        await api("jobs/" + j.id + "/cancel", "POST", {});
-                        notify("Abbruch angefordert");
-                        refresh();
-                      } catch (e) {
-                        notify((e as Error).message, true);
-                      }
-                    }}
-                  >
-                    Abbrechen
-                  </button>
-                )}
-              </td>
+    <div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Auftrag</th>
+              <th>Status</th>
+              <th>Start</th>
+              <th>Ergebnis</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {jobs.map((j) => (
+              <tr key={j.id}>
+                <td>
+                  <strong>{labels[j.kind] || j.kind}</strong>
+                  <div className="secondary-line">
+                    {status.hosts.find((h) => h.id === j.host_id)?.name ||
+                      j.host_id}
+                  </div>
+                </td>
+                <td>
+                  <State
+                    value={j.state}
+                    label={j.state === "successful" ? "Erfolgreich" : undefined}
+                  />
+                </td>
+                <td className="date">{date(j.created_at)}</td>
+                <td>
+                  {j.error ? (
+                    <span className="warning">{j.error}</span>
+                  ) : j.state === "successful" ? (
+                    "Abgeschlossen"
+                  ) : j.state === "running" ? (
+                    "Versuch " + j.attempts
+                  ) : (
+                    "—"
+                  )}
+                  {canEdit && ["queued", "running"].includes(j.state) && (
+                    <button
+                      className="text-button"
+                      onClick={async () => {
+                        try {
+                          await api("jobs/" + j.id + "/cancel", "POST", {});
+                          notify("Abbruch angefordert");
+                          refresh();
+                        } catch (e) {
+                          notify((e as Error).message, true);
+                        }
+                      }}
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!limit && status.jobs.length > visible && (
+        <button
+          className="text-button"
+          onClick={() => setVisible((v) => v + 50)}
+        >
+          Weitere Aufträge anzeigen ({status.jobs.length - visible})
+        </button>
+      )}
     </div>
   ) : (
     <Empty title="Noch keine Aufträge">

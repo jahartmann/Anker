@@ -1,12 +1,19 @@
-import { useEffect, useRef, useId, isValidElement, cloneElement } from "react";
+import {
+  useEffect,
+  useRef,
+  useId,
+  useState,
+  isValidElement,
+  cloneElement,
+} from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
-import { labels } from "../api";
+import { api, labels } from "../api";
 export type Notify = (message: string, error?: boolean) => void;
 export function State({ value, label }: { value: string; label?: string }) {
   const tone = ["successful", "demo_applied"].includes(value)
     ? "success"
-    : ["failed", "interrupted", "blocked"].includes(value)
+    : ["failed", "interrupted", "blocked", "damaged"].includes(value)
       ? "warning"
       : "muted";
   return (
@@ -155,13 +162,55 @@ export function Dialog({
 export function Download({
   path,
   children,
+  notify,
+  compact = false,
 }: {
   path: string;
   children: ReactNode;
+  notify?: Notify;
+  compact?: boolean;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const active = useRef(false);
   return (
-    <a className="button secondary" href={"/api/" + path}>
-      {children}
-    </a>
+    <>
+      <a
+        className={compact ? "text-button" : "button secondary"}
+        href={"/api/" + path}
+        download
+        aria-disabled={busy}
+        onClick={async (e) => {
+          e.preventDefault();
+          if (active.current) return;
+          active.current = true;
+          setBusy(true);
+          setError("");
+          try {
+            await api(path + (path.includes("?") ? "&" : "?") + "check=1");
+            const link = document.createElement("a");
+            link.href = "/api/" + path;
+            link.download = "";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+          } catch (e) {
+            const message = (e as Error).message;
+            if (notify) notify(message, true);
+            else setError(message);
+          } finally {
+            active.current = false;
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Prüft …" : children}
+      </a>
+      {error && (
+        <span className="warning" role="alert">
+          {error}
+        </span>
+      )}
+    </>
   );
 }

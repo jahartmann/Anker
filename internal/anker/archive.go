@@ -279,6 +279,10 @@ func (s *Service) ArchiveBackup(id string) error {
 	if err = s.verifyBackupUnlocked(id); err != nil {
 		return err
 	}
+	b, err = s.Backup(id)
+	if err != nil {
+		return err
+	}
 	p := filepath.Join(s.backupDir(b), "archive.tar.gz")
 	temp, err := os.CreateTemp(filepath.Join(s.Root, "staging"), "archive-*.gz")
 	if err != nil {
@@ -336,13 +340,26 @@ func (s *Service) ensureReadableUnlocked(id string) error {
 	if !b.Archived {
 		return nil
 	}
-	temp, err := s.extractArchive(b)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(temp)
-	if _, err = os.Stat(filepath.Join(s.backupDir(b), "files")); os.IsNotExist(err) {
-		if err = os.Rename(filepath.Join(temp, "files"), filepath.Join(s.backupDir(b), "files")); err != nil {
+	files := filepath.Join(s.backupDir(b), "files")
+	if _, err = os.Stat(files); err == nil && s.verifyAtRecord(b, s.backupDir(b)) == nil {
+		// Crash after a completed rename: do not require another full-size copy.
+	} else {
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err = s.CheckSpace(b.Size*2 + (64 << 20)); err != nil {
+			return err
+		}
+		temp, extractErr := s.extractArchive(b)
+		if extractErr != nil {
+			return extractErr
+		}
+		defer os.RemoveAll(temp)
+		// Only remove crash leftovers once a replacement has been fully verified.
+		if err = os.RemoveAll(files); err != nil {
+			return err
+		}
+		if err = os.Rename(filepath.Join(temp, "files"), files); err != nil {
 			return err
 		}
 	}
@@ -353,7 +370,13 @@ func (s *Service) ensureReadableUnlocked(id string) error {
 		return err
 	}
 	b.Archived = false
-	return s.Store.Put("backups", id, b)
+	if err = s.Store.Put("backups", id, b); err != nil {
+		return err
+	}
+	if err = os.Remove(filepath.Join(s.backupDir(b), "archive.tar.gz")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return syncDir(s.backupDir(b))
 }
 
 type FileDiff struct {

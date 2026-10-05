@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -126,6 +128,8 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 	})
 }
 func jsonError(w http.ResponseWriter, err error) {
+	w.Header().Del("Content-Disposition")
+	w.Header().Del("Content-Length")
 	code := 400
 	var e apiError
 	if errors.As(err, &e) {
@@ -196,8 +200,14 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		}
 		for i := range plans {
 			plans[i] = redactPlan(plans[i], false)
+			plans[i].Source.Details = nil
+			plans[i].Target.Details = nil
 		}
 		settings, _ := s.Settings()
+		var notificationHealth map[string]string
+		s.Store.Get("health", "notifications", &notificationHealth)
+		var maintenanceHealth map[string]string
+		s.Store.Get("health", "maintenance", &maintenanceHealth)
 		for i := range hosts {
 			if u.Role != "admin" {
 				hosts[i].KeyPath = ""
@@ -205,7 +215,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				hosts[i].KnownHostsPath = ""
 			}
 		}
-		return jsonOut(w, map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours})
+		return jsonOut(w, map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth})
 	case "hosts":
 		if method == "GET" {
 			hosts, err := s.Hosts()
@@ -367,7 +377,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return fail(405, "POST erforderlich")
 		}
 		v, _ := s.Settings()
-		if err := s.SendNotification(v, "Anker Testnachricht"); err != nil {
+		if err := s.sendOperationalNotification(v, "Anker Testnachricht"); err != nil {
 			return err
 		}
 		return jsonOut(w, map[string]bool{"ok": true})
@@ -538,10 +548,47 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			if err = s.VerifyBackup(id); err != nil {
 				return err
 			}
+			if r.URL.Query().Get("check") == "1" {
+				return jsonOut(w, map[string]bool{"ok": true})
+			}
 			s.LogAudit(u.ID, "backup.export", id)
 			w.Header().Set("Content-Type", "application/x-tar")
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="anker-%s.tar"`, id))
 			return s.ExportBackup(id, w)
+		case "file-download":
+			if method != "GET" {
+				break
+			}
+			release, err := s.readableLease(id)
+			if err != nil {
+				return err
+			}
+			defer release()
+			data, entry, err := s.readFileUnlocked(id, r.URL.Query().Get("path"), 64<<20)
+			if err != nil {
+				return err
+			}
+			if entry.Secret {
+				if err = require(u, "secrets"); err != nil {
+					return err
+				}
+			}
+			if r.URL.Query().Get("check") == "1" {
+				return jsonOut(w, map[string]bool{"ok": true})
+			}
+			if err = s.LogAudit(u.ID, "file.export", id+":"+entry.Path); err != nil {
+				return err
+			}
+			name := filepath.Base(entry.Path)
+			if entry.Type == "symlink" {
+				name += ".symlink.txt"
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+			w.Header().Set("Content-Length", fmt.Sprint(len(data)))
+			w.Header().Set("X-Anker-SHA256", entry.SHA256)
+			_, err = w.Write(data)
+			return err
 		}
 	case "plans":
 		p, err := s.Plan(id)
@@ -568,6 +615,18 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		if action == "download" && method == "GET" {
 			if err = require(u, "secrets"); err != nil {
 				return err
+			}
+			if r.URL.Query().Get("check") == "1" {
+				lock := s.planLock(id)
+				lock.RLock()
+				defer lock.RUnlock()
+				if err = s.VerifyBackup(p.BackupID); err != nil {
+					return err
+				}
+				if err = s.verifyPlanFiles(p); err != nil {
+					return err
+				}
+				return jsonOut(w, map[string]bool{"ok": true})
 			}
 			s.LogAudit(u.ID, "plan.export", id)
 			w.Header().Set("Content-Type", "application/x-tar")

@@ -47,6 +47,8 @@ export interface Host {
   probe_error?: string;
 }
 export interface Backup {
+  verified_at?: string;
+  verification_error?: string;
   id: string;
   host_id: string;
   host_name: string;
@@ -123,6 +125,8 @@ export interface Settings {
   mail_to: string;
 }
 export interface Status {
+  notification_health?: { at: string; error: string };
+  maintenance_health?: { at: string; error: string };
   hosts: Host[];
   backups: Backup[];
   jobs: Job[];
@@ -145,13 +149,27 @@ export async function api<T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch("/api/" + path, {
-    method,
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "X-Anker-Request": "1" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const value = await response.json();
+  let response: Response;
+  try {
+    response = await fetch("/api/" + path, {
+      method,
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Anker-Request": "1" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      "Anker ist nicht erreichbar. Verbindung und Dienst prüfen.",
+    );
+  }
+  if (response.status === 401 && path !== "login")
+    window.dispatchEvent(new Event("anker:session-expired"));
+  let value;
+  try {
+    value = await response.json();
+  } catch {
+    throw new Error("Ungültige Serverantwort. Verbindung und Dienst prüfen.");
+  }
   if (!response.ok) throw new Error(value.error || "Anfrage fehlgeschlagen");
   return value as T;
 }
@@ -182,6 +200,7 @@ export function bytes(v: number) {
   return (i ? v.toFixed(1) : v) + " " + units[i];
 }
 export const labels: Record<string, string> = {
+  damaged: "Beschädigt",
   successful: "Gesichert",
   partial: "Unvollständig",
   failed: "Fehlgeschlagen",
@@ -207,9 +226,43 @@ export const labels: Record<string, string> = {
   restore: "Wiederherstellung",
 };
 export function hostState(h: Host, s: Status) {
-  const b = s.backups.find(
+  const hostBackups = s.backups
+    .filter((b) => b.host_id === h.id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const b = hostBackups.find(
     (b) => b.host_id === h.id && b.status === "successful",
   );
+  if (!h.enabled) return { text: "Pausiert", tone: "muted", backup: b };
+  if (hostBackups[0]?.status === "damaged")
+    return {
+      text: "Beschädigter Stand",
+      tone: "warning",
+      backup: hostBackups[0],
+    };
+  if (hostBackups[0]?.status === "partial")
+    return {
+      text: "Letzte Sicherung unvollständig",
+      tone: "warning",
+      backup: hostBackups[0],
+    };
+  const latestJob = s.jobs
+    .filter(
+      (j) =>
+        j.host_id === h.id &&
+        j.kind === "backup" &&
+        ["failed", "interrupted", "cancelled"].includes(j.state),
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  if (
+    latestJob &&
+    (!b || latestJob.created_at > b.created_at) &&
+    latestJob.result_id !== b?.id
+  )
+    return {
+      text: "Letzter Versuch fehlgeschlagen",
+      tone: "warning",
+      backup: b,
+    };
   if (!b) return { text: "Ohne Sicherung", tone: "muted", backup: undefined };
   if (Date.now() - new Date(b.created_at).getTime() > s.stale_hours * 3600000)
     return { text: "Überfällig", tone: "warning", backup: b };

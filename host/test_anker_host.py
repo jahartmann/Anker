@@ -58,3 +58,26 @@ class CompletenessTests(unittest.TestCase):
    (out/'files/etc/pve/qemu-server/100.conf').write_text('hookscript: local:snippets/hook.sh\n')
    warnings=helper.dependency_warnings(out,[{'path':'etc/pve/qemu-server/100.conf','type':'file','size':40}])
    self.assertTrue(any('/var/lib/vz/snippets/hook.sh' in w for w in warnings))
+
+class DurableRestoreTests(unittest.TestCase):
+ def test_rollback_is_synced_before_first_target_replace(self):
+  from unittest.mock import patch
+  import os,stat
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);(root/'etc').mkdir();target=root/'etc/test';target.write_bytes(b'old')
+   rollback_synced=[];directory_synced=[];real_sync=helper.os.fsync;real_replace=helper.os.replace
+   def sync(fd):
+    if stat.S_ISDIR(os.fstat(fd).st_mode):directory_synced.append(True)
+    else:
+     try:
+      path=os.readlink('/proc/self/fd/'+str(fd))
+     except OSError:path=''
+     rollback_synced.append(path)
+    return real_sync(fd)
+   def replace(src,dest):
+    self.assertGreaterEqual(len(rollback_synced),3,'rollback and its metadata were not flushed')
+    self.assertTrue(directory_synced,'rollback directories were not flushed')
+    return real_replace(src,dest)
+   with patch.object(helper.os,'fsync',side_effect=sync),patch.object(helper.os,'replace',side_effect=replace):
+    helper.apply_files(root,[{'path':'etc/test','before_sha':helper.digest(b'old'),'content':'bmV3','mode':420,'uid':0,'gid':0}],test_mode=True)
+   self.assertEqual(target.read_bytes(),b'new')

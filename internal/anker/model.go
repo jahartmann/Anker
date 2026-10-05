@@ -97,17 +97,19 @@ type Manifest struct {
 	Inventory   Inventory         `json:"inventory"`
 }
 type Backup struct {
-	ID          string   `json:"id"`
-	HostID      string   `json:"host_id"`
-	HostName    string   `json:"host_name"`
-	CreatedAt   string   `json:"created_at"`
-	Status      string   `json:"status"`
-	Size        int64    `json:"size"`
-	Files       int      `json:"files"`
-	Pinned      bool     `json:"pinned"`
-	Archived    bool     `json:"archived"`
-	ManifestSHA string   `json:"manifest_sha"`
-	Warnings    []string `json:"warnings"`
+	VerifiedAt        string   `json:"verified_at,omitempty"`
+	VerificationError string   `json:"verification_error,omitempty"`
+	ID                string   `json:"id"`
+	HostID            string   `json:"host_id"`
+	HostName          string   `json:"host_name"`
+	CreatedAt         string   `json:"created_at"`
+	Status            string   `json:"status"`
+	Size              int64    `json:"size"`
+	Files             int      `json:"files"`
+	Pinned            bool     `json:"pinned"`
+	Archived          bool     `json:"archived"`
+	ManifestSHA       string   `json:"manifest_sha"`
+	Warnings          []string `json:"warnings"`
 }
 type Job struct {
 	ID         string `json:"id"`
@@ -204,6 +206,9 @@ type Collector interface {
 }
 type Service struct {
 	backupLocks map[string]*sync.RWMutex
+	planLocks   map[string]*sync.RWMutex
+	hostMu      sync.Mutex
+	diskUsage   func() (DiskUsage, error)
 	Root        string
 	Store       *Store
 	Collector   Collector

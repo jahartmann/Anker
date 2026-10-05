@@ -120,13 +120,18 @@ func (a *Auth) Login(name, password string) (string, User, error) {
 	token := ID() + ID()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	for token, v := range a.sessions {
+		if !time.Now().Before(v.Expires) {
+			delete(a.sessions, token)
+		}
+	}
 	a.sessions[token] = session{UserID: u.ID, Expires: time.Now().Add(8 * time.Hour)}
 	return token, u, nil
 }
 func (a *Auth) Session(token string, at time.Time) (User, error) {
 	a.mu.Lock()
 	v, ok := a.sessions[token]
-	if ok && at.After(v.Expires) {
+	if ok && !at.Before(v.Expires) {
 		delete(a.sessions, token)
 		ok = false
 	}
@@ -146,6 +151,11 @@ func (a *Auth) PermitLogin(key string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	cut := time.Now().Add(-15 * time.Minute)
+	for key, times := range a.attempts {
+		if len(times) == 0 || !times[len(times)-1].After(cut) {
+			delete(a.attempts, key)
+		}
+	}
 	v := []time.Time{}
 	for _, at := range a.attempts[key] {
 		if at.After(cut) {

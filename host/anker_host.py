@@ -225,27 +225,40 @@ def apply_files(root,items,test_mode=False):
   if old is not None:
    b=rollback/rel;b.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,b,follow_symlinks=False);os.chmod(b,0o600)
  (rollback/'before.json').write_text(json.dumps(before,indent=2))
+ # Persist the complete rollback before changing the first target file.
+ for folder,dirs,files in os.walk(rollback,topdown=False):
+  for name in files:
+   with open(pathlib.Path(folder)/name,'rb') as f:os.fsync(f.fileno())
+  sync_directory(pathlib.Path(folder))
+ sync_directory(rollback.parent)
  try:
   for p,e,old,content in prepared:
    p.parent.mkdir(parents=True,exist_ok=True)
    fd,tmp=tempfile.mkstemp(prefix='.anker-',dir=p.parent)
    try:
     with os.fdopen(fd,'wb') as f:
-     f.write(content);f.flush();os.fsync(f.fileno());os.fchmod(f.fileno(),int(e.get('mode',0o600)) & 0o777)
+     f.write(content);f.flush();os.fchmod(f.fileno(),int(e.get('mode',0o600)) & 0o777)
      if not test_mode:os.fchown(f.fileno(),int(e.get('uid',0)),int(e.get('gid',0)))
-    os.replace(tmp,p);applied.append(e['path'])
+     os.fsync(f.fileno())
+    os.replace(tmp,p);applied.append(e['path']);sync_directory(p.parent)
    finally:
     if os.path.exists(tmp):os.unlink(tmp)
   return {'applied':applied,'rollback_path':str(rollback),'checks':['file hashes verified; service and reboot checks require operator'],'reboot_verified':False}
  except Exception as exc:
   (rollback/'failure.json').write_text(json.dumps({'applied':applied,'error':str(exc)}))
-  raise
+ raise
+
+def sync_directory(path):
+ fd=os.open(path,os.O_RDONLY)
+ try:os.fsync(fd)
+ finally:os.close(fd)
 
 def authorize(operation,read_only=False):
  if operation not in ("probe","collect","apply"):raise ValueError("unknown operation")
  if read_only and operation=="apply":raise ValueError("read-only backup authority cannot restore")
 
 def main():
+ os.umask(0o077)
  if os.geteuid()!=0 or sys.platform!='linux':raise ValueError('host helper requires root on Linux')
  if sys.argv[1:] not in ([],['--read-only']):raise ValueError('invalid arguments')
  read_only=sys.argv[1:]==['--read-only']

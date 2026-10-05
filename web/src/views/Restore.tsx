@@ -51,6 +51,10 @@ export default function Restore({
     }
     let active = true;
     setSource(null);
+    setEntries([]);
+    setInterfaces({});
+    setConsoleOK(false);
+    setOffline(false);
     api<Inventory>("backups/" + backup + "/inventory")
       .then((v) => {
         if (active) setSource(v);
@@ -151,9 +155,13 @@ export default function Restore({
                     <td className="right">
                       <button
                         className="text-button"
-                        onClick={() => {
-                          setPlan(p);
-                          setConfirmation("");
+                        onClick={async () => {
+                          try {
+                            setPlan(await api<Plan>("plans/" + p.id));
+                            setConfirmation("");
+                          } catch (e) {
+                            notify((e as Error).message, true);
+                          }
                         }}
                       >
                         Plan ansehen
@@ -408,8 +416,8 @@ export default function Restore({
           )}
           <footer className="dialog-footer">
             {user.secrets && (
-              <Download path={"plans/" + plan.id + "/download"}>
-                Plan und Dateien exportieren
+              <Download path={"plans/" + plan.id + "/download"} notify={notify}>
+                Plan herunterladen
               </Download>
             )}
             {plan.state === "ready" && user.role !== "reader" && (

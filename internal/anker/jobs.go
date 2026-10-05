@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/mail"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -56,15 +60,17 @@ func (s *Service) QueueProbe(hostID string) (Job, error) {
 			return "", err
 		}
 		inv, err := s.Collector.Probe(ctx, h)
-		h.LastProbe = now()
+		var probeError string
 		if err != nil {
-			h.ProbeError = "Hostprüfung fehlgeschlagen; SSH-Zugang und Identität prüfen"
+			probeError = "Hostprüfung fehlgeschlagen; SSH-Zugang und Identität prüfen"
 		} else {
 			inv.Fingerprint = Fingerprint(inv)
-			h.Inventory = &inv
-			h.ProbeError = ""
 		}
-		saveErr := s.SaveHost(h)
+		var inventory *Inventory
+		if err == nil {
+			inventory = &inv
+		}
+		saveErr := s.updateHostInventory(h, inventory, probeError)
 		if err == nil {
 			err = saveErr
 		}
@@ -120,6 +126,11 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		settings.Parallel = 4
 	}
 	for {
+		if ctx.Err() != nil {
+			j.State, j.FinishedAt = "cancelled", now()
+			s.Store.Put("jobs", j.ID, j)
+			return
+		}
 		s.jobMu.Lock()
 		jobs, err := s.Jobs()
 		running := 0
@@ -153,7 +164,13 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 	}
 	var err error
 	for attempt := 0; attempt <= retries; attempt++ {
+		if ctx.Err() != nil {
+			break
+		}
 		j.Attempts = attempt + 1
+		if err = s.Store.Put("jobs", j.ID, j); err != nil {
+			break
+		}
 		j.ResultID, err = run(ctx)
 		if err == nil || ctx.Err() != nil || j.ResultID != "" {
 			break
@@ -197,6 +214,23 @@ func (s *Service) SaveSettings(v Settings) error {
 	}
 	if _, err := time.Parse("15:04", v.Schedule); err != nil {
 		return errors.New("Zeitplan muss HH:MM sein")
+	}
+	if v.Webhook != "" {
+		u, err := url.Parse(v.Webhook)
+		if err != nil || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return errors.New("Webhook muss eine gültige HTTP- oder HTTPS-Adresse sein")
+		}
+	}
+	if v.SMTPServer != "" {
+		if _, _, err := net.SplitHostPort(v.SMTPServer); err != nil {
+			return errors.New("SMTP-Server muss Host:Port enthalten")
+		}
+		for _, address := range []string{v.MailFrom, v.MailTo} {
+			parsed, err := mail.ParseAddress(address)
+			if err != nil || strings.ContainsAny(address, "\r\n") || parsed.Address != address {
+				return errors.New("Gültige Absender- und Empfängeradresse ohne Anzeigenamen erforderlich")
+			}
+		}
 	}
 	return s.Store.Put("settings", "main", v)
 }

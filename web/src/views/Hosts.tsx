@@ -202,6 +202,7 @@ export default function Hosts({
   notify,
   refresh,
   canEdit,
+  canDownload = false,
   canOperate = canEdit,
   openBackup,
   onRestore,
@@ -210,6 +211,7 @@ export default function Hosts({
   notify: Notify;
   refresh: () => void;
   canEdit: boolean;
+  canDownload?: boolean;
   canOperate?: boolean;
   openBackup: (id: string) => void;
   onRestore: (id: string) => void;
@@ -352,6 +354,7 @@ export default function Hosts({
               refresh={refresh}
               openBackup={openBackup}
               canEdit={canOperate}
+              canDownload={canDownload}
               onRestore={onRestore}
             />
           )}{" "}
@@ -553,7 +556,12 @@ export default function Hosts({
           )}
           <p className="table-footnote">
             {status.hosts.length} Hosts · {saved} gesichert ·{" "}
-            {status.hosts.length - saved} ohne aktuellen Sicherungsstand
+            {status.hosts.filter((h) => h.enabled).length - saved} mit
+            Handlungsbedarf
+            {status.hosts.some((h) => !h.enabled) &&
+              " · " +
+                status.hosts.filter((h) => !h.enabled).length +
+                " pausiert"}
           </p>
         </>
       )}

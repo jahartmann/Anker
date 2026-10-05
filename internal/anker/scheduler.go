@@ -2,7 +2,9 @@ package anker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,13 +19,17 @@ func NewScheduler(s *Service) *Scheduler { return &Scheduler{s: s} }
 func (sc *Scheduler) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	sc.Tick(time.Now())
+	if err := sc.Tick(time.Now()); err != nil {
+		log.Printf("Anker Zeitplan: %v", err)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case at := <-ticker.C:
-			sc.Tick(at)
+			if err := sc.Tick(at); err != nil {
+				log.Printf("Anker Zeitplan: %v", err)
+			}
 		}
 	}
 }
@@ -56,6 +62,10 @@ func (sc *Scheduler) Tick(at time.Time) error {
 		}
 		jitter, _ := strconv.ParseInt(Hash([]byte(h.ID))[:4], 16, 64)
 		due := time.Date(local.Year(), local.Month(), local.Day(), t.Hour(), t.Minute(), 0, 0, loc).Add(time.Duration(jitter%60) * time.Minute)
+		lastMinute := time.Date(local.Year(), local.Month(), local.Day(), 23, 59, 0, 0, loc)
+		if due.After(lastMinute) {
+			due = lastMinute
+		}
 		if local.Before(due) {
 			continue
 		}
@@ -69,13 +79,22 @@ func (sc *Scheduler) Tick(at time.Time) error {
 		}
 	}
 	var maintained string
+	var maintenanceErr error
 	sc.s.Store.Get("maintenance", "day", &maintained)
 	if maintained != day {
-		if err = sc.s.Maintain(at); err == nil {
+		maintenanceErr = sc.s.Maintain(at)
+		if maintenanceErr == nil {
 			sc.s.Store.Put("maintenance", "day", day)
 		}
+		state := map[string]string{"at": now(), "error": ""}
+		if maintenanceErr != nil {
+			state["error"] = maintenanceErr.Error()
+		}
+		if putErr := sc.s.Store.Put("health", "maintenance", state); putErr != nil {
+			maintenanceErr = errors.Join(maintenanceErr, putErr)
+		}
 	}
-	return nil
+	return errors.Join(maintenanceErr, sc.s.CheckStaleBackups(at))
 }
 func (s *Service) Maintain(at time.Time) error {
 	settings, err := s.Settings()
@@ -100,6 +119,18 @@ func (s *Service) Maintain(at time.Time) error {
 	}
 	for _, h := range hosts {
 		backups, err := s.ListBackups(h.ID)
+		if err != nil {
+			return err
+		}
+		// Verify the newest complete recovery source before retention chooses it.
+		for _, b := range backups {
+			if b.Status == "successful" {
+				if s.VerifyBackup(b.ID) == nil {
+					break
+				}
+			}
+		}
+		backups, err = s.ListBackups(h.ID)
 		if err != nil {
 			return err
 		}
@@ -147,9 +178,17 @@ func (s *Service) Maintain(at time.Time) error {
 			if !keep[b.ID] {
 				lock := s.backupLock(b.ID)
 				lock.Lock()
-				current, _ := s.Backup(b.ID)
+				current, readErr := s.Backup(b.ID)
+				if readErr != nil {
+					lock.Unlock()
+					return readErr
+				}
 				referenced := current.Pinned
-				freshPlans, _ := s.Plans()
+				freshPlans, readErr := s.Plans()
+				if readErr != nil {
+					lock.Unlock()
+					return readErr
+				}
 				for _, p := range freshPlans {
 					if p.BackupID == b.ID {
 						referenced = true
@@ -172,7 +211,11 @@ func (s *Service) Maintain(at time.Time) error {
 			date, _ := time.Parse(time.RFC3339Nano, b.CreatedAt)
 			if settings.ArchiveDays > 0 && !b.Pinned && !protected[b.ID] && !b.Archived && at.Sub(date) > time.Duration(settings.ArchiveDays)*24*time.Hour {
 				if s.CheckNonessentialSpace() == nil {
-					s.ArchiveBackup(b.ID)
+					if b.Status != "damaged" {
+						if err = s.ArchiveBackup(b.ID); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}
@@ -225,6 +268,14 @@ func (s *Service) Reindex() (int, error) {
 			}
 		} else {
 			err = s.verifyAtRecord(b, filepath.Dir(p))
+			if err != nil {
+				// Interrupted expansion can coexist with a valid archive after catalog loss.
+				if temp, archiveErr := s.extractArchive(b); archiveErr == nil {
+					os.RemoveAll(temp)
+					b.Archived = true
+					err = nil
+				}
+			}
 		}
 		if err == nil {
 			err = s.Store.Put("backups", b.ID, b)
