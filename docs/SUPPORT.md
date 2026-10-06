@@ -10,13 +10,14 @@
 | Neue Hardware, Cluster, Versionen, Topologie | Manuelle Pläne und Exporte | Entscheidungsregeln und Dokumente | Offen; automatische Gesamtausführung gesperrt |
 | Web, CLI und Terminal | Ja | Build, Go-Tests, Browserabläufe | Betrieb offen |
 | Aufbewahrung, Archivierung, Scheduler | Ja | Go-Tests einschließlich DST und Archivprüfung | Langzeitbetrieb offen |
-| Linux-/systemd-/SFTP-Installation | Skripte und Anleitung | Syntax und Crossbuild | Ausführung offen |
+| Linux-/systemd-Serverinstallation und Updates | Geführte Einrichtung und signierter Updater | Echte systemd-Dienste in isolierter GitHub-Linux-VM | Physischer Reboot/Stromausfall offen |
+| SFTP-Installation | Skripte und Anleitung | Syntax | Reale Ausführung offen |
 
 Der Versionsrahmen für automatische Einzeldateipläne umfasst gleiche Proxmox-Major-Versionen 8 oder 9. Das ist eine Entscheidungsregel, keine Zertifizierung jedes Minorstands. Hardware-, Cluster- und Versionskombinationen müssen vor Freigabe separat dokumentiert werden.
 
 Erforderliche Abnahme: mindestens ein Standalone-Host, ein Node im gesunden Cluster und ein vollständiger Clusterverlust im isolierten Netz; neue Hardware mit anderen NIC-Namen und Diskkennungen; PBS-Verbindung und Gastrestores; Neustart; Wiederherstellung ohne Anker über SFTP; unterbrochene Übertragung und Übernahme; knappes Dateisystem; Linux-Servicehärtung und effektive SSH-Berechtigungen.
 
-Grenzen: keine Gastdaten, kein Image-/Bootloaderrestore, keine automatische Quorumkorrektur, kein Ceph-Wiederaufbau, kein In-place-Upgrader, kein automatisch bestätigter Reboot, keine atomische Gesamtrückspielung und keine automatisierte Metadatenübernahme für Extended Attributes/Links. Diese Bereiche erscheinen als manuelle Schritte und bleiben exportierbar.
+Grenzen: keine Gastdaten, kein Image-/Bootloaderrestore, keine automatische Quorumkorrektur, kein Ceph-Wiederaufbau, kein Proxmox-Versionsupgrader, kein automatisch bestätigter Reboot, keine atomische Gesamtrückspielung und keine automatisierte Metadatenübernahme für Extended Attributes/Links. Diese Bereiche erscheinen als manuelle Schritte und bleiben exportierbar.
 
 ## Prüfung typischer Fehler nach drei Monaten Betrieb
 
@@ -84,3 +85,5 @@ Zwölf zusätzliche Browserregressionen wurden zunächst gegen den alten Stand m
 | Web-Port belegt oder TLS-Dateien ungültig | Start meldet keine lokale Bereitschaft, bevor TCP-Bindung und Zertifikatprüfung erfolgreich waren. |
 
 Der neue Linux/systemd-Prüflauf ist gesondert vom lokalen Nachweis; ein echter Reboot-/Stromausfalltest bleibt offen. Anleitung und bekannte Grenzen stehen in [UPDATES.md](UPDATES.md). Der Quellcode ist öffentlich auf GitHub veröffentlicht. Signierte Produktivreleases und eine produktive Signieridentität sind noch nicht eingerichtet oder veröffentlicht.
+
+Linux/systemd-Nachweis vom 06.10.2026: [Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37441649633). Der geführte Installer einschließlich wiederholter Einrichtung, Programmwechsel mit erhaltener Anmeldung, fehlerhafter Kandidat, unterbrochene Journale mit und ohne Katalogsnapshot sowie echte Dienstneustarts wurden erfolgreich ausgeführt. Dies ist kein physischer Reboot-/Stromausfalltest und keine Proxmox-Hostabnahme.
