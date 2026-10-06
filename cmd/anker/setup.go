@@ -55,18 +55,14 @@ func setupAnswer(reader io.Reader, fallback string) (string, error) {
 	return answer, nil
 }
 func setupPrompt(label, fallback string) (string, error) {
-	if fallback != "" {
-		fmt.Printf("%s [%s]: ", label, fallback)
-	} else {
-		fmt.Printf("%s: ", label)
-	}
+	fmt.Print(newSetupDisplay().Prompt(label, fallback))
 	return setupAnswer(os.Stdin, fallback)
 }
 func setupSecret(label string) (string, error) {
 	if !term.IsTerminal(os.Stdin.Fd()) {
 		return "", errors.New("Verdeckte Eingabe benötigt ein Terminal")
 	}
-	fmt.Print(label + ": ")
+	fmt.Print(newSetupDisplay().Prompt(label, ""))
 	b, err := term.ReadPassword(os.Stdin.Fd())
 	fmt.Println()
 	return string(b), err
@@ -317,7 +313,9 @@ func runSetup(configureUpdates bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Anker · Servereinrichtung\nBestehende Benutzer und SSH-Schlüssel bleiben erhalten.")
+	display := newSetupDisplay()
+	display.Header()
+	display.Section("01", "Administratorzugang")
 	initialized, err := setupInitialized(filepath.Join(updater.DataDir, "catalog.db"))
 	if err != nil {
 		return err
@@ -337,8 +335,9 @@ func runSetup(configureUpdates bool) error {
 			return err
 		}
 	} else {
-		fmt.Println("Administratorzugang ist bereits eingerichtet.")
+		display.Note("Administratorzugang ist bereits eingerichtet. Bestehende Benutzer bleiben erhalten.")
 	}
+	display.Section("02", "Verbindung")
 	priorEnv, err := os.ReadFile("/etc/anker/service.env")
 	if err != nil {
 		return err
@@ -363,6 +362,7 @@ func runSetup(configureUpdates bool) error {
 	}
 	keyFile := ""
 	if configureUpdates {
+		display.Note("Signierte Updates · Repository und öffentlicher Schlüssel")
 		keyFile, err = setupPrompt("Update-Schlüssel public.key (leer = bestehende Einrichtung behalten/überspringen)", defaultKey)
 		if err != nil {
 			return err
@@ -382,9 +382,6 @@ func runSetup(configureUpdates bool) error {
 		if err = validateSetupRepo(cfg.Repository); err != nil {
 			return err
 		}
-		fmt.Println("Updatequelle:", cfg.Repository, "· signierte Updates eingerichtet")
-	} else if !configureUpdates {
-		fmt.Println("Updates noch nicht eingerichtet. Später: sudo anker setup --updates")
 	}
 	token := ""
 	if keyFile != "" && configureUpdates {
@@ -434,7 +431,27 @@ func runSetup(configureUpdates bool) error {
 			return errors.New("Repositoryzugriff 1 oder 2 wählen")
 		}
 	}
-	fmt.Println("Webzugriff:", web.URL(), "· automatische Sicherung nach Hostanbindung")
+	display.Section("03", "Prüfen & speichern")
+	if initialized {
+		display.Fact("Benutzer", "Vorhandene Zugänge")
+	} else {
+		display.Fact("Administrator", admin)
+	}
+	display.Fact("Webzugriff", web.URL())
+	if web.Cert == "" {
+		display.Fact("Verbindung", "SSH-Tunnel · nur lokal erreichbar")
+	} else if web.Managed {
+		display.Fact("Zertifikat", "Selbst erzeugt · von Anker verwaltet")
+	} else {
+		display.Fact("Zertifikat", "Eigene Zertifikatsdateien")
+	}
+	display.Fact("Datenordner", updater.DataDir)
+	if cfg.PublicKey != "" {
+		display.Fact("Updates", cfg.Repository+" · signierte Releases")
+	} else {
+		display.Fact("Updates", "Noch nicht eingerichtet · später: anker setup --updates")
+	}
+	fmt.Println()
 	confirm, err := setupPrompt("Einrichtung speichern und Dienste starten? j/n", "j")
 	if err != nil {
 		return err
@@ -442,6 +459,8 @@ func runSetup(configureUpdates bool) error {
 	if confirm != "j" && confirm != "J" {
 		return errors.New("Einrichtung abgebrochen; Konfiguration bleibt unverändert")
 	}
+	fmt.Println()
+	display.Note("Einrichtung wird gespeichert. Die Dienste werden kurz angehalten.")
 	if err = setupUpdateIdle(); err != nil {
 		return err
 	}
@@ -553,7 +572,9 @@ func runSetup(configureUpdates bool) error {
 	if err = setupCommand("systemctl", "enable", "--now", "anker.service"); err != nil {
 		return err
 	}
-	if err = setupReady(filepath.Join(updater.DataDir, "anker.sock"), "/api/update-control"); err != nil {
+	if err = display.Wait("Webdienst", func() error {
+		return setupReady(filepath.Join(updater.DataDir, "anker.sock"), "/api/update-control")
+	}); err != nil {
 		return err
 	}
 	if err = updateLock.Close(); err != nil {
@@ -566,23 +587,34 @@ func runSetup(configureUpdates bool) error {
 		if err = setupCommand("systemctl", "restart", "anker-updater.service"); err != nil {
 			return err
 		}
-		if err = setupReady(updater.Socket, "/status"); err != nil {
+		if err = display.Wait("Systemdienst", func() error { return setupReady(updater.Socket, "/status") }); err != nil {
 			return err
 		}
 	}
+	fmt.Println("\n" + display.style("1;32", "✓ Einrichtung abgeschlossen"))
+	fmt.Println(display.style("1", web.URL()))
 	if web.Cert == "" {
-		fmt.Println("Bereit. SSH-Tunnel: ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER\nDann http://127.0.0.1:8087 öffnen.")
+		display.Note("SSH-Tunnel vom Arbeitsplatz öffnen:")
+		fmt.Println("ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER")
 	} else {
-		fmt.Println("Bereit:", web.URL())
 		leaf, err := setupTLSLeaf(web.CertBytes, web.KeyBytes)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("TLS-Fingerprint SHA256: %X\nZertifikat gültig bis %s · Datei: %s\n", sha256.Sum256(leaf.Raw), leaf.NotAfter.UTC().Format("02.01.2006"), web.Cert)
+		fmt.Println()
+		display.Note("TLS-Fingerprint · SHA256")
+		fmt.Printf("%X\n", sha256.Sum256(leaf.Raw))
+		display.Note("Zertifikat gültig bis " + leaf.NotAfter.UTC().Format("02.01.2006"))
 		if web.SelfSigned {
-			fmt.Println("Keine interne CA erforderlich. Den Fingerprint vor Bestätigen der Browserwarnung auf jedem Arbeitsplatz vergleichen. Automatische Erneuerung unter Einstellungen → System → Webzertifikat verwalten. Nach Erneuerung kann eine neue Browserfreigabe nötig sein.")
+			display.Note("Vor Bestätigen der Browserwarnung den Fingerprint vergleichen.")
+			display.Note("Erneuerung: Einstellungen → System → Webzertifikat.")
+			display.Note("Nach Erneuerung kann eine neue Browserfreigabe nötig sein.")
 		}
 	}
-	fmt.Println("SSH-Schlüssel: /etc/anker/keys/backup und restore\nÖffentliche Schlüssel: gleiche Pfade mit .pub. Host-Anbindung: README → Proxmox-Hosts anbinden.\nEinrichtung erneut öffnen: sudo anker setup")
+	display.Section("→", "Hosts anbinden")
+	display.Fact("Backup-Schlüssel", "/etc/anker/keys/backup.pub")
+	display.Fact("Restore-Schlüssel", "/etc/anker/keys/restore.pub")
+	display.Note("Anleitung: README → Proxmox-Hosts anbinden.")
+	display.Note("Einrichtung erneut öffnen: anker setup")
 	return nil
 }

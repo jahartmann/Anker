@@ -21,12 +21,15 @@ type setupWebConfig struct {
 }
 
 func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
+	display := newSetupDisplay()
 	currentCert, currentKey := setupEnvValue(prior, "ANKER_TLS_CERT"), setupEnvValue(prior, "ANKER_TLS_KEY")
 	defaultMode := "2"
 	if initialized && currentCert == "" {
 		defaultMode = "1"
 	}
-	mode, err := setupPrompt("Webzugriff: 1 = SSH-Tunnel, 2 = LAN/VPN mit HTTPS", defaultMode)
+	display.Fact("1 · SSH-Tunnel", "Nur lokal erreichbar")
+	display.Fact("2 · LAN/VPN", "HTTPS für das interne Netz")
+	mode, err := setupPrompt("Webzugriff", defaultMode)
 	if err != nil {
 		return setupWebConfig{}, err
 	}
@@ -58,7 +61,9 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 	if defaultHost == "" {
 		defaultHost, _ = os.Hostname()
 	}
-	c.Host, err = setupPrompt("Adresse im Browser (DNS-Name oder IP, ohne https://)", defaultHost)
+	fmt.Println()
+	display.Note("Interner DNS-Name oder IP-Adresse, ohne https://.")
+	c.Host, err = setupPrompt("Adresse im Browser", defaultHost)
 	if err != nil {
 		return c, err
 	}
@@ -66,12 +71,14 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 		return c, err
 	}
 	defaultTLS := "1"
-	label := "TLS: 1 = automatisch erzeugen, 2 = eigene Zertifikatsdateien"
+	fmt.Println()
+	display.Fact("1 · Erzeugen", "Eigenes Zertifikat durch Anker verwalten")
+	display.Fact("2 · Importieren", "Vorhandene Zertifikatsdateien verwenden")
 	if currentCert != "" && currentKey != "" {
 		defaultTLS = "3"
-		label += ", 3 = aktuelles behalten"
+		display.Fact("3 · Behalten", "Aktuelles Zertifikat weiterverwenden")
 	}
-	choice, err := setupPrompt(label, defaultTLS)
+	choice, err := setupPrompt("TLS", defaultTLS)
 	if err != nil {
 		return c, err
 	}
@@ -124,7 +131,8 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 		c.Managed = c.SelfSigned && policy.ManagedCert == currentCert && policy.ManagedPublicKey == fmt.Sprintf("%X", hash)
 	}
 	if c.SelfSigned {
-		fmt.Println("Eigenes TLS-Zertifikat: keine interne CA oder öffentliche Domain erforderlich. Verbindung verschlüsselt; Fingerprint vor dem ersten Browserzugriff prüfen.")
+		display.Note("Eigenes Zertifikat · keine CA oder öffentliche Domain erforderlich.")
+		display.Note("Den Fingerprint vor dem ersten Browserzugriff am Server abgleichen.")
 	}
 	if preserve && strings.HasPrefix(currentCert, "/etc/anker/tls/") && strings.HasPrefix(currentKey, "/etc/anker/tls/") {
 		certInfo, certErr := os.Lstat(currentCert)

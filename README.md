@@ -38,6 +38,8 @@ Das Skript erkennt die Architektur, lädt das Paket, prüft Signatur und SHA-256
 
 ## Erste Einrichtung
 
+Der Assistent führt in drei Abschnitten durch Zugang, Verbindung und die abschließende Prüfung. Die Zusammenfassung zeigt die tatsächlichen Einstellungen vor dem Speichern; beim Start der Dienste läuft ein dezenter Statusanzeiger. Passwörter bleiben verdeckt. Für eine ruhige Ausgabe `ANKER_NO_ANIMATION=1 anker setup` verwenden; `NO_COLOR=1` deaktiviert Farben. Bei umgeleiteter Ausgabe oder `TERM=dumb` werden keine Animationen oder Farbcodes ausgegeben.
+
 Der Assistent fragt nur nach den Angaben, die er nicht selbst bestimmen kann:
 
 1. Administratorname und ein eigenes Passwort mit mindestens acht Zeichen und Wiederholung.

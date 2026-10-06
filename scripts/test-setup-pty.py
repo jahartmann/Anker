@@ -11,6 +11,7 @@ import json
 import shlex
 import time
 import subprocess
+import re
 
 if os.environ.get('GITHUB_ACTIONS')!='true' or os.geteuid()!=0:
  raise SystemExit('Only run inside the isolated root CI harness')
@@ -21,28 +22,38 @@ def restart_updater():
  subprocess.run(['systemctl','reset-failed','anker-updater'],check=True)
  subprocess.run(['systemctl','restart','anker-updater'],check=True)
 
-def setup(first,mode="1",tls_choice="1"):
+def setup(first,mode="1",tls_choice="1",plain=False):
  child,terminal=pty.fork()
- if child==0:os.execv('/usr/local/bin/anker',['anker','setup'])
+ if child==0:
+  os.environ['TERM']='dumb' if plain else 'xterm-256color'
+  if plain:
+   os.environ['NO_COLOR']='1';os.environ['ANKER_NO_ANIMATION']='1'
+  else:
+   os.environ.pop('NO_COLOR',None);os.environ.pop('ANKER_NO_ANIMATION',None)
+  os.execv('/usr/local/bin/anker',['anker','setup'])
  steps=[]
  if first:steps+=[(b'Administratorname',b'\n'),(b'Administratorpasswort',b'init2026\n'),(b'Passwort wiederholen',b'init2026\n')]
- steps+=[(b'Webzugriff:',mode.encode()+b'\n')]
- if mode=='2':steps+=[(b'Adresse im Browser',b'127.0.0.1\n'),(b'TLS:',tls_choice.encode()+b'\n')]
+ steps+=[(b'Webzugriff',mode.encode()+b'\n')]
+ if mode=='2':steps+=[(b'Adresse im Browser',b'127.0.0.1\n'),(b'TLS',tls_choice.encode()+b'\n')]
  steps+=[(b'Einrichtung speichern',b'j\n')]
- received=b'';deadline=time.monotonic()+90;index=0
+ received=b'';transcript=b'';deadline=time.monotonic()+90;index=0
  try:
   while time.monotonic()<deadline:
    finished,status=os.waitpid(child,os.WNOHANG)
    if finished:
     if os.waitstatus_to_exitcode(status)!=0 or index!=len(steps):raise RuntimeError('Setup failed: '+received.decode(errors='replace'))
-    return
+    assert b'init2026' not in transcript,'Password leaked into terminal output'
+    if plain:assert b'\x1b' not in transcript,'Plain terminal received escape sequences'
+    return transcript
    ready,_,_=select.select([terminal],[],[],0.1)
    if ready:
-    try:received+=os.read(terminal,65536)
+    try:
+     chunk=os.read(terminal,65536);received+=chunk;transcript+=chunk
     except OSError:continue
-   if index<len(steps) and steps[index][0] in received:
+   visible=re.sub(rb'\x1b\[[0-9;]*[A-Za-z]',b'',received)
+   if index<len(steps) and steps[index][0] in visible:
     # Wait for the complete prompt. The terminal must already have echo disabled.
-    if not received.rstrip().endswith(b':'):continue
+    if not visible.rstrip().endswith(b':'):continue
     os.write(terminal,steps[index][1]);index+=1;received=b''
   raise RuntimeError('Setup timed out: '+received.decode(errors='replace'))
  finally:
@@ -54,7 +65,7 @@ def setup(first,mode="1",tls_choice="1"):
 
 setup(True)
 keys={name:pathlib.Path('/etc/anker/keys/'+name).read_bytes() for name in ['backup','restore']}
-setup(False)
+setup(False,plain=True)
 for name,content in keys.items():
  assert pathlib.Path('/etc/anker/keys/'+name).read_bytes()==content,'Setup replaced an existing SSH key'
 print('Terminal setup and repeated setup passed; existing SSH keys preserved.')
