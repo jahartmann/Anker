@@ -137,3 +137,40 @@ test("production schedule settings and paused host CRUD persist through the inte
     [],
   );
 });
+
+test("an administrator can change their own password to eight characters and log in again", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Benutzername", { exact: true }).fill("admin");
+  await page
+    .getByLabel("Passwort", { exact: true })
+    .fill("production-browser-test-password");
+  await page.getByRole("button", { name: "Anmelden", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Zugriff", exact: true }).click();
+  await page.getByRole("button", { name: "Aktionen für admin" }).click();
+  await page
+    .getByRole("button", { name: "Passwort ändern", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Neues Passwort", { exact: true }).fill("prod2026");
+  await dialog
+    .getByLabel("Passwort wiederholen", { exact: true })
+    .fill("prod2026");
+  await dialog
+    .getByRole("button", { name: "Änderungen speichern", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Anmelden", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Benutzername", { exact: true }).fill("admin");
+  await page.getByLabel("Passwort", { exact: true }).fill("prod2026");
+  await page.getByRole("button", { name: "Anmelden", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hosts", exact: true }),
+  ).toBeVisible();
+});

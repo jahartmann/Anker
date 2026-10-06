@@ -128,3 +128,26 @@ func TestInitDoesNotReplaceExistingAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetupReadsPasswordPolicyWithoutCreatingACatalog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.db")
+	minimum, err := setupPasswordMinimum(path)
+	if err != nil || minimum != 8 {
+		t.Fatal("first setup has wrong minimum", minimum, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("setup inspection created a catalog", err)
+	}
+	store, err := anker.OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Put("settings", "main", map[string]any{"password_min_length": 16}); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	minimum, err = setupPasswordMinimum(path)
+	if err != nil || minimum != 16 {
+		t.Fatal("setup ignored stored policy", minimum, err)
+	}
+}

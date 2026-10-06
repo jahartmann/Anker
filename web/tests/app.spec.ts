@@ -1586,3 +1586,106 @@ test("late job detail responses cannot replace a different selected job", async 
     dialog.getByRole("button", { name: "Eintrag entfernen", exact: true }),
   ).toHaveCount(0);
 });
+
+test("password settings and eight-character account changes use the saved policy", async ({
+  page,
+}) => {
+  const headers = { "X-Anker-Request": "1" };
+  const original = await (await page.request.get("/api/settings")).json();
+  const name = "password-policy-browser";
+  try {
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: "Einstellungen", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Zugriff", exact: true }).click();
+    await expect(
+      page.getByLabel("Passwort-Mindestlänge", { exact: true }),
+    ).toHaveValue("8");
+    await page
+      .getByRole("button", { name: "Benutzer hinzufügen", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Benutzername", { exact: true }).fill(name);
+    await dialog.getByLabel("Passwort", { exact: true }).fill("12345678");
+    await dialog
+      .getByLabel("Passwort wiederholen", { exact: true })
+      .fill("12345678");
+    await dialog
+      .getByRole("button", { name: "Benutzer anlegen", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    expect(
+      (
+        await page.request.post("/api/login", {
+          headers,
+          data: { name, password: "12345678" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    // API login changed the browser cookie; restore the administrator session.
+    await page.request.post("/api/login", {
+      headers,
+      data: { name: "demo", password: "anker-demo-2026" },
+    });
+    await page.getByLabel("Passwort-Mindestlänge", { exact: true }).fill("12");
+    await page
+      .getByRole("button", { name: "Einstellungen speichern", exact: true })
+      .click();
+    await expect(
+      page.getByText("Alle Änderungen gespeichert", { exact: true }),
+    ).toBeVisible();
+    expect(
+      await (await page.request.get("/api/settings")).json(),
+    ).toMatchObject({ password_min_length: 12 });
+    await page.getByRole("button", { name: "Aktionen für " + name }).click();
+    await page
+      .getByRole("button", { name: "Passwort ändern", exact: true })
+      .click();
+    await expect(dialog).toContainText("Mindestens 12 Zeichen");
+    await dialog.getByLabel("Neues Passwort", { exact: true }).fill("87654321");
+    await dialog
+      .getByLabel("Passwort wiederholen", { exact: true })
+      .fill("87654321");
+    await expect(
+      dialog.getByRole("button", { name: "Änderungen speichern", exact: true }),
+    ).toBeDisabled();
+    await dialog
+      .getByRole("button", { name: "Abbrechen", exact: true })
+      .click();
+    await page.getByLabel("Passwort-Mindestlänge", { exact: true }).fill("8");
+    await page
+      .getByRole("button", { name: "Einstellungen speichern", exact: true })
+      .click();
+    await expect(
+      page.getByText("Alle Änderungen gespeichert", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Aktionen für " + name }).click();
+    await page
+      .getByRole("button", { name: "Passwort ändern", exact: true })
+      .click();
+    await dialog.getByLabel("Neues Passwort", { exact: true }).fill("87654321");
+    await dialog
+      .getByLabel("Passwort wiederholen", { exact: true })
+      .fill("87654321");
+    await dialog
+      .getByRole("button", { name: "Änderungen speichern", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    expect(
+      (
+        await page.request.post("/api/login", {
+          headers,
+          data: { name, password: "87654321" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  } finally {
+    await page.request.post("/api/login", {
+      headers,
+      data: { name: "demo", password: "anker-demo-2026" },
+    });
+    await page.request.delete("/api/users/" + name, { headers });
+    await page.request.put("/api/settings", { headers, data: original });
+  }
+});

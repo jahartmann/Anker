@@ -178,7 +178,11 @@ func run(args []string) error {
 		}
 		password := os.Getenv("ANKER_INITIAL_PASSWORD")
 		if password == "" {
-			password, err = initialPassword()
+			minimum, policyErr := auth.PasswordMinimum()
+			if policyErr != nil {
+				return policyErr
+			}
+			password, err = initialPassword(minimum)
 			if err != nil {
 				return err
 			}

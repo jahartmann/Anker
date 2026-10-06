@@ -6,16 +6,27 @@ VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker si
 
 ## Installation
 
-Ein produktiver signierter Release ist noch nicht veröffentlicht. Bis dahin aus dem Quellcode bauen. Dafür werden Go 1.27.1+, Node.js 22.12+, npm und make benötigt:
+Ein produktiver signierter Release ist noch nicht veröffentlicht. Bis dahin aus dem geprüften Quellcode bauen. Die fertige Weboberfläche ist im Repository enthalten; für die Installation muss sie nicht nochmals mit Node.js gebaut werden.
+
+Auf einer frischen Debian-13-VM zunächst die Werkzeuge installieren:
 
 ```sh
-git clone --depth 1 https://github.com/jahartmann/Anker.git
-cd Anker
-make linux
-sudo ./scripts/install-server.sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates git golang-go python3 openssh-client openssl util-linux e2fsprogs rsync
 ```
 
-Der Installer wählt amd64 oder arm64 und öffnet die Einrichtung. Auf dem Server werden systemd, Python 3, OpenSSH und `runuser` benötigt. Go und Node.js werden nur zum Bauen verwendet. Der Build kann auch auf einem anderen Rechner erfolgen; anschließend den Projektordner einschließlich `bin/anker-linux-*` auf den Server übertragen und dort den Installer ausführen.
+Danach bauen und den Installer öffnen:
+
+```sh
+git clone https://github.com/jahartmann/Anker.git
+cd Anker
+ANKER_ARCH=$(dpkg --print-architecture)
+CGO_ENABLED=0 GOTOOLCHAIN=auto go build -trimpath -o "bin/anker-linux-$ANKER_ARCH" ./cmd/anker
+# Nur nach erfolgreichem Build:
+sudo ./scripts/install-server.sh "bin/anker-linux-$ANKER_ARCH"
+```
+
+Unterstützt werden amd64 und arm64. Go lädt bei Bedarf den in `go.mod` angegebenen Compiler automatisch; der Build benötigt Internetzugriff. Der Installer öffnet die Ersteinrichtung und benötigt ein laufendes systemd. Go wird nur zum Bauen verwendet. Für Änderungen an der Weboberfläche oder einen vollständigen Build mit `make linux` zusätzlich Node.js 22.12+, npm und make installieren. Der Build kann auch auf einem anderen Rechner erfolgen; anschließend den Projektordner einschließlich der passenden `bin/anker-linux-*` auf den Server übertragen und dort den Installer ausführen.
 
 Sobald ein signierter Release bereitsteht, geht es ohne Compiler auf dem Server:
 
@@ -29,7 +40,7 @@ Das Skript erkennt die Architektur, lädt das Paket, prüft Signatur und SHA-256
 
 Der Assistent fragt nur nach den Angaben, die er nicht selbst bestimmen kann:
 
-1. Administratorname und ein eigenes Passwort mit Wiederholung.
+1. Administratorname und ein eigenes Passwort mit mindestens acht Zeichen und Wiederholung.
 2. Webzugriff: direkt über LAN/VPN mit HTTPS oder über einen SSH-Tunnel.
 3. Bei HTTPS: DNS-Name oder IP für den Browser und die Zertifikatswahl.
 4. Die angezeigte Konfiguration bestätigen.
@@ -192,6 +203,8 @@ sudo anker job remove AUFTRAG
 | Betrieb | Gemeinsamer Zeitplan, Aufbewahrung und 30-Tage-Anmeldung sind vorbelegt. Benachrichtigungen und Restorezugänge nur bei Bedarf einrichten. |
 
 ## Anmeldung und Benutzer
+
+Standardmäßig brauchen neue und geänderte Passwörter mindestens **acht Zeichen**. Unter **Einstellungen → Zugriff → Passwort-Mindestlänge** können Administratoren 8 bis 128 Zeichen einstellen. Eine höhere Vorgabe gilt bei der nächsten Benutzeranlage oder Passwortänderung; bestehende Passwörter und Sitzungen bleiben bis dahin nutzbar. Das Passwort selbst über **Benutzer → Aktionen → Passwort ändern** setzen, auch für den eigenen Administrator. Ein tatsächlicher Passwortwechsel beendet die bisherigen Sitzungen.
 
 Die Weboberfläche verlangt eine Anmeldung. Standardmäßig gilt sie 30 Tage, einstellbar von 1 bis 365 Tagen für neue Sitzungen. Anmeldung bleibt über Dienstneustarts erhalten. Abmelden, Passwort- oder Rechteänderungen sowie Sperren und Löschen beenden die betroffenen Sitzungen.
 

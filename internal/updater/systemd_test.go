@@ -56,7 +56,7 @@ func TestSystemdInstallationAndRecovery(t *testing.T) {
 	web := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 	login := func() {
 		t.Helper()
-		request, err := http.NewRequest("POST", "http://127.0.0.1:8087/api/login", bytes.NewBufferString(`{"name":"admin","password":"systemd-test-password"}`))
+		request, err := http.NewRequest("POST", "http://127.0.0.1:8087/api/login", bytes.NewBufferString(`{"name":"admin","password":"init2026"}`))
 		if err != nil {
 			t.Fatal(err)
 		}

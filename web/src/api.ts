@@ -112,6 +112,7 @@ export interface Plan {
   };
 }
 export interface Settings {
+  password_min_length: number;
   session_days: number;
   timezone: string;
   schedule: string;

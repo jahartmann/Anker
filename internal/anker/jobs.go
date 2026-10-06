@@ -338,6 +338,11 @@ func (s *Service) CancelJob(id string) error {
 	return nil
 }
 func (s *Service) SaveSettings(v Settings) error {
+	minimum, err := PasswordMinimum(v)
+	if err != nil {
+		return err
+	}
+	v.PasswordMinLength = minimum
 	if v.SessionDays == 0 {
 		v.SessionDays = 30
 	}

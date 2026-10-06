@@ -324,6 +324,20 @@ export default function Settings({
                   onChange={(e) => set("session_days", +e.target.value)}
                 />
               </Field>
+              <Field
+                label="Passwort-Mindestlänge"
+                hint="8 bis 128 Zeichen. Gilt für neu angelegte und geänderte Passwörter; bestehende bleiben gültig."
+              >
+                <input
+                  type="number"
+                  min={8}
+                  max={128}
+                  required
+                  value={value.password_min_length ?? 8}
+                  disabled={busy}
+                  onChange={(e) => set("password_min_length", +e.target.value)}
+                />
+              </Field>
               {saveError && (
                 <p className="notice warning" role="alert">
                   {saveError}
@@ -341,7 +355,12 @@ export default function Settings({
               </footer>
             </section>
           </form>
-          <Access notify={notify} />
+          <Access
+            notify={notify}
+            passwordMinimum={
+              (JSON.parse(saved) as Values).password_min_length || 8
+            }
+          />
         </>
       )}
       <section className="detail-section" hidden={tab !== "System"}>

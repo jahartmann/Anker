@@ -86,7 +86,7 @@ Archivierte Sicherungen enthalten weiterhin Manifest und `archive.tar.gz`. Für 
 
 ## Zugänge
 
-Sitzungen sind 30 Tage gültig, konfigurierbar von 1 bis 365 Tagen für neue Anmeldungen. Tokens werden nur gehasht im Katalog gespeichert. Passwort- oder Rechteänderungen sowie Sperren und Löschen widerrufen vorhandene Sitzungen; ein Dienstneustart erhält gültige Sitzungen. Benutzerverwaltung und Sitzungswiderruf stehen unter „Einstellungen → Zugriff“.
+Sitzungen sind 30 Tage gültig, konfigurierbar von 1 bis 365 Tagen für neue Anmeldungen. Tokens werden nur gehasht im Katalog gespeichert. Passwort- oder Rechteänderungen sowie Sperren und Löschen widerrufen vorhandene Sitzungen; ein Dienstneustart erhält gültige Sitzungen. Benutzerverwaltung und Sitzungswiderruf stehen unter „Einstellungen → Zugriff“. Dort ist auch die Passwort-Mindestlänge einstellbar: standardmäßig acht Zeichen, zulässiger Bereich 8 bis 128. Die Grenze gilt für neue oder neu gesetzte Passwörter, nicht rückwirkend bei der Anmeldung. „Aktionen → Passwort ändern“ erlaubt auch den eigenen Administratorzugang; dieser Passwortwechsel beendet dessen bestehende Sitzungen. Web und Terminal prüfen dieselbe gespeicherte Vorgabe.
 
 Webrollen: `reader`, `restore`, `admin`; Secretfreigabe wird separat vergeben. Reader können keine Mutationen ausführen. Originalexports erfordern Secretfreigabe. Vorschauen bleiben auch für Administratoren zunächst verdeckt. Unbekannte Configpfade werden vorsorglich als geschützt behandelt; nur bekannte allgemeine Systemdateien sind ohne Secretfreigabe lesbar. Das Anzeigen geschützter Inhalte wird protokolliert. Unix-Socketzugang erlaubt volle Administration; Dateirechte sind deshalb eine Berechtigungsgrenze.
 

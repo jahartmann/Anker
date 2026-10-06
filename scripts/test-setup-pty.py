@@ -25,7 +25,7 @@ def setup(first,mode="1",tls_choice="1"):
  child,terminal=pty.fork()
  if child==0:os.execv('/usr/local/bin/anker',['anker','setup'])
  steps=[]
- if first:steps+=[(b'Administratorname',b'\n'),(b'Administratorpasswort',b'systemd-test-password\n'),(b'Passwort wiederholen',b'systemd-test-password\n')]
+ if first:steps+=[(b'Administratorname',b'\n'),(b'Administratorpasswort',b'init2026\n'),(b'Passwort wiederholen',b'init2026\n')]
  steps+=[(b'Webzugriff:',mode.encode()+b'\n')]
  if mode=='2':steps+=[(b'Adresse im Browser',b'127.0.0.1\n'),(b'TLS:',tls_choice.encode()+b'\n')]
  steps+=[(b'Einrichtung speichern',b'j\n')]
@@ -83,7 +83,7 @@ def tls_paths():
 setup(False,'2','1')
 cert,key=tls_paths();original_cert=cert.read_bytes();original_key=key.read_bytes()
 context=ssl.create_default_context(cafile=str(cert))
-request=urllib.request.Request('https://127.0.0.1:8087/api/login',data=json.dumps({'name':'admin','password':'systemd-test-password'}).encode(),headers={'Content-Type':'application/json','X-Anker-Request':'1'})
+request=urllib.request.Request('https://127.0.0.1:8087/api/login',data=json.dumps({'name':'admin','password':'init2026'}).encode(),headers={'Content-Type':'application/json','X-Anker-Request':'1'})
 with urllib.request.urlopen(request,context=context) as response:
  assert response.status==200
  assert 'Secure' in response.headers['Set-Cookie'],'TLS login cookie is not secure'

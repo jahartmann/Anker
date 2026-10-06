@@ -5,7 +5,13 @@ import type { User } from "../api";
 import { ActionMenu, Dialog, Field, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
 
-export default function Access({ notify }: { notify: Notify }) {
+export default function Access({
+  notify,
+  passwordMinimum,
+}: {
+  notify: Notify;
+  passwordMinimum: number;
+}) {
   const [users, setUsers] = useState<User[]>([]),
     [me, setMe] = useState("");
   const [error, setError] = useState(""),
@@ -137,6 +143,7 @@ export default function Access({ notify }: { notify: Notify }) {
           kind={dialog.kind}
           user={dialog.user}
           self={dialog.user?.id === me}
+          passwordMinimum={passwordMinimum}
           notify={notify}
           done={() => {
             setDialog(null);
@@ -149,6 +156,7 @@ export default function Access({ notify }: { notify: Notify }) {
   );
 }
 function UserDialog({
+  passwordMinimum,
   kind,
   user,
   self,
@@ -156,6 +164,7 @@ function UserDialog({
   done,
   close,
 }: {
+  passwordMinimum: number;
   kind: string;
   user?: User;
   self: boolean;
@@ -251,13 +260,13 @@ function UserDialog({
             <>
               <Field
                 label={kind === "password" ? "Neues Passwort" : "Passwort"}
-                hint="Mindestens 12 Zeichen."
+                hint={`Mindestens ${passwordMinimum} Zeichen.`}
               >
                 <input
                   type="password"
                   autoComplete="new-password"
                   required
-                  minLength={12}
+                  minLength={passwordMinimum}
                   maxLength={1024}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -370,7 +379,8 @@ function UserDialog({
               disabled={
                 busy ||
                 ((kind === "password" || kind === "create") &&
-                  (password.length < 12 || password !== repeat)) ||
+                  (Array.from(password).length < passwordMinimum ||
+                    password !== repeat)) ||
                 (kind === "sessions" && (!sessions || sessions.length === 0))
               }
             >

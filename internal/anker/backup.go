@@ -39,7 +39,7 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 		if !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("Betriebseinstellungen sind nicht lesbar; Katalog prüfen: %w", err)
 		}
-		if err = store.Put("settings", "main", Settings{SessionDays: 30, Timezone: "Europe/Berlin", Schedule: "02:00", Parallel: 4, Retries: 3, Daily: 30, Weekly: 12, Monthly: 12, ArchiveDays: 90, StaleHours: 26}); err != nil {
+		if err = store.Put("settings", "main", Settings{PasswordMinLength: DefaultPasswordMinLength, SessionDays: 30, Timezone: "Europe/Berlin", Schedule: "02:00", Parallel: 4, Retries: 3, Daily: 30, Weekly: 12, Monthly: 12, ArchiveDays: 90, StaleHours: 26}); err != nil {
 			return nil, err
 		}
 	}
@@ -50,6 +50,9 @@ func (s *Service) Settings() (Settings, error) {
 	err := s.Store.Get("settings", "main", &v)
 	if v.SessionDays == 0 {
 		v.SessionDays = 30
+	}
+	if v.PasswordMinLength == 0 {
+		v.PasswordMinLength = DefaultPasswordMinLength
 	}
 	return v, err
 }

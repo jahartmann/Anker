@@ -171,22 +171,23 @@ type ApplyResult struct {
 	RebootVerified bool     `json:"reboot_verified"`
 }
 type Settings struct {
-	SessionDays  int    `json:"session_days"`
-	Timezone     string `json:"timezone"`
-	Schedule     string `json:"schedule"`
-	Parallel     int    `json:"parallel"`
-	Retries      int    `json:"retries"`
-	Daily        int    `json:"daily"`
-	Weekly       int    `json:"weekly"`
-	Monthly      int    `json:"monthly"`
-	ArchiveDays  int    `json:"archive_days"`
-	StaleHours   int    `json:"stale_hours"`
-	Webhook      string `json:"webhook"`
-	SMTPServer   string `json:"smtp_server"`
-	SMTPUser     string `json:"smtp_user"`
-	SMTPPassword string `json:"smtp_password,omitempty"`
-	MailFrom     string `json:"mail_from"`
-	MailTo       string `json:"mail_to"`
+	PasswordMinLength int    `json:"password_min_length"`
+	SessionDays       int    `json:"session_days"`
+	Timezone          string `json:"timezone"`
+	Schedule          string `json:"schedule"`
+	Parallel          int    `json:"parallel"`
+	Retries           int    `json:"retries"`
+	Daily             int    `json:"daily"`
+	Weekly            int    `json:"weekly"`
+	Monthly           int    `json:"monthly"`
+	ArchiveDays       int    `json:"archive_days"`
+	StaleHours        int    `json:"stale_hours"`
+	Webhook           string `json:"webhook"`
+	SMTPServer        string `json:"smtp_server"`
+	SMTPUser          string `json:"smtp_user"`
+	SMTPPassword      string `json:"smtp_password,omitempty"`
+	MailFrom          string `json:"mail_from"`
+	MailTo            string `json:"mail_to"`
 }
 type User struct {
 	ID           string `json:"id"`

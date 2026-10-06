@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 type credential struct {
@@ -103,8 +102,11 @@ func checkPassword(hash, password string) bool {
 	return err == nil && subtle.ConstantTimeCompare(want, key) == 1
 }
 func (a *Auth) CreateUser(name, password, role string, secrets bool) error {
-	if !validID(name) || utf8.RuneCountInString(password) < 12 || len(password) > 1024 {
-		return errors.New("Benutzername ungültig oder Passwort muss 12 bis 1024 Zeichen enthalten")
+	if !validID(name) {
+		return errors.New("Benutzername ungültig")
+	}
+	if err := a.validatePassword(password); err != nil {
+		return err
 	}
 	if !validRole(role) {
 		return errors.New("unbekannte Rolle")
@@ -127,6 +129,9 @@ func (a *Auth) CreateUser(name, password, role string, secrets bool) error {
 		secrets = true
 	}
 	return a.transaction(func(tx *sql.Tx) error {
+		if err := validatePasswordTx(tx, password); err != nil {
+			return err
+		}
 		if err := txPut(tx, "credentials", name, credential{Hash: hash}); err != nil {
 			return err
 		}
@@ -139,8 +144,8 @@ func (a *Auth) Initialized() (bool, error) {
 	return len(users) > 0, err
 }
 func (a *Auth) SetPassword(id, password string) error {
-	if utf8.RuneCountInString(password) < 12 || len(password) > 1024 {
-		return errors.New("Passwort muss 12 bis 1024 Zeichen enthalten")
+	if err := a.validatePassword(password); err != nil {
+		return err
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -153,6 +158,9 @@ func (a *Auth) SetPassword(id, password string) error {
 		return err
 	}
 	return a.transaction(func(tx *sql.Tx) error {
+		if err := validatePasswordTx(tx, password); err != nil {
+			return err
+		}
 		if err := txPut(tx, "credentials", id, credential{Hash: hash}); err != nil {
 			return err
 		}

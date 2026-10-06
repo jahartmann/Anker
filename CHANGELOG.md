@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Passwortvorgabe standardmäßig acht Zeichen, administrativ auf 8 bis 128 Zeichen einstellbar. Einheitliche Prüfung in Ersteinrichtung, Web und CLI; bestehende Zugänge bleiben bei Erhöhung nutzbar.
+
 - Aufträge mit Detailansicht, tatsächlichem Start, manuellem/automatischem Auslöser und direktem Sicherungszugriff. Abbruch, erneuter Start von Sicherung/Hostprüfung und administratives Entfernen abgeschlossener Einträge über Web/CLI.
 - Tagesmarker und Einplanung atomar speichern, defekte Katalogwerte melden, geänderte Parallelität für wartende Aufträge übernehmen und Hostlöschung gegen gleichzeitig gestartete Aufträge schützen. Schedulerfehler bleiben sichtbar; verspätete Statusantworten überschreiben keine neueren Zustände.
 

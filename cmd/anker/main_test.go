@@ -132,3 +132,19 @@ func TestDemoRejectsProductionSymlink(t *testing.T) {
 		t.Fatal("production symlink accepted")
 	}
 }
+
+func TestInitAcceptsAnEightCharacterAdministratorPassword(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ANKER_INITIAL_PASSWORD", "12345678")
+	if err := run([]string{"--data", root, "init"}); err != nil {
+		t.Fatal("eight-character initialization failed", err)
+	}
+	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, _, err := anker.NewAuth(store).Login("admin", "12345678"); err != nil {
+		t.Fatal("initialized credentials unusable", err)
+	}
+}

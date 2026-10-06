@@ -31,7 +31,7 @@ for ANKER_DEPENDENCY in systemctl useradd runuser install ssh-keygen python3; do
  command -v "$ANKER_DEPENDENCY" >/dev/null || { echo "Fehlendes Programm: $ANKER_DEPENDENCY" >&2; exit 1; }
 done
 [ -d /run/systemd/system ] || { echo 'Ein laufendes systemd-System wird benötigt.' >&2; exit 1; }
-[ -f "$ANKER_BINARY" ] && [ -x "$ANKER_BINARY" ] || { echo 'Passendes Release entpacken oder zuerst make linux ausführen.' >&2; exit 1; }
+[ -f "$ANKER_BINARY" ] && [ -x "$ANKER_BINARY" ] || { echo 'Passende Linux-Binärdatei fehlt. Erst den Go-Build aus der README ausführen oder ein geprüftes Release entpacken.' >&2; exit 1; }
 # Detect the wrong architecture before writing anything into the installation.
 "$ANKER_BINARY" version
 if [ "$ANKER_SETUP" = yes ] && [ ! -t 0 ]; then

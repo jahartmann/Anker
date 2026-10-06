@@ -1,6 +1,7 @@
 package main
 
 import (
+	"anker/internal/anker"
 	"anker/internal/updater"
 	"bytes"
 	"context"
@@ -23,7 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/term"
 	"golang.org/x/sys/unix"
@@ -71,9 +71,9 @@ func setupSecret(label string) (string, error) {
 	fmt.Println()
 	return string(b), err
 }
-func initialPassword() (string, error) {
+func initialPassword(minimum int) (string, error) {
 	for {
-		first, err := setupSecret("Administratorpasswort (mindestens 12 Zeichen)")
+		first, err := setupSecret(fmt.Sprintf("Administratorpasswort (mindestens %d Zeichen)", minimum))
 		if err != nil {
 			return "", err
 		}
@@ -85,8 +85,8 @@ func initialPassword() (string, error) {
 			fmt.Println("Die Passwörter stimmen nicht überein.")
 			continue
 		}
-		if utf8.RuneCountInString(first) < 12 || len(first) > 1024 {
-			fmt.Println("Das Passwort muss mindestens 12 Zeichen und höchstens 1024 Bytes haben.")
+		if err := anker.ValidatePassword(first, minimum); err != nil {
+			fmt.Println(err)
 			continue
 		}
 		return first, nil
@@ -328,7 +328,11 @@ func runSetup(configureUpdates bool) error {
 		if err != nil {
 			return err
 		}
-		password, err = initialPassword()
+		minimum, policyErr := setupPasswordMinimum(filepath.Join(updater.DataDir, "catalog.db"))
+		if policyErr != nil {
+			return policyErr
+		}
+		password, err = initialPassword(minimum)
 		if err != nil {
 			return err
 		}
