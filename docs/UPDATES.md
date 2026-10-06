@@ -8,7 +8,7 @@ Ein öffentliches GitHub-Repository ohne zusätzliche Schreibberechtigte reicht 
 
 Vor dem ersten Release:
 
-1. Repository erstellen und den Projektstand hochladen. Noch keine produktiven Backups, Schlüssel oder Configdateien einchecken.
+1. Das öffentliche Repository `jahartmann/Anker` anlegen beziehungsweise den vorhandenen Projektstand dort übernehmen. Noch keine produktiven Backups, Schlüssel oder Configdateien einchecken.
 2. `main` gegen Force-Push und Löschen schützen. Für Änderungen bestandene „Checks“ verlangen. Schreibrechte nur gezielt vergeben. Tags `v*` über eine Ruleset-Regel auf Maintainer beschränken.
 3. In „Settings → Security“ private vulnerability reporting und die verfügbaren Secret-Scanning-Funktionen aktivieren.
 4. Die Actions-Umgebung `release` anlegen, auf Release-Tags beschränken und – falls verfügbar – eine Maintainer-Freigabe verlangen. Fork-Pull-Requests erhalten den Signierschlüssel nicht.
@@ -45,11 +45,11 @@ Danach den Administrator wie in der README initialisieren. Der Installer übersc
 
 ## Updater auf dem Server einrichten
 
-`/etc/anker/update.json` mit dem eigenen Repository und dem Inhalt von `public.key` erstellen:
+`/etc/anker/update.json` für `jahartmann/Anker` mit dem Inhalt von `public.key` erstellen:
 
 ```json
 {
-  "repository": "OWNER/anker",
+  "repository": "jahartmann/Anker",
   "public_key": "BASE64_PUBLIC_KEY"
 }
 ```
@@ -61,7 +61,7 @@ sudo systemctl enable --now anker-updater.service
 sudo anker update check
 ```
 
-`OWNER/anker` und `BASE64_PUBLIC_KEY` sind Platzhalter. Der Updater akzeptiert keine Konfigurationsdatei, die andere Benutzer beschreiben können. Bei einem privaten Repository kann zusätzlich `token_file` auf eine root-eigene Datei mit einem passenden GitHub-Lese-Token verweisen. Den Token nicht in die Weboberfläche oder die Befehlszeile kopieren.
+`BASE64_PUBLIC_KEY` durch den Inhalt von `public.key` ersetzen. Der Updater akzeptiert keine Konfigurationsdatei, die andere Benutzer beschreiben können. Bei einem privaten Repository kann zusätzlich `token_file` auf eine root-eigene Datei mit einem passenden GitHub-Lese-Token verweisen. Den Token nicht in die Weboberfläche oder die Befehlszeile kopieren.
 
 Der Webdienst läuft als `anker`. Der Updater läuft als `root`, nimmt ausschließlich `status`, `check` und `install` über `/run/anker-updater/socket` entgegen und liest Zielpfade, Repository und Signierschlüssel aus seiner lokalen Konfiguration. Es gibt keinen allgemeinen Shell- oder Download-Endpunkt. Mitglieder der Gruppe `anker` haben damit administrative Updateberechtigung; keine gewöhnlichen Benutzer dieser Gruppe hinzufügen.
 
