@@ -66,15 +66,51 @@ func run(args []string) error {
 		}
 		return runSetup()
 	}
-	if command[0] == "demo" && *data == "/srv/anker" {
-		*data = "./var/demo"
+	demo := command[0] == "demo"
+	if demo {
+		explicit := map[string]bool{}
+		f.Visit(func(v *flag.Flag) { explicit[v.Name] = true })
+		if !explicit["data"] {
+			*data = "./var/demo"
+		}
+		if !explicit["listen"] {
+			*listen = "127.0.0.1:8087"
+		}
 	}
-	root, err := filepath.Abs(*data)
+	root, err := anker.ResolveDataRoot(*data)
 	if err != nil {
 		return err
 	}
+	if demo {
+		production, err := anker.ResolveDataRoot(updater.DataDir)
+		if err != nil {
+			return err
+		}
+		toProduction, err := filepath.Rel(root, production)
+		if err != nil {
+			return err
+		}
+		fromProduction, err := filepath.Rel(production, root)
+		if err != nil {
+			return err
+		}
+		within := func(rel string) bool { return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) }
+		if within(toProduction) || within(fromProduction) {
+			return errors.New("Demo darf das Produktionsverzeichnis /srv/anker und seine übergeordneten Verzeichnisse nicht verwenden")
+		}
+	}
 	if *socket == "" {
 		*socket = filepath.Join(root, "anker.sock")
+	}
+	if demo {
+		resolved, err := anker.ResolveDataRoot(*socket)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(resolved, root+string(os.PathSeparator)) {
+			return errors.New("Demo-Socket muss im eigenen Demo-Datenverzeichnis liegen")
+		}
+		*socket = resolved
 	}
 	if command[0] != "serve" && command[0] != "demo" && command[0] != "init" {
 		c := client.New(*socket)
@@ -88,6 +124,26 @@ func run(args []string) error {
 		return err
 	}
 	defer unlock()
+	if err = anker.EnsureDataMode(root, demo); err != nil {
+		return err
+	}
+	if command[0] != "init" {
+		host, _, err := net.SplitHostPort(*listen)
+		if err != nil {
+			return err
+		}
+		ip := net.ParseIP(host)
+		isLocal := host == "localhost" || (ip != nil && ip.IsLoopback())
+		if demo && !isLocal {
+			return errors.New("Demo ist nur über eine lokale Loopback-Adresse erreichbar")
+		}
+		if !isLocal && (*cert == "" || *key == "") && !*allowHTTP {
+			return errors.New("LAN/VPN-Webzugriff benötigt TLS; --tls-cert und --tls-key setzen")
+		}
+		if (*cert == "") != (*key == "") {
+			return errors.New("TLS-Zertifikat und TLS-Key zusammen angeben")
+		}
+	}
 	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))
 	if err != nil {
 		return err
@@ -129,18 +185,6 @@ func run(args []string) error {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, "Lokale Demo · keine echten Hosts verbunden\nAnmeldung: demo / anker-demo-2026")
-	}
-	host, _, err := net.SplitHostPort(*listen)
-	if err != nil {
-		return err
-	}
-	ip := net.ParseIP(host)
-	isLocal := host == "localhost" || (ip != nil && ip.IsLoopback())
-	if !isLocal && (*cert == "" || *key == "") && !*allowHTTP {
-		return errors.New("LAN/VPN-Webzugriff benötigt TLS; --tls-cert und --tls-key setzen")
-	}
-	if (*cert == "") != (*key == "") {
-		return errors.New("TLS-Zertifikat und TLS-Key zusammen angeben")
 	}
 	if _, err = os.Lstat(*socket); err == nil {
 		conn, err := net.DialTimeout("unix", *socket, time.Second)

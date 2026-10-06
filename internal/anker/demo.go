@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type DemoCollector struct{ Root string }
@@ -181,8 +180,19 @@ func (c DemoCollector) Apply(ctx context.Context, h Host, p Plan, root string) (
 	return result, nil
 }
 func (s *Service) SeedDemo(a *Auth) error {
+	mode, err := dataMode(s.Root)
+	collector, ok := s.Collector.(DemoCollector)
+	if err != nil {
+		return err
+	}
+	if mode != "demo\n" || !ok || collector.Root != s.Root {
+		return errors.New("Demo-Daten erfordern eine ausdrücklich aktivierte, getrennte Demo")
+	}
 	s.Demo = true
-	users, _ := records[User](s.Store, "users")
+	users, err := records[User](s.Store, "users")
+	if err != nil {
+		return err
+	}
 	if len(users) == 0 {
 		if err := a.CreateUser("demo", "anker-demo-2026", "admin", true); err != nil {
 			return err
@@ -244,6 +254,5 @@ func (s *Service) SeedDemo(a *Auth) error {
 			}
 		}
 	}
-	_ = strings.Builder{}
 	return nil
 }

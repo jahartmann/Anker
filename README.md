@@ -4,25 +4,6 @@ Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Webober
 
 VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker ist kein Festplattenimage und ersetzt keine Sicherung der Gastdaten.
 
-## Lokal ansehen
-
-```sh
-make build
-./bin/anker --data ./var/demo demo
-```
-
-Öffnen: http://127.0.0.1:8087 — lokale Demo mit `demo` / `anker-demo-2026`. Sie arbeitet ausschließlich mit Dateien unter `var/demo`, ohne echte Hosts zu kontaktieren. Mit `Ctrl+C` beenden.
-
-In einem zweiten Terminal:
-
-```sh
-./bin/anker --data ./var/demo status
-./bin/anker --data ./var/demo tui
-./bin/anker --data ./var/demo help
-```
-
-Voraussetzungen für den Build: Go 1.27.1 oder neuer, Node.js 22.12+ und npm. Die Weboberfläche wird in das Binary eingebettet. Der Linux-Dienst braucht kein Node.js. `make linux` baut amd64 und arm64 ohne CGo.
-
 ## Releases
 
 Die Installation ist für einen zentralen Linux-Server mit systemd vorgesehen. Release-Pakete enthalten die fertige Anwendung für amd64 oder arm64; Go und Node werden nur zum Bauen benötigt. Pakete vor der ersten Installation mit dem veröffentlichten, unabhängig geprüften Signierschlüssel verifizieren. Die vollständigen Schritte für Erstinstallation, GitHub-Releases und Updates stehen in [UPDATES.md](docs/UPDATES.md).
@@ -37,6 +18,8 @@ Das Skript lädt die passende Architektur, prüft Signatur und Paket und öffnet
 
 ## Linux-Server aus dem Quellcode installieren
 
+Voraussetzungen für den Build: Go 1.27.1 oder neuer, Node.js 22.12+ und npm. Die Weboberfläche wird in das Binary eingebettet. Der Linux-Dienst braucht kein Node.js. `make linux` baut amd64 und arm64 ohne CGo.
+
 ```sh
 make linux
 sudo ./scripts/install-server.sh
@@ -47,6 +30,8 @@ Die Einrichtung fragt nach Administratorname, verdecktem Passwort mit Wiederholu
 ```sh
 sudo anker setup
 ```
+
+Die normale Installation startet leer: keine Beispielhosts, Sicherungen, Aufträge oder Demobenutzer. Nur der selbst eingerichtete Administrator und die Betriebseinstellungen werden angelegt. Hosts werden anschließend ausdrücklich hinzugefügt. Der Dienst startet immer im Produktionsbetrieb.
 
 Ohne interaktive Einrichtung: `sudo ./scripts/install-server.sh --no-setup`. Anschließend `sudo -u anker anker init` für die verdeckte Passwortabfrage verwenden. Für Automatisierung nimmt `init` weiterhin `ANKER_INITIAL_PASSWORD` entgegen. Passwörter nicht als Befehlsargument übergeben. Erneutes `init` ersetzt keine bestehenden Benutzer.
 
@@ -161,9 +146,29 @@ python3 -m unittest discover -s host -p '*test*.py'
 cd web && npm ci && npm run build && npx playwright install chromium && npm test
 ```
 
-Die Browsertests starten eine isolierte Demo auf Port 8088 mit einem neuen Datenordner unter `/tmp`. Sie verändern weder Produktionshosts noch die normale Demo. Python-Helfertests verwenden ebenfalls ausschließlich temporäre lokale Verzeichnisse.
+Die Browsertests starten eine isolierte Demo auf Port 8088 und eine leere Produktionsinstanz auf Port 8089, jeweils mit einem neuen Datenordner unter `/tmp`. Sie prüfen auch, dass der Produktionsbetrieb keine Demodaten und keinen bekannten Demozugang enthält. Sie verändern keine Produktionshosts. Python-Helfertests verwenden ebenfalls ausschließlich temporäre lokale Verzeichnisse.
 
 Die zusätzliche Betriebsprüfung simuliert 90 tägliche Stände, 3.600 Einträge im Webinterface und gezielte Fehler bei Download, Planung, Archivierung, Zeitplan und Wiederanlauf. Gefundene Probleme, Korrekturen und verbleibende Laborfälle stehen in [Unterstützung](docs/SUPPORT.md).
+
+## Optionale lokale Demo
+
+Die Demo wird ausschließlich mit dem Befehl `demo` aktiviert. Installation, `init` und `serve` erzeugen keine Demodaten.
+
+```sh
+make build
+./bin/anker --data ./var/demo demo
+```
+
+Öffnen: http://127.0.0.1:8087 — Anmeldung mit `demo` / `anker-demo-2026`. Mit `Ctrl+C` beenden. Die Demo arbeitet nur mit Dateien im eigenen Datenordner und kontaktiert keine echten Hosts. Ihr Webzugriff bleibt auf Loopback beschränkt, ihr Socket liegt im Demoordner.
+
+```sh
+./bin/anker --data ./var/demo status
+./bin/anker --data ./var/demo tui
+```
+
+Der Demoordner muss beim ersten Start leer sein. Anker speichert seine Betriebsart in `.anker-mode`; danach lässt sich dieselbe Demo wieder starten. Überlappende Demo- und Produktionsordner sind gesperrt. Für die Demo sind `/srv/anker`, seine Unterverzeichnisse und seine übergeordneten Verzeichnisse ausgeschlossen. Auch `init` und `serve` verweigern einen Demoordner. Ohne `--data` verwendet `demo` immer `./var/demo`, unabhängig von `ANKER_DATA`.
+
+Bereits vorhandene, unmarkierte Demoordner aus älteren Entwicklungsständen werden nicht übernommen. Dafür einen neuen Ordner wählen, beispielsweise `--data ./var/demo-neu`. Alte Dateien bleiben erhalten. Die Betriebsart nicht durch Entfernen oder Ändern des Markers wechseln; produktive Daten gehören in einen getrennten Ordner.
 
 ## Lizenz und Mitarbeit
 

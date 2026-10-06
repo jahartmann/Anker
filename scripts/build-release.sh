@@ -15,8 +15,12 @@ for ANKER_ARCH in amd64 arm64; do
  ANKER_PACKAGE="$ANKER_OUT/package-$ANKER_ARCH"
  mkdir -p "$ANKER_PACKAGE"
  cp "$ANKER_OUT/anker-linux-$ANKER_ARCH" "$ANKER_PACKAGE/anker"
- cp -R scripts deploy host docs "$ANKER_PACKAGE/"
- cp README.md LICENSE CHANGELOG.md "$ANKER_OUT/THIRD_PARTY_NOTICES.txt" "$ANKER_OUT/public.key" "$ANKER_OUT/public.pem" "$ANKER_PACKAGE/"
+ mkdir -p "$ANKER_PACKAGE/scripts" "$ANKER_PACKAGE/deploy" "$ANKER_PACKAGE/host" "$ANKER_PACKAGE/docs"
+ cp scripts/install-server.sh scripts/install-state.py scripts/install-release.py scripts/verify-release.sh scripts/install-host.sh scripts/setup-sftp-export.sh "$ANKER_PACKAGE/scripts/"
+ cp deploy/anker.service deploy/anker-updater.service "$ANKER_PACKAGE/deploy/"
+ cp host/anker_host.py "$ANKER_PACKAGE/host/"
+ cp docs/OPERATIONS.md docs/RECOVERY.md docs/UPDATES.md docs/SUPPORT.md "$ANKER_PACKAGE/docs/"
+ cp README.md LICENSE CHANGELOG.md CONTRIBUTING.md SECURITY.md "$ANKER_OUT/THIRD_PARTY_NOTICES.txt" "$ANKER_OUT/public.key" "$ANKER_OUT/public.pem" "$ANKER_PACKAGE/"
  tar -czf "$ANKER_OUT/anker-linux-$ANKER_ARCH.tar.gz" -C "$ANKER_PACKAGE" .
  rm -rf "$ANKER_PACKAGE"
 done

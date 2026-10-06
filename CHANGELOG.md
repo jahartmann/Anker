@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Produktionsinstallation startet ohne Demodaten. Demo nur durch ausdrücklichen Befehl, mit dauerhaft getrenntem Datenordner, lokalem Webzugriff und eigenem Socket. Release-Pakete enthalten keine Testfixtures oder Designbeispiele.
+
 - Anmeldung bleibt über Dienstneustarts und Updates erhalten. Sitzungen laufen nach 30 Tagen ab; die Dauer ist einstellbar.
 - Benutzer lassen sich sperren, entsperren, bearbeiten und löschen. Passwort- und Rechteänderungen beenden bestehende Sitzungen. Der letzte aktive Administrator bleibt geschützt.
 - Signierte GitHub-Releases für Linux amd64 und arm64. Updates sind über die Weboberfläche und `anker update` möglich.

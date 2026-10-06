@@ -84,6 +84,27 @@ func TestSystemdInstallationAndRecovery(t *testing.T) {
 		}
 	}
 	login()
+	response, err := web.Get("http://127.0.0.1:8087/api/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var initial struct {
+		Demo                        bool `json:"demo"`
+		Hosts, Backups, Jobs, Plans []json.RawMessage
+	}
+	err = json.NewDecoder(response.Body).Decode(&initial)
+	response.Body.Close()
+	if err != nil || response.StatusCode != 200 || initial.Demo || len(initial.Hosts)+len(initial.Backups)+len(initial.Jobs)+len(initial.Plans) != 0 {
+		t.Fatal("fresh production service is not empty", initial, err)
+	}
+	if _, err := os.Stat(filepath.Join(DataDir, "demo-hosts")); !os.IsNotExist(err) {
+		t.Fatal("demo files installed", err)
+	}
+	if out, err := exec.CommandContext(ctx, BinaryPath, "--data", DataDir, "demo").CombinedOutput(); err == nil {
+		t.Fatal("production path accepted for demo", string(out))
+	}
+	health(old)
+	t.Log("fresh production installation contains no demo hosts, backups, plans or jobs")
 	candidate, err := os.ReadFile(os.Getenv("ANKER_SYSTEMD_CANDIDATE"))
 	if err != nil {
 		t.Fatal(err)

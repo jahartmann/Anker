@@ -68,7 +68,7 @@ export function HostForm({
               autoComplete="off"
               value={value.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="pve-berlin-01"
+              placeholder="Hostname des Proxmox-Hosts"
             />
           </Field>
           <Field label="Adresse">
@@ -83,7 +83,7 @@ export function HostForm({
             <input
               value={value.group}
               onChange={(e) => set("group", e.target.value)}
-              placeholder="z. B. Standort Berlin"
+              placeholder="Standort oder Gruppe"
             />
           </Field>
           <Field label="Cluster" hint="Für Standalone-Hosts leer lassen.">
@@ -127,7 +127,7 @@ export function HostForm({
               <input
                 value={value.key_path}
                 onChange={(e) => set("key_path", e.target.value)}
-                placeholder="/etc/anker/keys/pve-berlin-01"
+                placeholder="/etc/anker/keys/backup"
               />
             </Field>
             <Field
@@ -137,7 +137,7 @@ export function HostForm({
               <input
                 value={value.restore_key_path || ""}
                 onChange={(e) => set("restore_key_path", e.target.value)}
-                placeholder="/etc/anker/keys/restore-host"
+                placeholder="/etc/anker/keys/restore"
               />
             </Field>
             <Field label="Wiederherstellungsbenutzer">

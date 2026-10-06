@@ -1,5 +1,11 @@
 # Betrieb
 
+## Produktionsbetrieb
+
+Installation und Einrichtung starten ohne Beispieldaten. Der Linux-Dienst verwendet `/srv/anker` im Produktionsbetrieb. Hosts und weitere Benutzer werden ausdrücklich angelegt. Die optionale Demo wird nur über `anker demo` in einem eigenen, zunächst leeren Datenordner gestartet.
+
+Die Datei `.anker-mode` hält die Betriebsart fest. Sie gehört zusammen mit dem Katalog und den übrigen Anker-Dateien in die Sicherung des zentralen Servers. Nicht löschen oder umschreiben, um eine Demo in Produktion umzuwandeln. Anker verweigert gemischte Verzeichnisse und frühere unmarkierte Demoordner; dafür einen getrennten, leeren Ordner verwenden.
+
 ## Zeitplan und Aufträge
 
 Anker startet pro aktiviertem Host einmal täglich. Ein eigener Hostzeitplan überschreibt den gemeinsamen Zeitplan. Ein deterministischer Versatz von weniger als einer Stunde verteilt die Last. Zeitzone und Tagesmarker verhindern doppelte Läufe beim Sommerzeitwechsel. Nach Start wird ein an diesem Tag bereits fälliger Lauf nachgeholt. Der Dienst muss laufen; dies ist kein externer Cronjob. Der Versatz endet spätestens um 23:59 desselben Tages, damit späte Zeitpläne nicht dauerhaft ausfallen. Beim Wiederanlauf werden unveröffentlichte temporäre Erfassungs-/Archivdateien im reservierten `staging`-Ordner entfernt; veröffentlichte Sicherungen bleiben erhalten. Bereits abgebrochene Aufträge starten keine Hostoperation mehr, und laufende Versuche werden vor ihrem Aufruf im Katalog sichtbar.
