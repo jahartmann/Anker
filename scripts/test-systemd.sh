@@ -7,7 +7,16 @@ set -eu
 ANKER_TEST_BINARY=${1:?Testbinary angeben}
 ANKER_TEST_SUITE=${2:?Kompilierte Updater-Tests angeben}
 ANKER_TEST_CANDIDATE=${3:?Passende neue Testversion angeben}
-trap 'systemctl stop anker-updater anker || true' EXIT
+cleanup() {
+  ANKER_TEST_EXIT=$?
+  if [ "$ANKER_TEST_EXIT" -ne 0 ]; then
+    systemctl show anker-updater --property=Result --property=StartLimitBurst --property=StartLimitIntervalUSec || true
+    journalctl -u anker-updater -n 60 --no-pager || true
+  fi
+  systemctl stop anker-updater anker || true
+  exit "$ANKER_TEST_EXIT"
+}
+trap cleanup EXIT
 # Simulate a previously interrupted first installation and verify the retry.
 python3 scripts/install-state.py begin
 install -d /usr/local/bin
