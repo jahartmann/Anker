@@ -12,6 +12,7 @@
 | Aufbewahrung, Archivierung, Scheduler | Ja | Go-Tests einschließlich DST und Archivprüfung | Langzeitbetrieb offen |
 | Linux-/systemd-Serverinstallation und Updates | Geführte Einrichtung und signierter Updater | Echte systemd-Dienste in isolierter GitHub-Linux-VM | Physischer Reboot/Stromausfall offen |
 | SFTP-Installation | Skripte und Anleitung | Syntax | Reale Ausführung offen |
+| Speicher von Anker und seinen Backup-Laufwerken | Anzeige, Verlauf, bedingte Prognose, begrenzte ext4-/XFS-Erweiterung und manuelle Assistenten | Inventar/Bindmounts, Prognose, Gerätewechsel, Journal, API/CLI und Browser; echte ext4-Prüfung in Linux-CI vorgesehen | LXC-/LVM-/XFS-/Migrationsabnahme offen |
 
 Der Versionsrahmen für automatische Einzeldateipläne umfasst gleiche Proxmox-Major-Versionen 8 oder 9. Das ist eine Entscheidungsregel, keine Zertifizierung jedes Minorstands. Hardware-, Cluster- und Versionskombinationen müssen vor Freigabe separat dokumentiert werden.
 
@@ -87,3 +88,9 @@ Zwölf zusätzliche Browserregressionen wurden zunächst gegen den alten Stand m
 Der neue Linux/systemd-Prüflauf ist gesondert vom lokalen Nachweis; ein echter Reboot-/Stromausfalltest bleibt offen. Anleitung und bekannte Grenzen stehen in [UPDATES.md](UPDATES.md). Der Quellcode ist öffentlich auf GitHub veröffentlicht. Signierte Produktivreleases und eine produktive Signieridentität sind noch nicht eingerichtet oder veröffentlicht.
 
 Linux/systemd-Nachweis vom 06.10.2026: [Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37441649633). Der geführte Installer einschließlich wiederholter Einrichtung, Programmwechsel mit erhaltener Anmeldung, fehlerhafter Kandidat, unterbrochene Journale mit und ohne Katalogsnapshot sowie echte Dienstneustarts wurden erfolgreich ausgeführt. Dies ist kein physischer Reboot-/Stromausfalltest und keine Proxmox-Hostabnahme.
+
+## Speicherprüfung vom 06.10.2026
+
+Neue Regressionen prüfen gemeinsame Dateisysteme, eingebundene Backup-Unterordner und Bind-Aliase, unerreichbare Mounts, fehlende Geräteidentität, Gerätetausch zwischen Bestätigung und Ausführung, abgelehnte/geänderte Pläne, fehlgeschlagene Journalpersistenz, unterbrochene Vorgänge sowie Container-/Schreibschutzgrenzen. XFS-Geometrie und Befehlsziel sind mit Fixtures geprüft. Browserabläufe decken Demoisolation, Verbrauch/Verlauf, Bestätigung, LXC-Befehl, fehlenden Hilfsdienst, Aktualisierungs-/Pollingfehler und Anleitungsdownload ab.
+
+Die Linux-CI enthält zusätzlich eine echte ext4-Erweiterung auf einem ausschließlich für den Test angelegten Loopgerät: 64 auf 128 MiB über den gehärteten systemd-Hilfsdienst, vorhandene Datei und Webdienstprozess müssen erhalten bleiben. Bis zum dokumentierten grünen Prüflauf ist dies ein vorgesehener Nachweis. Weder Produktionsdatenträger noch Proxmox-Hosts werden dabei verwendet. Reales XFS, LXC-Quoten, LVM, Stromverlust und Laufwerksumzug bleiben eigene Abnahmefälle.

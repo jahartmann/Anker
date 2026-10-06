@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Speicherbereich für Anker und seine Backup-Laufwerke: Belegung, verfügbarer Platz, Inodes, echter Verlauf und bedingte Kapazitätsprognose. Bestätigte Dateisystemerweiterung für bereits zugewiesenen ext4-/XFS-Platz; LXC-Anleitung und herunterladbare Hinweise zum Einbinden neuer Laufwerke. Keine Formatierung oder automatische Partition-/LVM-Änderung.
+
 - Webzertifikate automatisch und ohne Dienstneustart erneuern; Ablauf, Fingerprint, öffentlicher Download und administrativer Vorlauf in Einstellungen/CLI. Importierte Zertifikate bleiben unangetastet; selbstsignierte Zertifikate können eine neue Browserfreigabe benötigen.
 
 - Kürzere Ersteinrichtung: eigene Zugangsdaten vor dem Dienstwechsel, bestehende Administratoren erkannt, bekannte Updatequellen automatisch übernommen.

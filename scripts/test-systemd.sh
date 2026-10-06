@@ -31,4 +31,4 @@ os.chown(path,0,__import__('grp').getgrnam('anker').gr_gid)
 PY
 python3 scripts/test-setup-pty.py
 touch /run/anker-isolated-ci
-ANKER_SYSTEMD_TEST=1 ANKER_SYSTEMD_CANDIDATE="$ANKER_TEST_CANDIDATE" "$ANKER_TEST_SUITE" -test.run '^TestSystemdInstallationAndRecovery$' -test.v -test.timeout 5m
+ANKER_SYSTEMD_TEST=1 ANKER_SYSTEMD_CANDIDATE="$ANKER_TEST_CANDIDATE" "$ANKER_TEST_SUITE" -test.run '^(TestSystemdInstallationAndRecovery|TestStorageRealExt4GrowthUnderSystemd)$' -test.v -test.timeout 5m

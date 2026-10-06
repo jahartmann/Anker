@@ -213,6 +213,8 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 	path := strings.Join(parts[1:], "/")
 	method := r.Method
 	switch path {
+	case "storage", "storage/state", "storage/plan", "storage/grow":
+		return s.capacity(w, r, u)
 	case "doctor":
 		if err := require(u, "admin"); err != nil {
 			return err

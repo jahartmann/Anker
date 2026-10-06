@@ -221,6 +221,7 @@ type Service struct {
 	maintenance   bool
 	jobMu         sync.Mutex
 	notifyMu      sync.Mutex
+	storageMu     sync.Mutex
 }
 
 func ID() string {

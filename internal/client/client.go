@@ -131,6 +131,29 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 		return call("GET", "status", nil)
 	case "doctor":
 		return call("GET", "doctor", nil)
+	case "storage":
+		if len(args) == 2 && args[1] == "status" {
+			return call("GET", "storage", nil)
+		}
+		if len(args) == 2 && args[1] == "state" {
+			return call("GET", "storage/state", nil)
+		}
+		if len(args) == 3 && args[1] == "plan" {
+			return call("POST", "storage/plan", map[string]string{"volume_id": args[2]})
+		}
+		if len(args) >= 3 && args[1] == "grow" {
+			flags := fs("storage grow")
+			plan := flags.String("plan", "", "Geprüfte Plan-ID")
+			confirmation := flags.String("confirm", "", "Mountpoint bestätigen")
+			if err := flags.Parse(args[3:]); err != nil {
+				return err
+			}
+			if flags.NArg() != 0 || *plan == "" || *confirmation == "" {
+				return errors.New("Zuerst anker storage plan VOLUME verwenden; --plan ID und --confirm MOUNT sind erforderlich")
+			}
+			return call("POST", "storage/grow", map[string]string{"volume_id": args[2], "plan_id": *plan, "confirmation": *confirmation})
+		}
+		return errors.New("anker storage status | state | plan VOLUME | grow VOLUME --plan ID --confirm MOUNT")
 	case "tls":
 		if len(args) == 2 && args[1] == "status" {
 			return call("GET", "tls", nil)
@@ -391,6 +414,7 @@ anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
 anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME
 anker update status | check | install
 anker tls status | renew | auto on/off [--days 30] | certificate DATEI.crt
+anker storage status | state | plan VOLUME | grow VOLUME --plan ID --confirm MOUNT
 anker reindex
 
 Globale Optionen vor dem Befehl: --data /srv/anker --socket /srv/anker/anker.sock`

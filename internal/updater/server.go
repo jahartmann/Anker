@@ -61,12 +61,13 @@ func LoadConfig() (Config, string, error) {
 }
 
 type Server struct {
-	mu         sync.Mutex
-	state      State
-	source     *GitHub
-	installer  *Installer
-	busy       bool
-	tlsManager *TLSManager
+	mu             sync.Mutex
+	state          State
+	source         *GitHub
+	installer      *Installer
+	busy           bool
+	tlsManager     *TLSManager
+	storageManager *StorageManager
 }
 
 func (s *Server) save() error {
@@ -76,7 +77,13 @@ func (s *Server) save() error {
 	}
 	return atomic(filepath.Join(s.installer.StateDir, "status.json"), b, 0600, -1, -1)
 }
-func (s *Server) snapshot() State { s.mu.Lock(); defer s.mu.Unlock(); return s.state }
+func (s *Server) snapshot() State {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := s.state
+	v.Busy = s.busy
+	return v
+}
 func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -86,6 +93,10 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/tls") {
 		s.tlsHandler(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/storage/") {
+		s.storageHandler(w, r)
 		return
 	}
 	if r.URL.Path == "/status" && r.Method == "GET" {
@@ -263,6 +274,11 @@ func Serve(ctx context.Context, current string) error {
 		current = v
 	}
 	s := &Server{source: NewGitHub(c, token), installer: i, tlsManager: &TLSManager{Dir: "/etc/anker"}, state: State{Configured: configured, Repository: c.Repository, Current: current, Status: "idle"}}
+	s.storageManager = &StorageManager{ConfigDir: "/etc/anker", StateDir: StateDir}
+	if err := s.storageManager.Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "Speicherverwaltung nicht verfügbar; Operationsjournal prüfen:", err)
+		s.storageManager = nil
+	}
 	if b, err := os.ReadFile(filepath.Join(StateDir, "status.json")); err == nil {
 		var old State
 		if json.Unmarshal(b, &old) == nil {

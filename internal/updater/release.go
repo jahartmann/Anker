@@ -52,6 +52,7 @@ type Release struct {
 	AssetID  int64    `json:"-"`
 }
 type State struct {
+	Busy       bool     `json:"busy"`
 	Configured bool     `json:"configured"`
 	Repository string   `json:"repository"`
 	Current    string   `json:"current"`

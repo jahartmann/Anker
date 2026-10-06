@@ -2,7 +2,7 @@
 
 Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Die Sicherungen bleiben als lesbare Ordner verfügbar. Weboberfläche, Terminaloberfläche und Befehle verwenden denselben Dienst.
 
-VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker sichert Hostkonfigurationen, keine kompletten Festplattenimages. Für den zentralen Dienst einen eigenen Linux-Server oder eine VM mit systemd verwenden.
+VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker sichert Hostkonfigurationen, keine kompletten Festplattenimages. Für den zentralen Dienst einen eigenen Linux-Server, eine VM oder einen LXC-Container mit systemd verwenden.
 
 ## Installation
 
@@ -87,6 +87,36 @@ ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER
 ```
 
 Danach `http://127.0.0.1:8087` öffnen. Die Netzwerkverbindung wird bereits durch SSH verschlüsselt. Den Tunnel für die Nutzung offen lassen. Ein Reverse Proxy ist für diese Wege nicht erforderlich; Proxy-Terminierung ist in dieser Fassung kein getesteter Installationsweg.
+
+## Anker im Container und Speicher
+
+Für etwa 40 Hosts ist ein unprivilegierter Debian-LXC mit 2 vCPU, 4 GiB RAM, 512 MiB Swap und 16 GiB Systemlaufwerk ein sinnvoller Startpunkt. Die Backup-Ablage separat unter `/srv/anker` einbinden, beispielsweise zunächst mit 200 GiB. Das sind Planungswerte, keine gemessenen Mindestanforderungen: zusätzlicher Configumfang, Aufbewahrung und Archivierung bestimmen den tatsächlichen Bedarf. Vier parallele Aufträge sind voreingestellt. Für die Speicheranzeige braucht der Container weder privilegierten Betrieb noch durchgereichte Blockgeräte.
+
+Unter **Einstellungen → Speicher** sehen Administratoren die Dateisysteme des Anker-Servers: Größe, Belegung, verfügbarer Platz, reservierter Platz, Inodes und eingebundene Pfade. Ein gemeinsames Dateisystem für System und Backups wird einmal angezeigt. Die Werte umfassen auch andere Dateien auf demselben Laufwerk. Andere Proxmox-VMs und Container werden hier nicht überwacht; der freie Platz im Proxmox-Speicherpool ist aus dem Container nicht bestimmbar.
+
+Anker misst stündlich und speichert bis zu 90 Tage Verlauf im Katalog. Eine Schätzung bis zur Vollbelegung erscheint erst nach mindestens 24 Messungen über drei Tage mit ausreichend gleichmäßigem Wachstum. Sie verwendet die letzten 14 Tage und den tatsächlich verfügbaren Platz. Ohne belastbaren Trend oder bei veralteten Messungen erscheint kein scheinbar genaues Datum. Nach einer Vergrößerung beginnt die Messreihe mit der neuen Kapazität. Die Demo liest keine echten Laufwerke und enthält keine erfundenen Speichermessungen.
+
+**Erweitern** prüft den Aufbau und zeigt die nächsten Schritte:
+
+- Im LXC: CT-ID, `rootfs` oder `mp`-Eintrag und zusätzliche GiB angeben. Den erzeugten `pct resize`-Befehl auf dem zuständigen Proxmox-Host ausführen. Bindmounts über das Dateisystem auf dem Host erweitern.
+- In einer VM oder auf einem physischen Server: zuerst Disk, Partition beziehungsweise LVM-Volume gezielt vergrößern. Hat das Blockgerät bereits zusätzlichen Platz, kann Anker ein eindeutig zugeordnetes ext4- oder XFS-Dateisystem nach Mountpoint-Bestätigung erweitern.
+- Neues Laufwerk: der Assistent bietet eine kopierbare und herunterladbare Anleitung mit UUID-Prüfung, gestoppten Diensten, Datenübernahme und Mountkontrolle. Formatierung und der eigentliche Umzug erfolgen bewusst durch den Administrator.
+
+Anker formatiert keine Laufwerke, verändert keine Partitionstabellen und verkleinert keine Dateisysteme. Eine unterbrochene Erweiterung wird nach Neustart als unterbrochen angezeigt und nicht automatisch wiederholt. Der tatsächliche Zustand lässt sich neu prüfen. Updates, Einrichtung und Erweiterungen sind gegeneinander gesperrt.
+
+Die Anzeige verwendet `lsblk` aus util-linux. Für Dateisystemerweiterungen müssen `e2fsprogs` beziehungsweise `xfsprogs` und der root-Hilfsdienst `anker-updater.service` vorhanden sein. Der manuelle Umzug benötigt zusätzlich `rsync`, `findmnt`, `blkid` und `mountpoint`. Fehlende Werkzeuge erscheinen als Fehler; Anker installiert sie nicht während einer Speicheraktion nach.
+
+Auch im Terminal verfügbar:
+
+```sh
+sudo anker storage status
+sudo anker storage state
+sudo anker storage plan VOLUME-ID
+# PLAN-ID und Mountpoint aus dem geprüften Plan übernehmen:
+sudo anker storage grow VOLUME-ID --plan PLAN-ID --confirm /srv/anker
+```
+
+Vor Umzug, bei Laufwerksausfall und bei SFTP-Bindmounts die [Betriebsanleitung](docs/OPERATIONS.md) beachten. Der [Prüfumfang](docs/SUPPORT.md) unterscheidet lokale Tests, Linux-Prüfungen und noch offene Proxmox-Abnahme.
 
 ## Proxmox-Hosts anbinden
 

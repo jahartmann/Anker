@@ -7,6 +7,7 @@ import type { Notify } from "../components/shared";
 import Access from "./Access";
 import Updates from "./Updates";
 import Certificates from "./Certificates";
+import Storage from "./Storage";
 export default function Settings({
   notify,
   onDirtyChange,
@@ -96,7 +97,13 @@ export default function Settings({
         description="Zeitplan, Aufbewahrung und Zugriff zentral verwalten."
       />
       <div className="tabs">
-        {["Sicherung", "Benachrichtigungen", "Zugriff", "System"].map((t) => (
+        {[
+          "Sicherung",
+          "Speicher",
+          "Benachrichtigungen",
+          "Zugriff",
+          "System",
+        ].map((t) => (
           <button
             key={t}
             className={t === tab ? "selected" : ""}
@@ -110,6 +117,7 @@ export default function Settings({
           </button>
         ))}
       </div>
+      {tab === "Speicher" && <Storage notify={notify} />}
       {["Sicherung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
           <fieldset className="form-fields" disabled={busy}>

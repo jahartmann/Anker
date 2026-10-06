@@ -162,8 +162,8 @@ func setupUpdateIdle() error {
 	if err = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&state); err != nil {
 		return err
 	}
-	if state.Status == "installing" {
-		return errors.New("Update läuft; Einrichtung erst nach dessen Abschluss öffnen")
+	if state.Status == "installing" || state.Busy {
+		return errors.New("Eine Systemänderung läuft; Einrichtung erst nach deren Abschluss öffnen")
 	}
 	return nil
 }

@@ -22,6 +22,32 @@ Die tägliche Wartung prüft den neuesten vollständigen Stand je Host, bevor di
 
 Katalog und Sicherungsordner sind unterschiedliche Ebenen: `anker reindex` kann vorhandene, geprüfte Manifeste wieder einlesen. Bekannte Manifestprüfsummen und Schutzmarkierungen werden erhalten. Bei einem vollständig verlorenen Katalog müssen Hostzugänge und Benutzer erneut eingerichtet werden. Sicherungsordner und Recoveryanleitungen bleiben unabhängig lesbar. Katalog, SSH-Schlüssel, TLS-Dateien und den Anker-Server selbst im vorhandenen betrieblichen Sicherungskonzept berücksichtigen.
 
+## Speicheranzeige und Erweiterung
+
+**Einstellungen → Speicher** überwacht ausschließlich den Anker-Server mit seinen sichtbaren Laufwerken und Backup-Mounts. System und Ablage auf demselben Dateisystem werden nicht doppelt gezählt. Bindmounts zeigen die Kapazität ihres eigenen Dateisystems. „Verfügbar“ ist der Platz für den Dienstbenutzer; reservierte Blöcke und Inodes erscheinen separat. Containerquoten und das zugrunde liegende Proxmox-Poolvolumen sind unterschiedliche Ebenen. Die Anzeige kann aus dem Container keine freien Poolressourcen zusagen.
+
+Die Messung läuft unabhängig vom Backup-Zeitplan. Nicht erreichbare Dateisysteme erhalten einen Fehler statt einer Nullbelegung; blockierte Dateisystemabfragen sind zeitlich begrenzt und werden nicht unbegrenzt neu gestartet. Bis zu 90 Tage stündlicher Verlauf liegen im Katalog. Die Prognose verlangt mindestens 24 Messungen über 72 Stunden und vier Kalendertage, verwendet Tagesmediane der letzten 14 Tage und unterdrückt ungleichmäßige, rückläufige oder über sechs Stunden alte Trends. Sie ist eine Schätzung bei unverändertem Nettozuwachs, keine Kapazitätsgarantie. Aufbewahrung und neue Hosts können den Trend ändern. Nach Kapazitätswechsel beginnt eine neue Messreihe.
+
+Die automatische Erweiterung betrifft nur ext4/XFS auf `/`, `/srv/anker` oder einem darin eingebundenen Backup-Dateisystem, sofern ein lokales Blockgerät, passende UUID und freier bereits zugewiesener Geräteplatz eindeutig bestätigt sind. Mount und Quelle müssen dasselbe Dateisystem bezeichnen. Container bekommen eine Anleitung für den Host. Partition, PV, LV und virtuellen Datenträger zuvor passend zum tatsächlichen Aufbau erweitern; Anker führt dafür keine pauschalen Änderungen aus. Werkzeuge: [resize2fs](https://man7.org/linux/man-pages/man8/resize2fs.8.html), [xfs_growfs](https://man7.org/linux/man-pages/man8/xfs_growfs.8.html).
+
+Vor Ausführung Plan laden und den angezeigten Mountpoint exakt bestätigen. Die letzte Prüfung verwirft eine veränderte Identität oder Geometrie. Der Hilfsdienst führt ausschließlich den festen Dateisystembefehl aus; Web und CLI übergeben keine Gerätepfade oder Shellbefehle. Die Operation wird vor dem Start root-eigen unter `/var/lib/anker-updater/storage-operation.json` gespeichert. Updates, TLS-Änderungen und Einrichtung sind währenddessen gesperrt. Der Vorgang läuft beim Schließen des Browsers weiter. Ist die Statusverbindung unterbrochen, kann die Erweiterung weiterhin laufen; erst Status und tatsächliche Größe prüfen.
+
+Nach einem Hilfsdienst-/Containerneustart mit offenem Journal erscheint „unterbrochen“. Kein automatischer Wiederholungsversuch. Mit `sudo anker storage state`, `sudo anker storage status` und `journalctl -u anker-updater` prüfen; danach einen neuen Plan laden. Ein fehlerhaftes Operationsjournal sperrt Speicherwerkzeuge, ohne Zertifikatsverwaltung und Updateprüfung pauschal stillzulegen. Das Journal nicht als vermeintliche Reparatur löschen.
+
+### Backup-Ablage auf ein neues Laufwerk umziehen
+
+Im Assistenten **Neues Laufwerk einbinden** ein bereits bewusst eingerichtetes ext4-/XFS-Gerät wählen. Die Anleitung kann als Textdatei heruntergeladen werden. Ein unformatiertes oder nicht eindeutig erkanntes Gerät erhält keine Formatierungsbefehle. Im Container den zusätzlichen Speicher zuerst über die Containerverwaltung bereitstellen.
+
+Vor Beginn laufende Updates und Erweiterungen ausschließen, genug Platz am Ziel prüfen und die bestehenden Anker-Dateien sichern. Jeder Schritt wird einzeln vom Administrator ausgeführt:
+
+1. Geräteidentität prüfen, vorübergehend unter `/mnt/anker-new` einbinden und die tatsächlich gemountete UUID vergleichen. Das Ziel muss bis auf `lost+found` leer sein.
+2. Vorhandene SFTP-Bindmounts lösen; sie würden sonst weiterhin den alten Datenbestand zeigen. Anker und Updater stoppen und `/srv/anker/` mit `rsync -aHAX --numeric-ids` kopieren. Bei einem Kopierfehler nicht umschalten.
+3. Den bestehenden `/srv/anker`-Eintrag in `/etc/fstab` gezielt ersetzen oder ergänzen. Vorherige Einstellung für einen Rückfall festhalten. Das alte Dateisystem beziehungsweise der alte Ordner bleibt erhalten.
+4. Temporären und gegebenenfalls bisherigen Ablage-Mount lösen. Das neue Dateisystem unter `/srv/anker` mounten und seine UUID prüfen, erst danach die Dienste starten. Scheitert die Prüfung, die Dienste gestoppt lassen und den Mount korrigieren oder zur alten Zuordnung zurückkehren.
+5. Anmeldung, gespeicherte Stände und eine neue Sicherung prüfen. SFTP-Bindmounts vom neuen Bestand neu einbinden und read-only prüfen. Erst anschließend eine Bereinigung des alten Bestands planen.
+
+Dieser Umzug ist keine automatisch ausgeführte Migration. Verschachtelte Backup-Mounts und eigene SFTP-/fstab-Abhängigkeiten gesondert berücksichtigen. Reale LXC-, LVM-, XFS- und Migrationsabnahme steht noch aus; siehe [SUPPORT.md](SUPPORT.md).
+
 ## Benachrichtigungen
 
 SMTP verwendet TLS; alternativ Webhook. Gemeldet werden fehlgeschlagene Sicherungsaufträge und Erholungen. Aktivierte Hosts ohne aktuellen vollständigen Stand lösen zusätzlich eine Überfälligkeitsmeldung aus. Der Zustand wird dauerhaft gespeichert: Ein Neustart erzeugt keine erneute Warnung für denselben Vorfall. Nach einer aktuellen vollständigen Sicherung folgt eine Erholungsmeldung. Fehlgeschlagene Überfälligkeitsmeldungen werden frühestens nach einer Stunde erneut versucht. Ohne eingerichtetes Ziel erfolgt keine automatische Meldung.

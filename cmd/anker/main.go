@@ -251,6 +251,7 @@ func run(args []string) error {
 	}()
 	if !s.Demo {
 		go anker.NewScheduler(s).Run(ctx)
+		go s.RunStorage(ctx)
 	}
 	scheme := "http"
 	if *cert != "" {

@@ -1469,6 +1469,174 @@ textarea {
   margin-top: 24px;
   max-width: 620px;
 }
+.storage-section {
+  max-width: 960px;
+}
+.storage-updated {
+  font-size: 12px;
+  margin: 16px 0 24px;
+}
+.storage-volume {
+  border-bottom: 1px solid var(--line);
+  padding: 24px 0;
+}
+.storage-volume h3 {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.storage-volume .section-heading p {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.storage-usage {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 10px;
+  font-size: 13px;
+}
+.storage-usage strong {
+  font-weight: 550;
+}
+.storage-usage > span {
+  color: var(--muted);
+}
+.storage-meter {
+  height: 5px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.storage-meter span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  border-radius: inherit;
+}
+.storage-volume.attention .storage-meter span {
+  background: #ad7d2c;
+}
+.storage-volume.critical .storage-meter span {
+  background: #b2483c;
+}
+.storage-forecast {
+  margin: 18px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.storage-forecast strong {
+  font-weight: 550;
+}
+.storage-forecast p {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.storage-history svg {
+  display: block;
+  width: 100%;
+  height: 100px;
+}
+.storage-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.storage-line {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.storage-history-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.storage-details {
+  margin-top: 20px;
+  font-size: 12px;
+}
+.storage-details summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+.storage-details dd {
+  overflow-wrap: anywhere;
+}
+.storage-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.storage-command code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.storage-command button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.storage-step {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.storage-step h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 550;
+}
+.storage-step p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.storage-confirm,
+.storage-container-form {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.storage-add {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px 0 20px;
+}
+.storage-add h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.storage-add p {
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .storage-section > .section-heading,
+  .storage-volume .section-heading,
+  .storage-add,
+  .storage-usage {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .storage-history-caption > span:nth-child(2) {
+    display: none;
+  }
+  .storage-command {
+    flex-direction: column;
+  }
+}
 @media (max-width: 640px) {
   .update-section .section-heading,
   .update-release,

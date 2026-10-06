@@ -19,6 +19,374 @@ test.beforeEach(async ({ page }) => {
     page.getByRole("heading", { name: "Hosts", exact: true }),
   ).toBeVisible();
 });
+test("storage settings keep demo isolated", async ({ page }) => {
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await expect(
+    page.getByText(/Speicherverwaltung ist in der Demo ausgeschaltet/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Erweitern", exact: true }),
+  ).toHaveCount(0);
+});
+
+const storageVolume = {
+  id: "anker-volume",
+  mount: "/srv/anker",
+  paths: ["/srv/anker"],
+  source: "/dev/vdb1",
+  fs_type: "ext4",
+  total: 214748364800,
+  used: 150323855360,
+  available: 60129542144,
+  reserved: 4294967296,
+  used_percent: 71.4,
+  inodes: 1000000,
+  inodes_used: 650000,
+  is_data: true,
+  is_system: false,
+  read_only: false,
+  history: [
+    {
+      at: "2026-10-01T12:00:00Z",
+      total: 214748364800,
+      used: 144955146240,
+      available: 65498251264,
+    },
+    {
+      at: "2026-10-06T12:00:00Z",
+      total: 214748364800,
+      used: 150323855360,
+      available: 60129542144,
+    },
+  ],
+  forecast: {
+    status: "growing",
+    message: "Schätzung bei gleichbleibendem Nettozuwachs.",
+    growth_per_day: 1073741824,
+    days_to_full: 56,
+    full_at: "2026-12-01T12:00:00Z",
+    based_on_days: 5,
+  },
+};
+
+test("storage shows consumption and requires a fresh confirmed growth plan", async ({
+  page,
+}) => {
+  let changed = false,
+    growthAttempts = 0;
+  await page.route("**/api/storage", (route) =>
+    route.fulfill({
+      json: {
+        environment: "vm:kvm",
+        collected_at: "2026-10-06T12:00:00Z",
+        data_path: "/srv/anker",
+        demo: false,
+        volumes: [storageVolume],
+        devices: [],
+        warnings: [],
+      },
+    }),
+  );
+  await page.route("**/api/storage/state", (route) =>
+    route.fulfill({
+      json: {
+        status: changed ? "successful" : "idle",
+        mount: "/srv/anker",
+        message: changed ? "Dateisystem erweitert und neue Größe geprüft." : "",
+        after_bytes: changed ? 429496729600 : 0,
+      },
+    }),
+  );
+  await page.route("**/api/storage/plan", (route) =>
+    route.fulfill({
+      json: {
+        id: "verified-plan",
+        volume_id: "anker-volume",
+        mount: "/srv/anker",
+        source: "/dev/vdb1",
+        fs_type: "ext4",
+        environment: "vm:kvm",
+        device_bytes: 429496729600,
+        filesystem_bytes: 214748364800,
+        can_grow: true,
+        message: "Zusätzlicher Platz ist zugewiesen.",
+        steps: [
+          {
+            title: "Dateisystem erweitern",
+            command: "sudo resize2fs '/dev/vdb1'",
+            explanation: "Bereits zugewiesenen Platz übernehmen.",
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/storage/grow", (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      volume_id: "anker-volume",
+      plan_id: "verified-plan",
+      confirmation: "/srv/anker",
+    });
+    growthAttempts++;
+    if (growthAttempts === 1)
+      return route.fulfill({
+        status: 409,
+        json: { error: "Plan hat sich verändert; erneut prüfen" },
+      });
+    changed = true;
+    return route.fulfill({
+      status: 202,
+      json: { status: "running", mount: "/srv/anker" },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await expect(
+    page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
+  ).toHaveAttribute("aria-valuenow", "71");
+  await expect(page.getByText(/56 Tage/)).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: /Belegungsverlauf/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Erweitern", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const submit = dialog.getByRole("button", {
+    name: "Platz übernehmen",
+    exact: true,
+  });
+  await expect(submit).toBeDisabled();
+  await dialog.getByLabel("Mountpoint bestätigen").fill("/dev/vdb1");
+  await expect(submit).toBeDisabled();
+  await dialog.getByLabel("Mountpoint bestätigen").fill("/srv/anker");
+  await submit.click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Plan hat sich verändert",
+  );
+  await expect(dialog).toBeVisible();
+  await expect(submit).toBeDisabled();
+  await dialog.getByRole("button", { name: "Plan erneut prüfen" }).click();
+  await dialog.getByLabel("Mountpoint bestätigen").fill("/srv/anker");
+  await submit.click();
+  await expect(
+    page.getByText("Dateisystem erweitert und neue Größe geprüft."),
+  ).toBeVisible({ timeout: 8000 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+});
+
+test("LXC storage assistant creates only an explicit host resize command", async ({
+  page,
+}) => {
+  await page.route("**/api/storage", (route) =>
+    route.fulfill({
+      json: {
+        environment: "container:lxc",
+        collected_at: "2026-10-06T12:00:00Z",
+        data_path: "/srv/anker",
+        volumes: [storageVolume],
+        devices: [],
+        warnings: [],
+      },
+    }),
+  );
+  await page.route("**/api/storage/state", (route) =>
+    route.fulfill({ json: { status: "idle" } }),
+  );
+  await page.route("**/api/storage/plan", (route) =>
+    route.fulfill({
+      json: {
+        volume_id: "anker-volume",
+        mount: "/srv/anker",
+        environment: "container:lxc",
+        can_grow: false,
+        message: "Auf dem Proxmox-Host erweitern.",
+        steps: [],
+      },
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await page.getByRole("button", { name: "Erweitern", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Container-ID").fill("123");
+  await dialog.getByLabel("Mountpoint bei Proxmox").selectOption("mp0");
+  await dialog.getByLabel("Zusätzlicher Platz in GiB").fill("50");
+  await expect(
+    dialog.getByText("pct resize 123 mp0 +50G", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Platz übernehmen", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("storage retries unavailable reports and keeps the last values on refresh failure", async ({
+  page,
+}) => {
+  let available = false;
+  await page.route("**/api/storage", (route) =>
+    available
+      ? route.fulfill({
+          json: {
+            environment: "vm:kvm",
+            collected_at: "2026-10-06T12:00:00Z",
+            volumes: [storageVolume],
+            devices: [],
+            warnings: [],
+          },
+        })
+      : route.fulfill({
+          status: 503,
+          json: { error: "Mount nicht erreichbar" },
+        }),
+  );
+  await page.route("**/api/storage/state", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Speicherwerkzeuge nicht erreichbar" },
+    }),
+  );
+  await page.route("**/api/storage/plan", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Speicherwerkzeuge nicht erreichbar" },
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await expect(
+    page.getByText("Mount nicht erreichbar", { exact: true }),
+  ).toBeVisible();
+  available = true;
+  await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
+  await expect(
+    page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
+  ).toHaveAttribute("aria-valuenow", "71");
+  await expect(
+    page.getByText("Speicherwerkzeuge nicht erreichbar", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Erweitern", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Speicherwerkzeuge nicht erreichbar",
+  );
+  await expect(
+    page.getByRole("button", { name: "Platz übernehmen" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Schließen", exact: true })
+    .click();
+  available = false;
+  await page.getByRole("button", { name: "Belegung aktualisieren" }).click();
+  await expect(
+    page.getByText(/angezeigten Werte stammen vom letzten erfolgreichen Abruf/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
+  ).toHaveAttribute("aria-valuenow", "71");
+});
+
+test("storage polling failure keeps an accepted operation running and blocks duplicates", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("**/api/storage", (route) =>
+    route.fulfill({
+      json: {
+        environment: "vm:kvm",
+        collected_at: "2026-10-06T12:00:00Z",
+        volumes: [storageVolume],
+        devices: [],
+        warnings: [],
+      },
+    }),
+  );
+  await page.route("**/api/storage/state", (route) =>
+    ++requests === 1
+      ? route.fulfill({ json: { status: "running", mount: "/srv/anker" } })
+      : route.fulfill({
+          status: 503,
+          json: { error: "Verbindung unterbrochen" },
+        }),
+  );
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await expect(
+    page.getByText(
+      /Status nicht erreichbar; die Erweiterung kann weiterlaufen/,
+    ),
+  ).toBeVisible({ timeout: 8000 });
+  await expect(
+    page.getByRole("button", { name: "Erweitern", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Neues Laufwerk einbinden", exact: true }),
+  ).toBeDisabled();
+});
+
+test("new backup drive offers a downloadable manual migration with mount checks", async ({
+  page,
+}) => {
+  await page.route("**/api/storage", (route) =>
+    route.fulfill({
+      json: {
+        environment: "vm:kvm",
+        collected_at: "2026-10-06T12:00:00Z",
+        volumes: [storageVolume],
+        devices: [
+          {
+            name: "/dev/vdc1",
+            type: "part",
+            size: 429496729600,
+            fstype: "ext4",
+            uuid: "fixture-123",
+            mountpoints: [null],
+          },
+        ],
+        warnings: [],
+      },
+    }),
+  );
+  await page.route("**/api/storage/state", (route) =>
+    route.fulfill({ json: { status: "idle" } }),
+  );
+  await page
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Speicher", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Neues Laufwerk einbinden", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Noch nicht eingebundenes Gerät")).toHaveValue(
+    "/dev/vdc1",
+  );
+  const downloaded = page.waitForEvent("download");
+  await dialog
+    .getByRole("button", { name: "Anleitung herunterladen", exact: true })
+    .click();
+  const path = await (await downloaded).path();
+  const guide = await readFile(path!, "utf8");
+  expect(guide).toContain("rsync -aHAX --numeric-ids");
+  expect(guide).toContain("findmnt -n -o UUID --mountpoint /srv/anker");
+  expect(guide).toContain("sudo umount /srv/anker");
+  expect(guide).toContain("lost+found");
+  expect(guide).not.toContain("mkfs");
+});
+
 test("host search and backup files work", async ({ page }) => {
   await page.getByPlaceholder("Hosts durchsuchen").fill("berlin");
   await expect(page.getByRole("row")).toHaveCount(4);
