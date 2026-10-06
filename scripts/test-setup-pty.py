@@ -15,6 +15,12 @@ import subprocess
 if os.environ.get('GITHUB_ACTIONS')!='true' or os.geteuid()!=0:
  raise SystemExit('Only run inside the isolated root CI harness')
 
+def restart_updater():
+ # Independent restart cases must not consume systemd's production rate limit.
+ # Keep the installed unit unchanged, and let any failed restart fail the test.
+ subprocess.run(['systemctl','reset-failed','anker-updater'],check=True)
+ subprocess.run(['systemctl','restart','anker-updater'],check=True)
+
 def setup(first,mode="1",tls_choice="1"):
  child,terminal=pty.fork()
  if child==0:os.execv('/usr/local/bin/anker',['anker','setup'])
@@ -68,7 +74,7 @@ try:
  print('Legacy updater unit migration and helper startup without release configuration passed.')
 finally:
  saved_update.rename(update_config);saved_key.rename(release_key)
- subprocess.run(['systemctl','restart','anker-updater'],check=True)
+ restart_updater()
 
 def tls_paths():
  env={line.split('=',1)[0]:shlex.split(line.split('=',1)[1])[0] for line in pathlib.Path('/etc/anker/service.env').read_text().splitlines() if '=' in line}
@@ -96,7 +102,7 @@ update_config=pathlib.Path('/etc/anker/update.json')
 saved_update=update_config.with_suffix('.ci-save')
 update_config.rename(saved_update)
 try:
- subprocess.run(['systemctl','restart','anker-updater'],check=True)
+ restart_updater()
  deadline=time.monotonic()+20
  while True:
   try:tls_status=tls_cli('status');break
@@ -112,7 +118,7 @@ try:
  context=ssl.create_default_context(cafile=str(cert))
  with urllib.request.urlopen(request,context=context) as response:assert response.status==200
  tls_cli('auto','off','--days','14')
- subprocess.run(['systemctl','restart','anker-updater'],check=True)
+ restart_updater()
  deadline=time.monotonic()+20
  while True:
   try:policy=tls_cli('status');break
@@ -126,7 +132,7 @@ try:
  subprocess.run(['openssl','x509','-in',str(cert),'-signkey',str(key),'-days','10','-out',str(staged)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  os.chown(staged,cert.stat().st_uid,cert.stat().st_gid);staged.chmod(0o640);staged.replace(cert)
  tls_cli('auto','on','--days','30')
- subprocess.run(['systemctl','restart','anker-updater'],check=True)
+ restart_updater()
  deadline=time.monotonic()+20
  while True:
   try:
@@ -142,6 +148,6 @@ try:
  print('Manual and automatic TLS renewal without service restart or release configuration passed; policy survived helper restart.')
 finally:
  saved_update.rename(update_config)
- subprocess.run(['systemctl','restart','anker-updater'],check=True)
+ restart_updater()
 # The updater integration uses its own HTTP loopback login, through the tunnel mode.
 setup(False,'1')
