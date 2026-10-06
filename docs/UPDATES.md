@@ -65,6 +65,8 @@ sudo ./scripts/install-server.sh ./anker
 
 Das Installationsskript öffnet die Einrichtung automatisch. Der Installer überschreibt eine bestehende Anker-Installation nicht. Eine ältere Entwicklungsinstallation zuerst im Wartungsfenster stoppen und nach Sicherung des Katalogs auf diesen Installationsstand bringen.
 
+Die root-eigene Zertifikatsverwaltung verwendet denselben Dienst und startet auch ohne `update.json`. Für bestehende Installationen einmal `sudo anker setup` ausführen: dabei wird die frühere Dienstbedingung für eine vorhandene Updatequelle entfernt, ohne lokale Unit-Einstellungen zu verwerfen. Eine OTA-Aktualisierung tauscht weiterhin die Binärdateien; dieser einmalige Einrichtungsschritt registriert bestehende selbst erzeugte Zertifikate für die Automatik. In der Demo bleiben sämtliche Zertifikatsänderungen gesperrt.
+
 ## Updater auf dem Server einrichten
 
 `/etc/anker/update.json` für `jahartmann/Anker` mit dem Inhalt von `public.key` erstellen:

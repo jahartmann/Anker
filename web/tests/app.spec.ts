@@ -350,7 +350,9 @@ test("host form validates and creates real record", async ({ page }) => {
     page.getByText("pve-browser-test", { exact: true }),
   ).toBeVisible();
   const hosts = await (await page.request.get("/api/hosts")).json();
-  expect(hosts.find((h: { name: string }) => h.name === "pve-browser-test")).toMatchObject({
+  expect(
+    hosts.find((h: { name: string }) => h.name === "pve-browser-test"),
+  ).toMatchObject({
     key_path: "/etc/anker/keys/backup",
     known_hosts_path: "/etc/anker/known_hosts",
   });
@@ -796,6 +798,97 @@ test("update panel describes setup when the updater is unavailable", async ({
   await expect(
     page.getByRole("button", { name: "Nach Updates suchen" }),
   ).toBeDisabled();
+});
+
+test("web certificate settings keep demo isolated", async ({ page }) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Webzertifikat", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Zertifikatsverwaltung ist in der lokalen Demo ausgeschaltet.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Jetzt erneuern", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("web certificate renewal confirms browser trust and keeps policy after failure", async ({
+  page,
+}) => {
+  let automatic = true,
+    days = 30,
+    renewed = false;
+  const state = () => ({
+    enabled: true,
+    managed: true,
+    automatic,
+    renew_before_days: days,
+    expires_at: renewed ? "2027-10-06T12:00:00Z" : "2026-10-16T12:00:00Z",
+    valid_from: "2026-10-06T12:00:00Z",
+    days_remaining: renewed ? 365 : 10,
+    fingerprint: renewed ? "BB22" : "AA11",
+    last_error: renewed ? "" : "Speicherplatz reicht nicht aus",
+    names: ["anker.internal"],
+    last_renewed_at: renewed ? "2026-10-06T12:00:00Z" : "",
+    message:
+      "Selbstsigniertes Zertifikat. Nach Erneuerung kann eine neue Browserfreigabe nötig sein.",
+  });
+  await page.route("**/api/tls", (route) => {
+    if (route.request().method() === "POST") {
+      const input = route.request().postDataJSON();
+      automatic = input.automatic;
+      days = input.renew_before_days;
+    }
+    return route.fulfill({ json: state() });
+  });
+  await page.route("**/api/tls/renew", (route) =>
+    renewed
+      ? route.fulfill({ json: state() })
+      : route.fulfill({
+          status: 409,
+          json: { error: "Einrichtung läuft; erneut versuchen" },
+        }),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(page.getByText("AA11", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    "Speicherplatz reicht nicht aus",
+  );
+  await page.getByLabel("Automatisch erneuern").uncheck();
+  await page.getByLabel("Vorlauf in Tagen").fill("14");
+  await page
+    .getByRole("button", { name: "Erneuerung speichern", exact: true })
+    .click();
+  await expect(page.getByLabel("Automatisch erneuern")).not.toBeChecked();
+  await expect(page.getByLabel("Vorlauf in Tagen")).toHaveValue("14");
+  await page
+    .getByRole("button", { name: "Jetzt erneuern", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Browserfreigabe");
+  await page
+    .getByRole("button", { name: "Zertifikat jetzt erneuern", exact: true })
+    .click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Einrichtung läuft",
+  );
+  renewed = true;
+  await page
+    .getByRole("button", { name: "Zertifikat jetzt erneuern", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("BB22", { exact: true })).toBeVisible();
 });
 test("update installation requires a reviewed version and recovers after a restart", async ({
   page,

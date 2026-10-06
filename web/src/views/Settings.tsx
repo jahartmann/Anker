@@ -6,6 +6,7 @@ import { Field, Heading, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
 import Access from "./Access";
 import Updates from "./Updates";
+import Certificates from "./Certificates";
 export default function Settings({
   notify,
   onDirtyChange,
@@ -25,18 +26,19 @@ export default function Settings({
   const [saveError, setSaveError] = useState("");
   const [reload, setReload] = useState(0);
   const dirty = !!value && JSON.stringify(value) !== saved;
+  const [certificateDirty, setCertificateDirty] = useState(false);
   useEffect(() => {
-    onDirtyChange(dirty);
-  }, [dirty, onDirtyChange]);
+    onDirtyChange(dirty || certificateDirty);
+  }, [dirty, certificateDirty, onDirtyChange]);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !certificateDirty) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, certificateDirty]);
   useEffect(() => {
     let active = true;
     setLoadError("");
@@ -328,49 +330,48 @@ export default function Settings({
           <Access notify={notify} />
         </>
       )}
-      {tab === "System" && (
-        <section className="detail-section">
-          <Updates />
-          <h3>Systemprüfung</h3>
-          <pre className="system-output">
-            {doctor ? JSON.stringify(doctor, null, 2) : "Wird geladen …"}
-          </pre>
-          <button
-            className="secondary"
-            onClick={async () => {
-              try {
-                const r = await api<{ indexed: number }>("reindex", "POST", {});
-                notify(r.indexed + " Sicherungen neu eingelesen");
-              } catch (e) {
-                notify((e as Error).message, true);
-              }
-            }}
-          >
-            Sicherungsindex neu einlesen
-          </button>
-          <h3>Aktivitätsprotokoll</h3>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Zeitpunkt</th>
-                  <th>Aktion</th>
-                  <th>Ziel</th>
+      <section className="detail-section" hidden={tab !== "System"}>
+        <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
+        <Updates />
+        <h3>Systemprüfung</h3>
+        <pre className="system-output">
+          {doctor ? JSON.stringify(doctor, null, 2) : "Wird geladen …"}
+        </pre>
+        <button
+          className="secondary"
+          onClick={async () => {
+            try {
+              const r = await api<{ indexed: number }>("reindex", "POST", {});
+              notify(r.indexed + " Sicherungen neu eingelesen");
+            } catch (e) {
+              notify((e as Error).message, true);
+            }
+          }}
+        >
+          Sicherungsindex neu einlesen
+        </button>
+        <h3>Aktivitätsprotokoll</h3>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Aktion</th>
+                <th>Ziel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audit.map((a, i) => (
+                <tr key={i}>
+                  <td className="date">{date(a.at)}</td>
+                  <td>{a.action}</td>
+                  <td className="mono">{a.object}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {audit.map((a, i) => (
-                  <tr key={i}>
-                    <td className="date">{date(a.at)}</td>
-                    <td>{a.action}</td>
-                    <td className="mono">{a.object}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }

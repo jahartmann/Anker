@@ -343,6 +343,10 @@ func runSetup(configureUpdates bool) error {
 	if err != nil {
 		return err
 	}
+	policy, err := updater.LoadTLSPolicy("/etc/anker")
+	if err != nil {
+		return err
+	}
 	cfg := updater.Config{Repository: "jahartmann/Anker"}
 	if b, err := os.ReadFile(updater.ConfigPath); err == nil {
 		if err = json.Unmarshal(b, &cfg); err != nil {
@@ -461,6 +465,9 @@ func runSetup(configureUpdates bool) error {
 		return err
 	}
 	wasRunning := exec.Command("systemctl", "is-active", "--quiet", "anker.service").Run() == nil
+	if err = setupMigrateUpdaterUnit(); err != nil {
+		return err
+	}
 	defer func() {
 		if wasRunning {
 			exec.Command("systemctl", "start", "anker.service").Run()
@@ -494,6 +501,31 @@ func runSetup(configureUpdates bool) error {
 	if err = setupWrite("/etc/anker/service.env", []byte(text), 0640, 0, gid); err != nil {
 		return err
 	}
+	if web.Managed {
+		if policy.ManagedCert == "" {
+			policy.Automatic = true
+		}
+		if policy.ManagedCert != web.Cert {
+			policy.LastRenewedAt = ""
+		}
+		leaf, err := setupTLSLeaf(web.CertBytes, web.KeyBytes)
+		if err != nil {
+			return err
+		}
+		hash := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+		policy.ManagedCert, policy.ManagedPublicKey = web.Cert, fmt.Sprintf("%X", hash)
+	} else {
+		policy.Automatic = false
+		policy.ManagedCert, policy.ManagedPublicKey, policy.LastRenewedAt = "", "", ""
+	}
+	policyBytes, err := json.Marshal(policy)
+	if err != nil {
+		return err
+	}
+	if err = setupWrite(updater.TLSConfigPath, append(policyBytes, '\n'), 0600, 0, 0); err != nil {
+		return err
+	}
+
 	if keyFile != "" {
 		if token != "" {
 			if err = setupWrite(cfg.TokenFile, []byte(token+"\n"), 0600, 0, 0); err != nil {
@@ -523,7 +555,7 @@ func runSetup(configureUpdates bool) error {
 	if err = updateLock.Close(); err != nil {
 		return err
 	}
-	if _, err = os.Stat(updater.ConfigPath); err == nil {
+	{
 		if err = setupCommand("systemctl", "enable", "--now", "anker-updater.service"); err != nil {
 			return err
 		}
@@ -544,7 +576,7 @@ func runSetup(configureUpdates bool) error {
 		}
 		fmt.Printf("TLS-Fingerprint SHA256: %X\nZertifikat gültig bis %s · Datei: %s\n", sha256.Sum256(leaf.Raw), leaf.NotAfter.UTC().Format("02.01.2006"), web.Cert)
 		if web.SelfSigned {
-			fmt.Println("Keine interne CA erforderlich. Den Fingerprint vor Bestätigen der Browserwarnung auf jedem Arbeitsplatz vergleichen. Ein bereits vertrautes Zertifikat lässt sich optional importieren. Erneuern über sudo anker setup vor dem Ablaufdatum.")
+			fmt.Println("Keine interne CA erforderlich. Den Fingerprint vor Bestätigen der Browserwarnung auf jedem Arbeitsplatz vergleichen. Automatische Erneuerung unter Einstellungen → System → Webzertifikat verwalten. Nach Erneuerung kann eine neue Browserfreigabe nötig sein.")
 		}
 	}
 	fmt.Println("SSH-Schlüssel: /etc/anker/keys/backup und restore\nÖffentliche Schlüssel: gleiche Pfade mit .pub. Host-Anbindung: README → Proxmox-Hosts anbinden.\nEinrichtung erneut öffnen: sudo anker setup")

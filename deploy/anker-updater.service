@@ -2,7 +2,6 @@
 Description=Anker signed release updater
 After=network-online.target anker.service
 Wants=network-online.target
-ConditionPathExists=/etc/anker/update.json
 
 [Service]
 Type=simple

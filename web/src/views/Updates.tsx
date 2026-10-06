@@ -128,10 +128,9 @@ export default function Updates() {
             <div className="update-note">
               <p>{state.message}</p>
               <p className="muted">
-                Auf dem Linux-Server die Release-Quelle und den öffentlichen
-                Signierschlüssel in <code>/etc/anker/update.json</code>{" "}
-                hinterlegen und <code>anker-updater.service</code> aktivieren.
-                Die Schritte stehen in der Update-Anleitung.
+                Auf dem Linux-Server <code>sudo anker setup --updates</code>{" "}
+                ausführen und den geprüften öffentlichen Signierschlüssel
+                angeben. Die Schritte stehen in der Update-Anleitung.
               </p>
             </div>
           ) : (

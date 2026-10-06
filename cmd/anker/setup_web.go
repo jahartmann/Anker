@@ -1,7 +1,9 @@
 package main
 
 import (
+	"anker/internal/updater"
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +17,7 @@ type setupWebConfig struct {
 	Listen, Host, Cert, Key string
 	CertBytes, KeyBytes     []byte
 	SelfSigned              bool
+	Managed                 bool
 }
 
 func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
@@ -111,6 +114,15 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 		return c, errors.New("TLS-Zertifikat ist noch nicht gültig oder abgelaufen")
 	}
 	c.SelfSigned = bytes.Equal(leaf.RawIssuer, leaf.RawSubject) && leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature) == nil
+	c.Managed = choice == "1" && c.SelfSigned
+	if choice == "3" {
+		policy, err := updater.LoadTLSPolicy("/etc/anker")
+		if err != nil {
+			return c, err
+		}
+		hash := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+		c.Managed = c.SelfSigned && policy.ManagedCert == currentCert && policy.ManagedPublicKey == fmt.Sprintf("%X", hash)
+	}
 	if c.SelfSigned {
 		fmt.Println("Eigenes TLS-Zertifikat: keine interne CA oder öffentliche Domain erforderlich. Verbindung verschlüsselt; Fingerprint vor dem ersten Browserzugriff prüfen.")
 	}

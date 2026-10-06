@@ -61,11 +61,12 @@ func LoadConfig() (Config, string, error) {
 }
 
 type Server struct {
-	mu        sync.Mutex
-	state     State
-	source    *GitHub
-	installer *Installer
-	busy      bool
+	mu         sync.Mutex
+	state      State
+	source     *GitHub
+	installer  *Installer
+	busy       bool
+	tlsManager *TLSManager
 }
 
 func (s *Server) save() error {
@@ -83,6 +84,10 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		json.NewEncoder(w).Encode(map[string]string{"error": message})
 	}
+	if strings.HasPrefix(r.URL.Path, "/tls") {
+		s.tlsHandler(w, r)
+		return
+	}
 	if r.URL.Path == "/status" && r.Method == "GET" {
 		json.NewEncoder(w).Encode(s.snapshot())
 		return
@@ -93,6 +98,10 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Header.Get("X-Anker-Request") != "1" {
 		fail(403, "Anfrageherkunft ungültig")
+		return
+	}
+	if !s.snapshot().Configured {
+		fail(503, "Signierte Updates noch nicht eingerichtet; sudo anker setup --updates verwenden")
 		return
 	}
 	var in struct {
@@ -212,8 +221,11 @@ func Serve(ctx context.Context, current string) error {
 	}
 	c, token, err := LoadConfig()
 	if err != nil {
-		return err
+		if _, configErr := os.Lstat(ConfigPath); !errors.Is(configErr, os.ErrNotExist) {
+			return err
+		}
 	}
+	configured := err == nil
 	if err = os.MkdirAll(StateDir, 0700); err != nil {
 		return err
 	}
@@ -250,7 +262,7 @@ func Serve(ctx context.Context, current string) error {
 	if v, err := ctl.call(ctx, "GET", ""); err == nil {
 		current = v
 	}
-	s := &Server{source: NewGitHub(c, token), installer: i, state: State{Configured: true, Repository: c.Repository, Current: current, Status: "idle"}}
+	s := &Server{source: NewGitHub(c, token), installer: i, tlsManager: &TLSManager{Dir: "/etc/anker"}, state: State{Configured: configured, Repository: c.Repository, Current: current, Status: "idle"}}
 	if b, err := os.ReadFile(filepath.Join(StateDir, "status.json")); err == nil {
 		var old State
 		if json.Unmarshal(b, &old) == nil {
@@ -267,6 +279,10 @@ func Serve(ctx context.Context, current string) error {
 	if hadPending {
 		s.state.Status = "rolled_back"
 		s.state.Message = "Unterbrochenes Update auf vorherige Version zurückgesetzt"
+	}
+	if !configured {
+		s.state.Status = "unconfigured"
+		s.state.Message = "Signierte Updates noch nicht eingerichtet; sudo anker setup --updates verwenden."
 	}
 	if err = s.save(); err != nil {
 		return err
@@ -289,6 +305,7 @@ func Serve(ctx context.Context, current string) error {
 		return err
 	}
 	server := &http.Server{Handler: http.HandlerFunc(s.handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	go s.maintainTLS(ctx)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)

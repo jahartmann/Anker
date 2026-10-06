@@ -58,7 +58,25 @@ Bestehende Benutzer und private SSH-Schlüssel bleiben erhalten. Der Assistent f
 
 Ohne interne CA und ohne eigene öffentliche Domain im Assistenten „automatisch erzeugen“ wählen. Anker erstellt ein Zertifikat für den angegebenen internen DNS-Namen oder die IP. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Eine interne CA wird dafür nicht vorausgesetzt. Die Prüfung ist in jedem verwendeten Browser beziehungsweise auf jedem Arbeitsplatz erforderlich. Bereits vorhandene, vom Browser vertraute Zertifikate lassen sich optional importieren.
 
-Das automatisch erzeugte Zertifikat gilt ein Jahr. Der Assistent zeigt das Ablaufdatum. Es wird nicht im Hintergrund verlängert: vor Ablauf `sudo anker setup` öffnen und „automatisch erzeugen“ wählen. Innerhalb der letzten 30 Tage wird dann ein neues Zertifikat erzeugt; bei der Browserprüfung den neuen Fingerprint verwenden. Wiederholte Einrichtung behält ein noch ausreichend gültiges Zertifikat mit gleicher Adresse bei.
+Das automatisch erzeugte Zertifikat gilt ein Jahr. Bei neuer Einrichtung ist die automatische Erneuerung eingeschaltet: Anker prüft beim Start und alle sechs Stunden und erneuert standardmäßig innerhalb der letzten 30 Tage. Der Webdienst übernimmt das neue Zertifikat ohne Neustart. Der private Schlüssel und die eingerichteten DNS-Namen/IPs bleiben erhalten; das vorherige öffentliche Zertifikat bleibt als Rückfallkopie vorhanden.
+
+Unter **Einstellungen → System → Webzertifikat** Ablaufdatum, Webadressen und SHA256-Fingerprint ansehen, das öffentliche Zertifikat herunterladen, Automatik ein-/ausschalten und den Vorlauf zwischen 7 und 90 Tagen einstellen. „Jetzt erneuern“ ist nach Bestätigung jederzeit möglich. Änderungen erfordern Administratorrechte; der letzte Automatikfehler bleibt bis zur erfolgreichen Prüfung/Erneuerung sichtbar. Die Einstellungen bleiben nach Dienst- und Containerneustarts erhalten.
+
+Wichtig: Erneuerung verändert den Zertifikatsfingerprint. Bei selbstsignierten Zertifikaten kann deshalb auf jedem Arbeitsplatz eine neue Browserfreigabe erforderlich werden. Automatische Erneuerung auf dem Server ersetzt kein dauerhaftes Browservertrauen. Den neuen Fingerprint bei Bedarf direkt am Server mit `sudo anker tls status` ablesen und vergleichen. Eine eigene interne CA ist weiterhin keine Voraussetzung.
+
+Bereits vorhandene Installationen einmal mit `sudo anker setup` aktualisieren und die TLS-Option „automatisch erzeugen“ wählen. Ein noch ausreichend gültiges vorhandenes Zertifikat mit gleicher Adresse bleibt dabei erhalten; der Assistent registriert es für die Erneuerung und übernimmt ältere Dienstkonfigurationen. Zertifikate aus der Option „eigene Zertifikatsdateien“ bleiben extern verwaltet, auch wenn sie selbstsigniert sind. Sie werden nicht automatisch überschrieben. Die Zertifikatsverwaltung läuft auch ohne eingerichtete GitHub-Updatequelle.
+
+Alternativ im Terminal:
+
+```sh
+sudo anker tls status
+sudo anker tls auto on --days 30
+sudo anker tls auto off
+sudo anker tls renew
+sudo anker tls certificate ./anker-server.crt
+```
+
+Die CLI-Erneuerung erfolgt sofort; vorher den Zugriff für eine eventuell notwendige Browserfreigabe sicherstellen. Automatik und Einstellungen brauchen den laufenden `anker-updater.service`, der die root-eigenen Zertifikatsdateien verwaltet. Fehler stehen zusätzlich in `journalctl -u anker-updater`.
 
 HTTPS schützt Anmeldung, Sitzung und heruntergeladene Konfigurationen. Ein VPN ersetzt die Absicherung der Webverbindung auf den beteiligten Rechnern und Netzabschnitten nicht automatisch. Deshalb bleibt direkter Webzugriff im Assistenten bei HTTPS. Hintergrund: [OWASP TLS](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html).
 

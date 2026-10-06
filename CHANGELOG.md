@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Webzertifikate automatisch und ohne Dienstneustart erneuern; Ablauf, Fingerprint, öffentlicher Download und administrativer Vorlauf in Einstellungen/CLI. Importierte Zertifikate bleiben unangetastet; selbstsignierte Zertifikate können eine neue Browserfreigabe benötigen.
+
 - Kürzere Ersteinrichtung: eigene Zugangsdaten vor dem Dienstwechsel, bestehende Administratoren erkannt, bekannte Updatequellen automatisch übernommen.
 - HTTPS-Zertifikat für private DNS-Namen oder IPs direkt im Assistenten erzeugen oder eigene Zertifikate importieren. Gültigkeit und Adresse werden geprüft; eine gültige bestehende TLS-Identität bleibt erhalten.
 - Hostinstallation übernimmt eingeschränkte öffentliche SSH-Schlüssel in einem Aufruf. `anker host trust` prüft unabhängig angegebene Fingerprints und pflegt `known_hosts`; Hostformular und CLI verwenden die erzeugten SSH-Pfade automatisch.

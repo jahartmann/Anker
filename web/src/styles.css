@@ -1456,6 +1456,19 @@ textarea {
   margin-top: 16px;
   font-size: 13px;
 }
+.certificate-fingerprint {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+.certificate-fingerprint code {
+  overflow-wrap: anywhere;
+}
+.certificate-policy {
+  margin-top: 24px;
+  max-width: 620px;
+}
 @media (max-width: 640px) {
   .update-section .section-heading,
   .update-release,

@@ -131,6 +131,28 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 		return call("GET", "status", nil)
 	case "doctor":
 		return call("GET", "doctor", nil)
+	case "tls":
+		if len(args) == 2 && args[1] == "status" {
+			return call("GET", "tls", nil)
+		}
+		if len(args) == 2 && args[1] == "renew" {
+			return call("POST", "tls/renew", struct{}{})
+		}
+		if len(args) == 3 && args[1] == "certificate" {
+			return c.Download(ctx, "tls/certificate", args[2])
+		}
+		if len(args) >= 3 && args[1] == "auto" && (args[2] == "on" || args[2] == "off") {
+			flags := fs("tls auto")
+			days := flags.Int("days", 30, "Erneuerungsvorlauf in Tagen")
+			if err := flags.Parse(args[3:]); err != nil {
+				return err
+			}
+			if flags.NArg() != 0 || *days < 7 || *days > 90 {
+				return errors.New("Vorlauf zwischen 7 und 90 Tagen angeben")
+			}
+			return call("POST", "tls", map[string]any{"automatic": args[2] == "on", "renew_before_days": *days})
+		}
+		return errors.New("anker tls status | renew | auto on/off [--days 30] | certificate DATEI.crt")
 	case "host":
 		if err := need(2); err != nil {
 			return err
@@ -368,6 +390,7 @@ anker settings show | save DATEI.json
 anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
 anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME
 anker update status | check | install
+anker tls status | renew | auto on/off [--days 30] | certificate DATEI.crt
 anker reindex
 
 Globale Optionen vor dem Befehl: --data /srv/anker --socket /srv/anker/anker.sock`

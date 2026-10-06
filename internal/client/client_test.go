@@ -44,3 +44,35 @@ func TestUnknownCLICommandFails(t *testing.T) {
 		t.Fatal("unknown command succeeded")
 	}
 }
+
+func TestCLITLSStatusUsesLocalAPIAndDemoRefusesChanges(t *testing.T) {
+	root := t.TempDir()
+	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s, err := anker.NewService(root, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Demo = true
+	server := httptest.NewServer(anker.Handler(s, anker.NewAuth(store), true))
+	defer server.Close()
+	var out bytes.Buffer
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &out}
+	if err := c.Run(context.Background(), []string{"tls", "status"}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(`"enabled": false`)) {
+		t.Fatal(out.String())
+	}
+	if err := c.Run(context.Background(), []string{"tls", "renew"}); err == nil {
+		t.Fatal("demo certificate changed")
+	}
+	for _, args := range [][]string{{"tls", "auto", "maybe"}, {"tls", "auto", "on", "--days", "1"}, {"tls", "renew", "arbitrary"}} {
+		if err := c.Run(context.Background(), args); err == nil {
+			t.Fatal("invalid certificate command accepted", args)
+		}
+	}
+}

@@ -165,6 +165,12 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 			}
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/tls") {
+			if err := s.certificates(w, r, u); err != nil {
+				jsonError(w, err)
+			}
+			return
+		}
 		if err := handleAPI(s, a, u, w, r); err != nil {
 			if w.started {
 				panic(http.ErrAbortHandler)
