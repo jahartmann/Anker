@@ -23,6 +23,10 @@ install -d /usr/local/bin
 printf '%s\n' 'interrupted initial binary' >/usr/local/bin/anker
 ./scripts/install-server.sh "$ANKER_TEST_BINARY" --no-setup
 [ ! -e /etc/anker/install-pending ] || { echo 'Installationsmarker nicht abgeschlossen.' >&2; exit 1; }
+# Reproduce a dedicated ext filesystem mounted directly at the data root.
+install -d -o root -g root -m 0700 /srv/anker/lost+found
+printf '%s\n' 'recovered filesystem data' >/srv/anker/lost+found/recovered-file
+chmod 0600 /srv/anker/lost+found/recovered-file
 python3 - <<'PY'
 import base64,os,pathlib
 key=base64.b64encode(bytes(range(32)))+b'\n'
@@ -30,5 +34,13 @@ path=pathlib.Path('/etc/anker/release-public.key');path.write_bytes(key);path.ch
 os.chown(path,0,__import__('grp').getgrnam('anker').gr_gid)
 PY
 python3 scripts/test-setup-pty.py
+python3 - <<'PY'
+import pathlib,stat
+directory=pathlib.Path('/srv/anker/lost+found');info=directory.stat()
+assert info.st_uid==0 and info.st_gid==0 and stat.S_IMODE(info.st_mode)==0o700,'filesystem recovery permissions changed'
+assert (directory/'recovered-file').read_text()=='recovered filesystem data\n','filesystem recovery data changed'
+assert pathlib.Path('/srv/anker/.anker-mode').read_text()=='production\n','production initialization failed'
+print('Setup with inaccessible root-owned lost+found passed; recovery directory preserved.')
+PY
 touch /run/anker-isolated-ci
 ANKER_SYSTEMD_TEST=1 ANKER_SYSTEMD_CANDIDATE="$ANKER_TEST_CANDIDATE" "$ANKER_TEST_SUITE" -test.run '^(TestSystemdInstallationAndRecovery|TestStorageRealExt4GrowthUnderSystemd)$' -test.v -test.timeout 5m

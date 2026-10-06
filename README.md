@@ -47,6 +47,8 @@ Der Assistent fragt nur nach den Angaben, die er nicht selbst bestimmen kann:
 
 Anker legt Benutzer und Ordner an, setzt die Dateirechte, erzeugt getrennte SSH-Schlüssel für Sicherung und Wiederherstellung und startet die Dienste. Eine bereits bekannte Updatequelle wird übernommen. Bei einem geprüften Release wird dessen öffentlicher Signierschlüssel automatisch verwendet. Für ein öffentliches Repository ist kein GitHub-Token nötig.
 
+Ein eigenes Dateisystem oder LXC-Mount unter `/srv/anker` ist möglich. Ein vorhandenes `lost+found` direkt darin bleibt unangetastet; Anker benötigt darauf keinen Zugriff.
+
 Die normale Installation startet leer. Es gibt keine Beispielhosts, Backups, Aufträge oder Demobenutzer. Voreingestellt sind tägliche Sicherungen ab 02:00 Uhr in Europe/Berlin, vier parallele Aufträge sowie 30 Tages-, 12 Wochen- und 12 Monatsstände. Zusätzliche Benutzer, SMTP und Webhooks können später in der Oberfläche eingerichtet werden.
 
 Einrichtung wiederholen oder nach einem Abbruch fortsetzen:

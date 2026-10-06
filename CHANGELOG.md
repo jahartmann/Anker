@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Ersteinrichtung auf einem direkt eingebundenen Dateisystem funktioniert auch mit root-eigenem `lost+found`; dessen Rechte und Inhalte bleiben unverändert.
+
 - Passwortvorgabe standardmäßig acht Zeichen, administrativ auf 8 bis 128 Zeichen einstellbar. Einheitliche Prüfung in Ersteinrichtung, Web und CLI; bestehende Zugänge bleiben bei Erhöhung nutzbar.
 
 - Aufträge mit Detailansicht, tatsächlichem Start, manuellem/automatischem Auslöser und direktem Sicherungszugriff. Abbruch, erneuter Start von Sicherung/Hostprüfung und administratives Entfernen abgeschlossener Einträge über Web/CLI.

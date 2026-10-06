@@ -123,6 +123,11 @@ func EnsureDataMode(root string, demo bool) error {
 				return err
 			}
 			if entry.IsDir() {
+				// A mounted ext filesystem may have a root-owned recovery
+				// directory. It is filesystem metadata, not an Anker data root.
+				if path == filepath.Join(root, "lost+found") {
+					return filepath.SkipDir
+				}
 				rel, err := filepath.Rel(root, path)
 				if err != nil {
 					return err
