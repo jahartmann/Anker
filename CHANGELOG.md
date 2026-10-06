@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Aufträge mit Detailansicht, tatsächlichem Start, manuellem/automatischem Auslöser und direktem Sicherungszugriff. Abbruch, erneuter Start von Sicherung/Hostprüfung und administratives Entfernen abgeschlossener Einträge über Web/CLI.
+- Tagesmarker und Einplanung atomar speichern, defekte Katalogwerte melden, geänderte Parallelität für wartende Aufträge übernehmen und Hostlöschung gegen gleichzeitig gestartete Aufträge schützen. Schedulerfehler bleiben sichtbar; verspätete Statusantworten überschreiben keine neueren Zustände.
+
 - Speicherbereich für Anker und seine Backup-Laufwerke: Belegung, verfügbarer Platz, Inodes, echter Verlauf und bedingte Kapazitätsprognose. Bestätigte Dateisystemerweiterung für bereits zugewiesenen ext4-/XFS-Platz; LXC-Anleitung und herunterladbare Hinweise zum Einbinden neuer Laufwerke. Keine Formatierung oder automatische Partition-/LVM-Änderung.
 
 - Webzertifikate automatisch und ohne Dienstneustart erneuern; Ablauf, Fingerprint, öffentlicher Download und administrativer Vorlauf in Einstellungen/CLI. Importierte Zertifikate bleiben unangetastet; selbstsignierte Zertifikate können eine neue Browserfreigabe benötigen.

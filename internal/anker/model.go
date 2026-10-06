@@ -112,15 +112,18 @@ type Backup struct {
 	Warnings          []string `json:"warnings"`
 }
 type Job struct {
-	ID         string `json:"id"`
-	HostID     string `json:"host_id"`
-	Kind       string `json:"kind"`
-	State      string `json:"state"`
-	CreatedAt  string `json:"created_at"`
-	FinishedAt string `json:"finished_at,omitempty"`
-	ResultID   string `json:"result_id,omitempty"`
-	Error      string `json:"error,omitempty"`
-	Attempts   int    `json:"attempts"`
+	ID           string `json:"id"`
+	HostID       string `json:"host_id"`
+	Kind         string `json:"kind"`
+	State        string `json:"state"`
+	CreatedAt    string `json:"created_at"`
+	StartedAt    string `json:"started_at,omitempty"`
+	Trigger      string `json:"trigger,omitempty"`
+	ScheduledDay string `json:"scheduled_day,omitempty"`
+	FinishedAt   string `json:"finished_at,omitempty"`
+	ResultID     string `json:"result_id,omitempty"`
+	Error        string `json:"error,omitempty"`
+	Attempts     int    `json:"attempts"`
 }
 type Mapping struct {
 	Interfaces map[string]string `json:"interfaces"`

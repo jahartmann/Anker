@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Menu, ChevronRight, LogOut, X } from "lucide-react";
 import {
@@ -10,7 +10,8 @@ import {
   labels,
 } from "./api";
 import type { Status, User } from "./api";
-import { Dialog, Empty, Field, Heading, State } from "./components/shared";
+import { Dialog, Empty, Field, Heading } from "./components/shared";
+import Jobs from "./views/Jobs";
 import Hosts from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
 import Restore from "./views/Restore";
@@ -101,9 +102,14 @@ export default function App() {
     (message: string, error = false) => setToast({ message, error }),
     [],
   );
+  const refreshSequence = useRef(0);
+  const acceptedSequence = useRef(0);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
       const s = await api<Status>("status");
+      if (sequence < acceptedSequence.current) return;
+      acceptedSequence.current = sequence;
       configureTimezone(s.timezone);
       setConnectionError("");
       setUpdatedAt(new Date().toISOString());
@@ -115,12 +121,15 @@ export default function App() {
         jobs: s.jobs || [],
       });
     } catch (e) {
+      if (sequence < acceptedSequence.current) return;
+      acceptedSequence.current = sequence;
       if ((e as Error).message === "Anmeldung erforderlich") setUser(null);
       else setConnectionError((e as Error).message);
     }
   }, [notify]);
   useEffect(() => {
     const expired = () => {
+      acceptedSequence.current = ++refreshSequence.current;
       setUser(null);
       setStatus(emptyStatus);
       setFile("");
@@ -190,6 +199,7 @@ export default function App() {
     notify,
     refresh,
     canEdit: user.role !== "reader",
+    canManage: user.role === "admin",
     canDownload: user.secrets,
     openBackup: setFile,
     onRestore: restore,
@@ -244,6 +254,7 @@ export default function App() {
               onClick={async () => {
                 try {
                   await api("logout", "POST", {});
+                  acceptedSequence.current = ++refreshSequence.current;
                   setUser(null);
                   setFile("");
                   setRestoreRequest(null);
@@ -278,6 +289,12 @@ export default function App() {
         </div>
         <main key={page}>
           <div className="content">
+            {status.scheduler_health?.error && user.role === "admin" && (
+              <p className="notice warning" role="alert">
+                Zeitplan konnte nicht vollständig ausgeführt werden:{" "}
+                {status.scheduler_health.error}. Katalog und Dienstlog prüfen.
+              </p>
+            )}
             {status.maintenance_health?.error && user.role === "admin" && (
               <p className="notice warning" role="alert">
                 Wartung nicht abgeschlossen: {status.maintenance_health.error}.
@@ -408,6 +425,8 @@ export default function App() {
                     notify={notify}
                     refresh={refresh}
                     canEdit={user.role !== "reader"}
+                    canManage={user.role === "admin"}
+                    openBackup={setFile}
                     limit={5}
                   />
                 </section>
@@ -419,6 +438,17 @@ export default function App() {
                   title="Aufträge"
                   description="Sicherungen, Hostprüfungen und Wiederherstellungen nachvollziehen."
                 />
+                <p className="hint">
+                  {status.demo
+                    ? "In der Demo läuft der automatische Zeitplan nicht."
+                    : "Der tägliche Zeitplan wird vom Anker-Dienst jede Minute geprüft."}{" "}
+                  Zeitzone: {status.timezone}.
+                  {status.scheduler_health?.at
+                    ? " Zuletzt geprüft: " +
+                      date(status.scheduler_health.at) +
+                      "."
+                    : ""}
+                </p>
                 <Jobs {...common} />
               </>
             )}
@@ -475,98 +505,5 @@ export default function App() {
         </div>
       )}
     </div>
-  );
-}
-function Jobs({
-  status,
-  notify,
-  refresh,
-  canEdit,
-  limit,
-}: {
-  status: Status;
-  notify: (s: string, b?: boolean) => void;
-  refresh: () => void;
-  canEdit: boolean;
-  limit?: number;
-}) {
-  const [visible, setVisible] = useState(50);
-  const jobs = [...status.jobs]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, limit || visible);
-  return jobs.length ? (
-    <div>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Auftrag</th>
-              <th>Status</th>
-              <th>Start</th>
-              <th>Ergebnis</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((j) => (
-              <tr key={j.id}>
-                <td>
-                  <strong>{labels[j.kind] || j.kind}</strong>
-                  <div className="secondary-line">
-                    {status.hosts.find((h) => h.id === j.host_id)?.name ||
-                      j.host_id}
-                  </div>
-                </td>
-                <td>
-                  <State
-                    value={j.state}
-                    label={j.state === "successful" ? "Erfolgreich" : undefined}
-                  />
-                </td>
-                <td className="date">{date(j.created_at)}</td>
-                <td>
-                  {j.error ? (
-                    <span className="warning">{j.error}</span>
-                  ) : j.state === "successful" ? (
-                    "Abgeschlossen"
-                  ) : j.state === "running" ? (
-                    "Versuch " + j.attempts
-                  ) : (
-                    "—"
-                  )}
-                  {canEdit && ["queued", "running"].includes(j.state) && (
-                    <button
-                      className="text-button"
-                      onClick={async () => {
-                        try {
-                          await api("jobs/" + j.id + "/cancel", "POST", {});
-                          notify("Abbruch angefordert");
-                          refresh();
-                        } catch (e) {
-                          notify((e as Error).message, true);
-                        }
-                      }}
-                    >
-                      Abbrechen
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!limit && status.jobs.length > visible && (
-        <button
-          className="text-button"
-          onClick={() => setVisible((v) => v + 50)}
-        >
-          Weitere Aufträge anzeigen ({status.jobs.length - visible})
-        </button>
-      )}
-    </div>
-  ) : (
-    <Empty title="Noch keine Aufträge">
-      Gestartete Vorgänge erscheinen hier mit ihrem Ergebnis.
-    </Empty>
   );
 }

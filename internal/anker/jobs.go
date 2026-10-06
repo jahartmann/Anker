@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/mail"
 	"net/url"
@@ -12,6 +13,55 @@ import (
 )
 
 func (s *Service) Jobs() ([]Job, error) { return records[Job](s.Store, "jobs") }
+func (s *Service) Job(id string) (Job, error) {
+	var j Job
+	if !validID(id) {
+		return j, fail(400, "Ungültige Auftrags-ID")
+	}
+	if err := s.Store.Get("jobs", id, &j); err != nil {
+		return j, err
+	}
+	if j.ID != id {
+		return j, errors.New("Auftragseintrag ist ungültig")
+	}
+	return j, nil
+}
+func activeJob(j Job) bool { return j.State == "queued" || j.State == "running" }
+func finishedJob(j Job) bool {
+	return j.State == "successful" || j.State == "failed" || j.State == "cancelled" || j.State == "interrupted"
+}
+func (s *Service) DeleteJob(id string) error {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	j, err := s.Job(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	worker := s.cancels[id] != nil
+	s.mu.Unlock()
+	if !finishedJob(j) || worker {
+		return fail(409, "Aktive Aufträge können nicht entfernt werden; erst Abschluss oder Abbruch abwarten")
+	}
+	return s.Store.Delete("jobs", id)
+}
+func (s *Service) RetryJob(id string) (Job, error) {
+	j, err := s.Job(id)
+	if err != nil {
+		return Job{}, err
+	}
+	if !finishedJob(j) {
+		return Job{}, fail(409, "Aktiven Auftrag erst beenden")
+	}
+	switch j.Kind {
+	case "backup":
+		return s.QueueBackup(j.HostID)
+	case "probe":
+		return s.QueueProbe(j.HostID)
+	default:
+		return Job{}, fail(409, "Wiederherstellung über einen frisch geprüften Plan mit neuer Bestätigung starten")
+	}
+}
 func (s *Service) RecoverJobs() error {
 	jobs, err := s.Jobs()
 	if err != nil {
@@ -42,7 +92,10 @@ func (s *Service) RecoverJobs() error {
 	return nil
 }
 func (s *Service) QueueBackup(hostID string) (Job, error) {
-	return s.queue(hostID, "backup", func(ctx context.Context) (string, error) {
+	return s.queueBackup(hostID, nil)
+}
+func (s *Service) queueBackup(hostID string, at *time.Time) (Job, error) {
+	return s.queueAt(hostID, "backup", at, func(ctx context.Context) (string, error) {
 		b, err := s.CreateBackup(ctx, hostID)
 		if err != nil {
 			return "", err
@@ -94,13 +147,44 @@ func (s *Service) QueueApply(id, confirmation string) (Job, error) {
 	})
 }
 func (s *Service) queue(hostID, kind string, run func(context.Context) (string, error)) (Job, error) {
+	return s.queueAt(hostID, kind, nil, run)
+}
+
+var errJobNotDue = errors.New("Zeitplan ist nicht fällig oder wurde heute bereits gestartet")
+var errHostJobActive = errors.New("Host hat bereits einen aktiven Auftrag")
+
+func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.Context) (string, error)) (Job, error) {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
 	if _, err := s.Host(hostID); err != nil {
 		return Job{}, err
 	}
-	s.jobMu.Lock()
-	defer s.jobMu.Unlock()
 	if s.maintenance {
 		return Job{}, errors.New("Anker wird aktualisiert; neue Aufträge sind vorübergehend gesperrt")
+	}
+	day := ""
+	if at != nil {
+		h, err := s.Host(hostID)
+		if err != nil {
+			return Job{}, err
+		}
+		settings, err := s.Settings()
+		if err != nil {
+			return Job{}, err
+		}
+		loc, err := time.LoadLocation(settings.Timezone)
+		if err != nil {
+			return Job{}, err
+		}
+		local := at.In(loc)
+		due, err := scheduledTime(h, settings, local)
+		if err != nil {
+			return Job{}, err
+		}
+		if !h.Enabled || local.Before(due) {
+			return Job{}, errJobNotDue
+		}
+		day = local.Format("2006-01-02")
 	}
 	jobs, err := s.Jobs()
 	if err != nil {
@@ -108,11 +192,14 @@ func (s *Service) queue(hostID, kind string, run func(context.Context) (string, 
 	}
 	for _, j := range jobs {
 		if j.HostID == hostID && (j.State == "queued" || j.State == "running") {
-			return Job{}, errors.New("Host hat bereits einen aktiven Auftrag")
+			return Job{}, errHostJobActive
 		}
 	}
-	j := Job{ID: ID(), HostID: hostID, Kind: kind, State: "queued", CreatedAt: now()}
-	if err = s.Store.Put("jobs", j.ID, j); err != nil {
+	j := Job{ID: ID(), HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
+	if day != "" {
+		j.Trigger = "scheduled"
+	}
+	if err = s.Store.insertJob(j); err != nil {
 		return j, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -123,19 +210,37 @@ func (s *Service) queue(hostID, kind string, run func(context.Context) (string, 
 	return j, nil
 }
 func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Context) (string, error)) {
-	defer func() { s.mu.Lock(); delete(s.cancels, j.ID); s.mu.Unlock() }()
-	settings, _ := s.Settings()
-	if settings.Parallel < 1 {
-		settings.Parallel = 4
-	}
+	defer func() {
+		s.mu.Lock()
+		if cancel := s.cancels[j.ID]; cancel != nil {
+			cancel()
+		}
+		delete(s.cancels, j.ID)
+		s.mu.Unlock()
+	}()
+	var settings Settings
 	for {
 		if ctx.Err() != nil {
 			j.State, j.FinishedAt = "cancelled", now()
-			s.Store.Put("jobs", j.ID, j)
+			s.persistJob(j)
 			return
 		}
 		s.jobMu.Lock()
+		var err error
+		settings, err = s.Settings()
+		if err != nil || settings.Parallel < 1 || settings.Parallel > 16 || settings.Retries < 0 || settings.Retries > 5 {
+			s.jobMu.Unlock()
+			j.State, j.FinishedAt, j.Error = "failed", now(), "Betriebseinstellungen nicht lesbar oder ungültig; Katalog prüfen"
+			s.persistJob(j)
+			return
+		}
 		jobs, err := s.Jobs()
+		if err != nil {
+			s.jobMu.Unlock()
+			j.State, j.FinishedAt, j.Error = "failed", now(), "Auftragsliste nicht lesbar; Katalog prüfen"
+			s.persistJob(j)
+			return
+		}
 		running := 0
 		for _, job := range jobs {
 			if job.State == "running" {
@@ -143,10 +248,17 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 			}
 		}
 		if err == nil && running < settings.Parallel {
-			j.State = "running"
+			if ctx.Err() != nil {
+				s.jobMu.Unlock()
+				continue
+			}
+			j.State, j.StartedAt, j.Attempts = "running", now(), 1
 			err = s.Store.Put("jobs", j.ID, j)
 			s.jobMu.Unlock()
 			if err != nil {
+				log.Printf("Anker Auftrag %s: Startzustand konnte nicht gespeichert werden: %v", j.ID, err)
+				j.State, j.FinishedAt, j.Error = "failed", now(), "Auftragsstart konnte nicht gespeichert werden; Katalog und Speicher prüfen"
+				s.persistJob(j)
 				return
 			}
 			break
@@ -156,7 +268,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		case <-ctx.Done():
 			j.State = "cancelled"
 			j.FinishedAt = now()
-			s.Store.Put("jobs", j.ID, j)
+			s.persistJob(j)
 			return
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -195,15 +307,32 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		j.Error = "Auftrag abgebrochen; tatsächlichen Zustand prüfen"
 	}
 	j.FinishedAt = now()
-	s.Store.Put("jobs", j.ID, j)
-	s.notifyJob(j)
+	if s.persistJob(j) {
+		s.notifyJob(j)
+	}
+}
+func (s *Service) persistJob(j Job) bool {
+	if err := s.Store.Put("jobs", j.ID, j); err != nil {
+		log.Printf("Anker Auftrag %s: Status %s konnte nicht gespeichert werden: %v", j.ID, j.State, err)
+		return false
+	}
+	return true
 }
 func (s *Service) CancelJob(id string) error {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	j, err := s.Job(id)
+	if err != nil {
+		return err
+	}
+	if !activeJob(j) {
+		return fail(409, "Auftrag ist bereits beendet")
+	}
 	s.mu.Lock()
 	cancel := s.cancels[id]
 	s.mu.Unlock()
 	if cancel == nil {
-		return errors.New("Auftrag ist nicht aktiv")
+		return fail(409, "Auftrag hat keinen aktiven Worker; nach Dienstabbruch den gespeicherten Zustand prüfen")
 	}
 	cancel()
 	return nil
@@ -241,6 +370,8 @@ func (s *Service) SaveSettings(v Settings) error {
 			}
 		}
 	}
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
 	return s.Store.Put("settings", "main", v)
 }
 

@@ -311,8 +311,13 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 		if err := need(3); err != nil {
 			return err
 		}
-		if args[1] == "cancel" {
-			return call("POST", "jobs/"+args[2]+"/cancel", map[string]any{})
+		switch args[1] {
+		case "show":
+			return call("GET", "jobs/"+args[2], nil)
+		case "remove":
+			return call("DELETE", "jobs/"+args[2], nil)
+		case "cancel", "retry":
+			return call("POST", "jobs/"+args[2]+"/"+args[1], map[string]any{})
 		}
 	case "settings":
 		if len(args) == 1 || args[1] == "show" {
@@ -408,7 +413,8 @@ anker restore plan --backup ID --target HOST --scenario files --files etc/test.c
 anker restore plan --backup ID --target HOST --scenario migration --ports eno1=ens3 --console --source-offline
 anker restore apply PLAN --confirm PLAN
 anker restore export PLAN ./plan.tar
-anker job cancel ID
+anker jobs
+anker job show ID | cancel ID | retry ID | remove ID
 anker settings show | save DATEI.json
 anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
 anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME

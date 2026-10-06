@@ -127,7 +127,9 @@ export default function Settings({
                   <h3>Zeitplan</h3>
                   <p className="muted">
                     Hosts starten zeitlich versetzt innerhalb einer Stunde.
-                    Eigene Hostzeiten haben Vorrang.
+                    Eigene Hostzeiten haben Vorrang. Änderungen gelten für noch
+                    nicht eingeplante Läufe; ein bereits eingeplanter Tageslauf
+                    wird nicht erneut gestartet.
                   </p>
                   <div className="form-grid">
                     <Field label="Startzeit">
@@ -164,6 +166,10 @@ export default function Settings({
                       />
                     </Field>
                   </div>
+                  <p className="hint">
+                    Ein neues Parallelitätslimit gilt für wartende Aufträge.
+                    Laufende Aufträge werden dafür nicht abgebrochen.
+                  </p>
                 </section>
                 <section>
                   <h3>Aufbewahrung</h3>

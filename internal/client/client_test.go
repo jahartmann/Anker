@@ -76,3 +76,36 @@ func TestCLITLSStatusUsesLocalAPIAndDemoRefusesChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIReadsAndRemovesJobHistory(t *testing.T) {
+	root := t.TempDir()
+	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s, err := anker.NewService(root, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := anker.Job{ID: "finished-job", HostID: "removed-host", Kind: "backup", State: "failed"}
+	if err := store.Put("jobs", job.ID, job); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(anker.Handler(s, anker.NewAuth(store), true))
+	defer server.Close()
+	var out bytes.Buffer
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &out}
+	if err := c.Run(context.Background(), []string{"job", "show", job.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(job.ID)) {
+		t.Fatal(out.String())
+	}
+	if err := c.Run(context.Background(), []string{"job", "remove", job.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Job(job.ID); err == nil {
+		t.Fatal("history survived deletion")
+	}
+}

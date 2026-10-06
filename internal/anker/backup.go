@@ -59,6 +59,9 @@ var safeHost = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]*$`)
 func (s *Service) SaveHost(h Host) error {
 	s.hostMu.Lock()
 	defer s.hostMu.Unlock()
+	// A schedule change and its queue admission must have a single order.
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
 	// Operator forms may be older than the last completed probe/backup.
 	if current, err := s.Host(h.ID); err == nil {
 		h.Inventory, h.LastProbe, h.ProbeError = current.Inventory, current.LastProbe, current.ProbeError
@@ -70,6 +73,28 @@ func (s *Service) SaveHost(h Host) error {
 	}
 	return s.saveHost(h)
 }
+
+// Serialize removal with queue admission and inventory updates.
+func (s *Service) DeleteHost(id string) error {
+	s.hostMu.Lock()
+	defer s.hostMu.Unlock()
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	if _, err := s.Host(id); err != nil {
+		return err
+	}
+	jobs, err := s.Jobs()
+	if err != nil {
+		return err
+	}
+	for _, j := range jobs {
+		if j.HostID == id && activeJob(j) {
+			return fail(409, "Host hat aktive Aufträge")
+		}
+	}
+	return s.Store.Delete("hosts", id)
+}
+
 func sameProbeTarget(a, b Host) bool {
 	return a.Name == b.Name && a.Address == b.Address && a.SSHPort == b.SSHPort && a.SSHUser == b.SSHUser && a.KeyPath == b.KeyPath && a.KnownHostsPath == b.KnownHostsPath
 }

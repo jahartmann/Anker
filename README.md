@@ -165,6 +165,20 @@ Passwortlose Synchronisation verwendet **SSH-Schlüssel**. SSH-Zertifikate oder 
 
 Das Hostprofil `/etc/anker-host.json` sichert standardmäßig `/etc` und `/usr/local`. Zusätzliche Konfiguration beispielsweise unter `/opt` ausdrücklich im Profil und als Pflichtpfad in Anker ergänzen. Das Profil muss root gehören und darf nicht von anderen beschreibbar sein. VM-Datenträger und große Anwendungsdaten nicht in das Configprofil aufnehmen.
 
+### Zeitplan und Aufträge
+
+Unter **Einstellungen → Sicherung** stehen tägliche Startzeit, Zeitzone, Parallelität und Wiederholungen. Ein Host übernimmt diese Zeit oder bekommt im Hostformular eine eigene Startzeit. „Automatisch sichern“ pausiert nur den Zeitplan; „Jetzt sichern“ bleibt möglich. Anker prüft jede Minute selbst, ob ein Lauf fällig ist. Keine Crontab anlegen. Hosts starten mit einem festen Versatz von weniger als einer Stunde, spätestens um 23:59 Uhr. Die Demo führt keine automatischen Sicherungen aus.
+
+**Aufträge → Details** zeigt Auslöser, Erstellzeit, tatsächlichen Start, Versuche und Fehler. Von dort die fertige Sicherung öffnen, einen aktiven Auftrag abbrechen oder eine fehlgeschlagene Sicherung/Hostprüfung erneut starten. Administratoren können abgeschlossene Einträge entfernen; Sicherungen und Tagesmarker bleiben erhalten. Wiederherstellungen erneut über einen frisch geprüften Plan bestätigen. Bereits eingeplante Tagesläufe werden nach Zeitplanänderung oder Neustart nicht nochmals gestartet. Ausgefallene frühere Tage werden nicht nachträglich rekonstruiert.
+
+```sh
+sudo anker jobs
+sudo anker job show AUFTRAG
+sudo anker job cancel AUFTRAG
+sudo anker job retry AUFTRAG
+sudo anker job remove AUFTRAG
+```
+
 ## Einrichtung im Überblick
 
 | Schritt | Vereinfachung oder Grund für die manuelle Angabe |

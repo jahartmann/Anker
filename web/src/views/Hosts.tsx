@@ -55,6 +55,7 @@ export function HostForm({
     <Dialog
       title={host ? "Host bearbeiten" : "Host hinzufügen"}
       onClose={onClose}
+      busy={busy}
     >
       <form onSubmit={submit}>
         <p className="dialog-intro">
@@ -186,7 +187,12 @@ export function HostForm({
           </div>
         )}
         <footer className="dialog-footer">
-          <button type="button" className="secondary" onClick={onClose}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
             Abbrechen
           </button>
           <button disabled={busy}>

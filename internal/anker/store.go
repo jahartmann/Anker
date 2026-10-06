@@ -3,6 +3,7 @@ package anker
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	_ "modernc.org/sqlite"
 	"os"
@@ -51,6 +52,43 @@ func (s *Store) Get(bucket, id string, v any) error {
 func (s *Store) Delete(bucket, id string) error {
 	_, err := s.db.Exec(`DELETE FROM records WHERE bucket=? AND id=?`, bucket, id)
 	return err
+}
+
+// A scheduled job must never become visible without its once-per-day marker.
+func (s *Store) insertJob(j Job) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if j.ScheduledDay != "" {
+		var data []byte
+		err = tx.QueryRow(`SELECT value FROM records WHERE bucket='schedule' AND id=?`, j.HostID).Scan(&data)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			var previous string
+			if err = json.Unmarshal(data, &previous); err != nil {
+				return fmt.Errorf("Tagesmarker nicht lesbar: %w", err)
+			}
+			if previous == j.ScheduledDay {
+				return errJobNotDue
+			}
+		}
+		data, _ = json.Marshal(j.ScheduledDay)
+		if _, err = tx.Exec(`INSERT INTO records(bucket,id,value) VALUES('schedule',?,?) ON CONFLICT(bucket,id) DO UPDATE SET value=excluded.value`, j.HostID, data); err != nil {
+			return err
+		}
+	}
+	data, err := json.Marshal(j)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`INSERT INTO records(bucket,id,value) VALUES('jobs',?,?)`, j.ID, data); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func records[T any](s *Store, bucket string) ([]T, error) {
 	rows, err := s.db.Query(`SELECT value FROM records WHERE bucket=? ORDER BY id`, bucket)

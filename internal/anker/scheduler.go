@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -33,15 +34,26 @@ func (sc *Scheduler) Run(ctx context.Context) {
 		}
 	}
 }
-func (sc *Scheduler) Tick(at time.Time) error {
+func (sc *Scheduler) Tick(at time.Time) (tickErr error) {
 	sc.s.jobMu.Lock()
-	if sc.s.maintenance {
+	if sc.s.maintenance || sc.s.schedulerBusy {
 		sc.s.jobMu.Unlock()
 		return nil
 	}
 	sc.s.schedulerBusy = true
 	sc.s.jobMu.Unlock()
-	defer func() { sc.s.jobMu.Lock(); sc.s.schedulerBusy = false; sc.s.jobMu.Unlock() }()
+	defer func() {
+		message := ""
+		if tickErr != nil {
+			message = tickErr.Error()
+		}
+		if err := sc.s.Store.Put("health", "scheduler", map[string]string{"at": at.UTC().Format(time.RFC3339), "error": message}); err != nil {
+			tickErr = errors.Join(tickErr, err)
+		}
+		sc.s.jobMu.Lock()
+		sc.s.schedulerBusy = false
+		sc.s.jobMu.Unlock()
+	}()
 	settings, err := sc.s.Settings()
 	if err != nil {
 		return err
@@ -56,43 +68,27 @@ func (sc *Scheduler) Tick(at time.Time) error {
 	if err != nil {
 		return err
 	}
+	var scheduleErr error
 	for _, h := range hosts {
 		if !h.Enabled {
 			continue
 		}
-		schedule := h.Schedule
-		if schedule == "" {
-			schedule = settings.Schedule
-		}
-		t, err := time.Parse("15:04", schedule)
-		if err != nil {
-			continue
-		}
-		jitter, _ := strconv.ParseInt(Hash([]byte(h.ID))[:4], 16, 64)
-		due := time.Date(local.Year(), local.Month(), local.Day(), t.Hour(), t.Minute(), 0, 0, loc).Add(time.Duration(jitter%60) * time.Minute)
-		lastMinute := time.Date(local.Year(), local.Month(), local.Day(), 23, 59, 0, 0, loc)
-		if due.After(lastMinute) {
-			due = lastMinute
-		}
-		if local.Before(due) {
-			continue
-		}
-		var previous string
-		sc.s.Store.Get("schedule", h.ID, &previous)
-		if previous == day {
-			continue
-		}
-		if _, err = sc.s.QueueBackup(h.ID); err == nil {
-			sc.s.Store.Put("schedule", h.ID, day)
+		if _, err = sc.s.queueBackup(h.ID, &at); err != nil && !errors.Is(err, errJobNotDue) && !errors.Is(err, errHostJobActive) {
+			scheduleErr = errors.Join(scheduleErr, fmt.Errorf("Host %s: %w", h.ID, err))
 		}
 	}
 	var maintained string
 	var maintenanceErr error
-	sc.s.Store.Get("maintenance", "day", &maintained)
-	if maintained != day {
-		maintenanceErr = sc.s.Maintain(at)
+	markerErr := sc.s.Store.Get("maintenance", "day", &maintained)
+	if markerErr != nil && !errors.Is(markerErr, sql.ErrNoRows) {
+		maintenanceErr = fmt.Errorf("Wartungsmarker nicht lesbar: %w", markerErr)
+	}
+	if maintained != day || maintenanceErr != nil {
 		if maintenanceErr == nil {
-			sc.s.Store.Put("maintenance", "day", day)
+			maintenanceErr = sc.s.Maintain(at)
+		}
+		if maintenanceErr == nil {
+			maintenanceErr = sc.s.Store.Put("maintenance", "day", day)
 		}
 		state := map[string]string{"at": now(), "error": ""}
 		if maintenanceErr != nil {
@@ -102,7 +98,25 @@ func (sc *Scheduler) Tick(at time.Time) error {
 			maintenanceErr = errors.Join(maintenanceErr, putErr)
 		}
 	}
-	return errors.Join(maintenanceErr, sc.s.CheckStaleBackups(at))
+	return errors.Join(scheduleErr, maintenanceErr, sc.s.CheckStaleBackups(at))
+}
+
+func scheduledTime(h Host, settings Settings, local time.Time) (time.Time, error) {
+	schedule := h.Schedule
+	if schedule == "" {
+		schedule = settings.Schedule
+	}
+	t, err := time.Parse("15:04", schedule)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("Zeitplan ungültig: %w", err)
+	}
+	jitter, _ := strconv.ParseInt(Hash([]byte(h.ID))[:4], 16, 64)
+	due := time.Date(local.Year(), local.Month(), local.Day(), t.Hour(), t.Minute(), 0, 0, local.Location()).Add(time.Duration(jitter%60) * time.Minute)
+	lastMinute := time.Date(local.Year(), local.Month(), local.Day(), 23, 59, 0, 0, local.Location())
+	if due.After(lastMinute) {
+		due = lastMinute
+	}
+	return due, nil
 }
 func (s *Service) Maintain(at time.Time) error {
 	settings, err := s.Settings()

@@ -72,6 +72,9 @@ export interface Entry {
   link?: string;
 }
 export interface Job {
+  started_at?: string;
+  trigger?: string;
+  scheduled_day?: string;
   id: string;
   host_id: string;
   kind: string;
@@ -127,6 +130,7 @@ export interface Settings {
   mail_to: string;
 }
 export interface Status {
+  scheduler_health?: { at: string; error: string };
   notification_health?: { at: string; error: string };
   maintenance_health?: { at: string; error: string };
   hosts: Host[];

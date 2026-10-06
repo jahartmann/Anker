@@ -1305,3 +1305,284 @@ test("update installation requires a reviewed version and recovers after a resta
     page.getByText("Update installiert und Start geprüft", { exact: true }),
   ).toBeVisible({ timeout: 10000 });
 });
+
+test("job details link to their backup and removing history preserves it", async ({
+  page,
+}) => {
+  const status = await (await page.request.get("/api/status")).json();
+  const created = await page.request.post(
+    `/api/hosts/${status.hosts[0].id}/backup`,
+    { headers: { "X-Anker-Request": "1" }, data: {} },
+  );
+  expect(created.ok()).toBeTruthy();
+  const job = await created.json();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`/api/jobs/${job.id}`)).json()).state,
+    )
+    .toBe("successful");
+  const done = await (await page.request.get(`/api/jobs/${job.id}`)).json();
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await page.getByRole("button", { name: `Auftrag ${job.id} ansehen` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(job.id, { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Manuell", { exact: true })).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Sicherung öffnen", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Dateien");
+  await page.getByRole("button", { name: "Dialog schließen" }).click();
+  await page.getByRole("button", { name: `Auftrag ${job.id} ansehen` }).click();
+  await dialog
+    .getByRole("button", { name: "Eintrag entfernen", exact: true })
+    .click();
+  await expect(dialog).toContainText(
+    "Sicherungen und Tagesmarker bleiben erhalten",
+  );
+  await dialog.getByRole("button", { name: "Entfernen bestätigen" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect((await page.request.get(`/api/jobs/${job.id}`)).status()).toBe(404);
+  expect(
+    (await page.request.get(`/api/backups/${done.result_id}/files`)).ok(),
+  ).toBeTruthy();
+});
+
+test("job cancellation stays disabled until the worker finishes and failed jobs can be retried", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  let job = {
+    id: "ui-job-lifecycle",
+    host_id: base.hosts[0].id,
+    kind: "backup",
+    state: "running",
+    created_at: "2026-10-06T10:00:00Z",
+    started_at: "2026-10-06T10:00:01Z",
+    attempts: 1,
+    trigger: "manual",
+  };
+  let cancelCalls = 0,
+    retryCalls = 0;
+  let releaseCancel!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseCancel = resolve;
+  });
+  await page.route("**/api/status", (route) =>
+    route.fulfill({ json: { ...base, jobs: [job] } }),
+  );
+  await page.route("**/api/jobs/ui-job-lifecycle", (route) =>
+    route.fulfill({ json: job }),
+  );
+  await page.route("**/api/jobs/ui-job-lifecycle/cancel", async (route) => {
+    cancelCalls++;
+    await gate;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route("**/api/jobs/ui-job-lifecycle/retry", (route) => {
+    retryCalls++;
+    job = { ...job, id: "ui-retry-job", state: "queued", attempts: 0 };
+    return route.fulfill({ json: job });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Auftrag ui-job-lifecycle ansehen" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "Eintrag entfernen", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Wird angefordert …" }),
+  ).toBeDisabled();
+  expect(cancelCalls).toBe(1);
+  releaseCancel();
+  await expect(
+    dialog.getByRole("button", { name: "Abbruch angefordert", exact: true }),
+  ).toBeDisabled();
+  job = { ...job, state: "failed" };
+  await expect(
+    dialog.getByRole("button", { name: "Erneut starten", exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Erneut starten", exact: true })
+    .click();
+  await expect(dialog.getByText("ui-retry-job", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Geplant", { exact: true })).toBeVisible();
+  expect(retryCalls).toBe(1);
+});
+
+test("late status responses cannot overwrite newer job states", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  const job = {
+    id: "out-of-order-job",
+    host_id: base.hosts[0].id,
+    kind: "backup",
+    state: "running",
+    attempts: 1,
+    created_at: "2026-10-06T10:00:00Z",
+  };
+  let requests = 0,
+    release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/status", async (route) => {
+    if (++requests === 1) {
+      await gate;
+      await route.fulfill({ json: { ...base, jobs: [job] } });
+    } else
+      await route.fulfill({
+        json: { ...base, jobs: [{ ...job, state: "cancelled" }] },
+      });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await expect(page.getByText("Abgebrochen", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
+  const stale = page.waitForResponse(
+    async (response) =>
+      response.url().endsWith("/api/status") &&
+      (await response.json()).jobs[0]?.state === "running",
+  );
+  release();
+  await stale;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(page.getByText("Abgebrochen", { exact: true })).toBeVisible();
+  await expect(page.getByText("Läuft", { exact: true })).toHaveCount(0);
+});
+
+test("scheduler failures are visible to the administrator", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  await page.route("**/api/status", (route) =>
+    route.fulfill({
+      json: {
+        ...base,
+        scheduler_health: {
+          at: "2026-10-06T10:00:00Z",
+          error: "Host pve-test: Tagesmarker nicht lesbar",
+        },
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText(
+    "Tagesmarker nicht lesbar",
+  );
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Zeitplan konnte nicht vollständig ausgeführt werden",
+  );
+});
+
+test("fresh job details take precedence over an older status list", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  const job = {
+    id: "fresh-job-detail",
+    host_id: base.hosts[0].id,
+    kind: "backup",
+    state: "running",
+    attempts: 1,
+    created_at: "2026-10-06T10:00:00Z",
+  };
+  await page.route("**/api/status", (route) =>
+    route.fulfill({ json: { ...base, jobs: [job] } }),
+  );
+  await page.route("**/api/jobs/fresh-job-detail", (route) =>
+    route.fulfill({
+      json: {
+        ...job,
+        state: "failed",
+        finished_at: "2026-10-06T10:01:00Z",
+        error: "SSH-Verbindung zum Host fehlgeschlagen",
+      },
+    }),
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Auftrag fresh-job-detail ansehen" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText("Fehlgeschlagen", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toContainText("SSH-Verbindung zum Host fehlgeschlagen");
+  await expect(
+    dialog.getByRole("button", { name: "Erneut starten", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("late job detail responses cannot replace a different selected job", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  const a = {
+    id: "delayed-job-a",
+    host_id: base.hosts[0].id,
+    kind: "backup",
+    state: "successful",
+    attempts: 1,
+    created_at: "2026-10-06T10:00:00Z",
+  };
+  const b = { ...a, id: "current-job-b", state: "running" };
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/status", (route) =>
+    route.fulfill({ json: { ...base, jobs: [a, b] } }),
+  );
+  await page.route("**/api/jobs/delayed-job-a", async (route) => {
+    await gate;
+    await route.fulfill({ json: a });
+  });
+  await page.route("**/api/jobs/current-job-b", (route) =>
+    route.fulfill({ json: b }),
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Auftrag delayed-job-a ansehen" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Auftrag wird geladen");
+  await page.getByRole("button", { name: "Dialog schließen" }).click();
+  await page
+    .getByRole("button", { name: "Auftrag current-job-b ansehen" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(b.id, { exact: true })).toBeVisible();
+  const late = page.waitForResponse((response) =>
+    response.url().endsWith("/api/jobs/delayed-job-a"),
+  );
+  release();
+  await late;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(dialog.getByText(b.id, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(a.id, { exact: true })).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Eintrag entfernen", exact: true }),
+  ).toHaveCount(0);
+});

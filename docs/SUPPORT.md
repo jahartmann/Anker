@@ -96,3 +96,22 @@ Neue Regressionen prüfen gemeinsame Dateisysteme, eingebundene Backup-Unterordn
 Die echte ext4-Erweiterung auf einem ausschließlich für den Test angelegten Loopgerät ist im [Linux-Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37463965688) bestanden: 64 auf 128 MiB über den gehärteten systemd-Hilfsdienst, vorhandene Datei und Webdienstprozess bleiben erhalten. Derselbe Lauf besteht die vollständigen Go-/Python-/Browserprüfungen sowie bestehende Installations-, TLS- und Updatefälle. Weder Produktionsdatenträger noch Proxmox-Hosts werden dabei verwendet. Reales XFS, LXC-Quoten, LVM, Stromverlust und Laufwerksumzug bleiben eigene Abnahmefälle.
 
 Die abschließende lokale Prüfung umfasst 39 Browserabläufe und die vollständige Go-Suite mit Race Detector und Vet, zehn Python-Helfertests und sieben Installerprüfungen. Nach einer kleinen Diagrammkorrektur wurden die sechs Speicherabläufe erneut bestanden. Desktop 1440×1000, Mobilansicht 390×844 und Erweiterungsdialog sind visuell geprüft; kein horizontaler Seitenüberlauf oder Browserlaufzeitfehler. Ein vorübergehend fehlgeschlagener Mount erhält die vorherigen gültigen Messpunkte und ergänzt keine erfundenen Werte.
+
+## Aufträge und Zeitplanprüfung vom 06.10.2026
+
+| Gefundener Fehler | Korrektur und Regression |
+|---|---|
+| Aufträge starten trotz fehlgeschlagenem Tagesmarker oder verschwinden für diesen Tag bei fehlgeschlagenem Job-Insert | Auftrag und Marker in einer Transaktion; Fehler an beiden Schreibstellen gezielt ausgelöst und nächsten Tick geprüft. |
+| Defekte Marker werden ignoriert | Kein Lauf für den betroffenen Host; Scheduler-/Wartungsfehler im Dienstlog und Interface. |
+| Wartende Aufträge verwenden alte Parallelität | Einstellungen vor jeder Zulassung neu lesen und mit Einstellungsänderungen synchronisieren. |
+| Ungültige Einstellungen ergeben einen falschen Erfolg | Worker beendet sich mit erklärtem Fehler vor dem Hostzugriff, auch bei ungültiger Wiederholungszahl. |
+| Host verschwindet zwischen Auftragsprüfung und Start | Entfernen und neue Einplanung gemeinsam sperren; unlesbare Auftragsliste verhindert Entfernen. |
+| Hostzeitplanänderung überschneidet sich mit Einplanung | Hoständerung und Zulassung gemeinsam ordnen. |
+| Historieneinträge haben keinen Detail-/Löschpfad | Detail-API, Webdialog und CLI; aktive Einträge schützen, Sicherung und Tagesmarker nach Löschung prüfen. |
+| Erneuter Start könnte einen alten Restore ungeprüft wiederholen | Nur Sicherung/Hostprüfung wiederholen; Restore über neuen geprüften Plan. Leser dürfen keine Aufträge verändern, Historienlöschung nur durch Admin. |
+| Abbruch wird mehrfach gesendet oder schon als beendet angezeigt | Knopf während Anfrage und nach Annahme sperren; Endstatus kommt vom Worker. |
+| Verzögerte Listenantwort oder alte Liste verdeckt aktuellen Zustand | Alte Statusantworten verwerfen und den fortgeschrittenen Auftragszustand zwischen Detail- und Listenantwort erhalten. |
+
+Geprüft sind die echten API-Verbindungen für Einstellungen/Host-CRUD/Scheduler und Auftragsaktionen, Neustart ohne doppelten Tageslauf, Datenbankfehler sowie Browseraktionen. Die Browserprüfung nutzt einen isolierten Demo- und einen leeren Produktionsdienst; UI-Fehlerfälle werden zusätzlich gezielt simuliert. Die Go-Integration verwendet einen lokalen Test-Collector statt realer SSH-Hosts. Dies ersetzt keine Abnahme mit euren Hosts oder einen physischen Reboot-/Stromausfalltest.
+
+Abschließender lokaler Nachweis: 46 Browserabläufe, vollständige Go-Suite mit Race Detector, Go Vet, zehn Python-Helfertests und sieben Installerprüfungen. Webbuild und Linux-Crossbuild sind bestanden. Die unabhängige Codeprüfung hat nach Korrektur der gefundenen Konkurrenzfehler keine offenen Befunde.

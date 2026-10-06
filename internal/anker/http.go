@@ -2,6 +2,7 @@ package anker
 
 import (
 	"anker/internal/buildinfo"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -259,11 +260,16 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			plans[i].Source.Details = nil
 			plans[i].Target.Details = nil
 		}
-		settings, _ := s.Settings()
+		settings, err := s.Settings()
+		if err != nil {
+			return err
+		}
 		var notificationHealth map[string]string
 		s.Store.Get("health", "notifications", &notificationHealth)
 		var maintenanceHealth map[string]string
 		s.Store.Get("health", "maintenance", &maintenanceHealth)
+		var schedulerHealth map[string]string
+		s.Store.Get("health", "scheduler", &schedulerHealth)
 		for i := range hosts {
 			if u.Role != "admin" {
 				hosts[i].KeyPath = ""
@@ -271,7 +277,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				hosts[i].KnownHostsPath = ""
 			}
 		}
-		return jsonOut(w, map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth})
+		return jsonOut(w, map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth, "scheduler_health": schedulerHealth})
 	case "hosts":
 		if method == "GET" {
 			hosts, err := s.Hosts()
@@ -495,13 +501,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			if err := require(u, "admin"); err != nil {
 				return err
 			}
-			jobs, _ := s.Jobs()
-			for _, j := range jobs {
-				if j.HostID == id && (j.State == "running" || j.State == "queued") {
-					return errors.New("Host hat aktive Aufträge")
-				}
-			}
-			if err = s.Store.Delete("hosts", id); err != nil {
+			if err = s.DeleteHost(id); err != nil {
 				return err
 			}
 			s.LogAudit(u.ID, "host.remove", id)
@@ -690,6 +690,37 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return s.ExportPlan(id, w)
 		}
 	case "jobs":
+		if _, err := s.Job(id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fail(404, "Auftrag nicht gefunden")
+			}
+			return err
+		}
+		if action == "" && method == "GET" {
+			j, err := s.Job(id)
+			if err != nil {
+				return err
+			}
+			return jsonOut(w, j)
+		}
+		if action == "" && method == "DELETE" {
+			if err := require(u, "admin"); err != nil {
+				return err
+			}
+			if err := s.DeleteJob(id); err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "job.remove", id)
+			return jsonOut(w, map[string]bool{"ok": true})
+		}
+		if action == "retry" && method == "POST" {
+			j, err := s.RetryJob(id)
+			if err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "job.retry", id)
+			return jsonOut(w, j)
+		}
 		if action == "cancel" && method == "POST" {
 			if err := s.CancelJob(id); err != nil {
 				return err
