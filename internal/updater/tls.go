@@ -88,6 +88,9 @@ func (m *TLSManager) read(path string, max int64) ([]byte, os.FileInfo, error) {
 	return data, info, err
 }
 func (m *TLSManager) lock() (func(), error) {
+	if err := setupConfigurationIdle(m.Dir); err != nil {
+		return nil, err
+	}
 	fd, err := unix.Open(filepath.Join(m.Dir, "setup.lock"), unix.O_CREAT|unix.O_RDWR|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0600)
 	if err != nil {
 		return nil, err
@@ -358,4 +361,15 @@ func (m *TLSManager) Certificate() ([]byte, error) {
 		return nil, errors.New("Kein TLS-Zertifikat eingerichtet")
 	}
 	return data, nil
+}
+
+// A crashed setup releases its flock but its configuration may still be partial.
+// Keep system changes blocked until setup has recovered the recorded state.
+func setupConfigurationIdle(dir string) error {
+	if _, err := os.Lstat(filepath.Join(dir, "setup-pending.json")); err == nil {
+		return ErrTLSBusy
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

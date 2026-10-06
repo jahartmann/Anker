@@ -119,6 +119,14 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		Version string `json:"version"`
 	}
 	if r.URL.Path == "/install" {
+		dir := "/etc/anker"
+		if s.tlsManager != nil {
+			dir = s.tlsManager.Dir
+		}
+		if err := setupConfigurationIdle(dir); err != nil {
+			fail(409, "Einrichtung unvollständig; sudo anker setup erneut ausführen")
+			return
+		}
 		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 		d.DisallowUnknownFields()
 		if err := d.Decode(&in); err != nil {

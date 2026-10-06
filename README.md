@@ -59,7 +59,9 @@ Einrichtung wiederholen oder nach einem Abbruch fortsetzen:
 sudo anker setup
 ```
 
-Bestehende Benutzer und private SSH-Schlüssel bleiben erhalten. Der Assistent fragt nicht nochmals nach dem Administratorpasswort. Ein gültiges vorhandenes TLS-Zertifikat kann ohne erneute Dateiauswahl behalten werden. Für eine andere Updatequelle oder einen privaten GitHub-Zugang ausdrücklich `sudo anker setup --updates` verwenden.
+Bei erneuter Einrichtung fragt Anker nach „Fortsetzen“ oder „Neu konfigurieren“. Mit Enter werden die vorhandenen Verbindungseinstellungen übernommen, einschließlich Port und TLS-Zertifikat. „Neu konfigurieren“ öffnet die Fragen zur Verbindung erneut. Beide Optionen behalten Benutzer, Sicherungen und private SSH-Schlüssel; das Administratorpasswort wird nicht erneut abgefragt. Fehlen noch Verbindungseinstellungen oder ist das Zertifikat ungültig, führt Anker durch die fehlenden Angaben.
+
+Vor dem Speichern kann der Assistent ohne Änderungen abgebrochen werden. Beim Speichern sichert Anker die bisherigen Konfigurationsdateien. Bei einem Fehler stellt er diesen Stand wieder her; nach einem Prozessabbruch oder Stromausfall erkennt der nächste Aufruf von `sudo anker setup` die unterbrochene Einrichtung und stellt ihn vor den Fragen wieder her. Bereits angelegte Benutzer und SSH-Schlüssel werden weiterverwendet. Neu erzeugte, verworfene TLS- und Token-Dateien werden entfernt. Nach einem Abbruch beim Speichern den Assistenten erneut aufrufen; dieser Wiederanlauf ersetzt keinen automatischen Rollback beim Booten. Für eine andere Updatequelle oder einen privaten GitHub-Zugang ausdrücklich `sudo anker setup --updates` verwenden.
 
 `--no-setup` am Installer installiert nur die Dateien. Für einen regulären ersten Start danach `sudo anker setup` ausführen. `anker init` ist der kleinere Weg zur reinen Benutzeranlage; er ersetzt keine vollständige Einrichtung und überschreibt keine vorhandenen Zugänge. Für Automatisierung akzeptiert `init` die Umgebungsvariable `ANKER_INITIAL_PASSWORD`, kein Passwortargument.
 
@@ -79,7 +81,7 @@ Unter **Einstellungen → System → Webzertifikat** Ablaufdatum, Webadressen un
 
 Wichtig: Erneuerung verändert den Zertifikatsfingerprint. Bei selbstsignierten Zertifikaten kann deshalb auf jedem Arbeitsplatz eine neue Browserfreigabe erforderlich werden. Automatische Erneuerung auf dem Server ersetzt kein dauerhaftes Browservertrauen. Den neuen Fingerprint bei Bedarf direkt am Server mit `sudo anker tls status` ablesen und vergleichen. Eine eigene interne CA ist weiterhin keine Voraussetzung.
 
-Bereits vorhandene Installationen einmal mit `sudo anker setup` aktualisieren und die TLS-Option „automatisch erzeugen“ wählen. Ein noch ausreichend gültiges vorhandenes Zertifikat mit gleicher Adresse bleibt dabei erhalten; der Assistent registriert es für die Erneuerung und übernimmt ältere Dienstkonfigurationen. Zertifikate aus der Option „eigene Zertifikatsdateien“ bleiben extern verwaltet, auch wenn sie selbstsigniert sind. Sie werden nicht automatisch überschrieben. Die Zertifikatsverwaltung läuft auch ohne eingerichtete GitHub-Updatequelle.
+Für bereits vorhandene Zertifikate einmal `sudo anker setup` ausführen, „Neu konfigurieren“ und anschließend die TLS-Option „Erzeugen“ wählen. Ein noch ausreichend gültiges vorhandenes Zertifikat mit gleicher Adresse bleibt dabei erhalten; der Assistent registriert es für die Erneuerung und übernimmt ältere Dienstkonfigurationen. Zertifikate aus der Option „eigene Zertifikatsdateien“ bleiben extern verwaltet, auch wenn sie selbstsigniert sind. Sie werden nicht automatisch überschrieben. Die Zertifikatsverwaltung läuft auch ohne eingerichtete GitHub-Updatequelle.
 
 Alternativ im Terminal:
 

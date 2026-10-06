@@ -74,9 +74,16 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 	fmt.Println()
 	display.Fact("1 · Erzeugen", "Eigenes Zertifikat durch Anker verwalten")
 	display.Fact("2 · Importieren", "Vorhandene Zertifikatsdateien verwenden")
+	canKeep := false
 	if currentCert != "" && currentKey != "" {
-		defaultTLS = "3"
-		display.Fact("3 · Behalten", "Aktuelles Zertifikat weiterverwenden")
+		_, _, leaf, readErr := setupReadTLS(currentCert, currentKey)
+		canKeep = readErr == nil && leaf.VerifyHostname(c.Host) == nil && !time.Now().Before(leaf.NotBefore) && time.Now().Before(leaf.NotAfter)
+		if canKeep {
+			defaultTLS = "3"
+			display.Fact("3 · Behalten", "Aktuelles Zertifikat weiterverwenden")
+		} else {
+			display.Note("Vorhandenes Zertifikat für diese Adresse nicht nutzbar. Erzeugen oder importieren.")
+		}
 	}
 	choice, err := setupPrompt("TLS", defaultTLS)
 	if err != nil {
@@ -88,7 +95,7 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 		if err != nil {
 			return c, err
 		}
-	} else if choice == "2" || (choice == "3" && currentCert != "" && currentKey != "") {
+	} else if choice == "2" || (choice == "3" && canKeep) {
 		preserve = choice == "3"
 		if choice == "2" {
 			currentCert, err = setupPrompt("Zertifikat mit Zertifikatskette (PEM)", currentCert)
@@ -160,8 +167,29 @@ func (c setupWebConfig) env() (string, error) {
 
 func (c setupWebConfig) URL() string {
 	if c.Cert == "" {
-		return "http://127.0.0.1:8087"
+		return "http://" + c.Listen
 	}
 	_, port, _ := net.SplitHostPort(c.Listen)
 	return "https://" + net.JoinHostPort(c.Host, port)
+}
+
+// Keep local service customizations when changing only the web connection.
+func setupMergeWebEnv(prior, web string) string {
+	var kept []string
+	for _, line := range strings.Split(prior, "\n") {
+		replace := false
+		for _, name := range []string{"ANKER_LISTEN", "ANKER_TLS_CERT", "ANKER_TLS_KEY", "ANKER_PUBLIC_HOST"} {
+			if strings.HasPrefix(strings.TrimSpace(line), name+"=") {
+				replace = true
+				break
+			}
+		}
+		if !replace && line != "" {
+			kept = append(kept, line)
+		}
+	}
+	if len(kept) == 0 {
+		return web
+	}
+	return strings.Join(kept, "\n") + "\n" + web
 }

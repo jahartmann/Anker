@@ -275,7 +275,7 @@ func setupReady(socket, path string) error {
 		}
 	}
 }
-func runSetup(configureUpdates bool) error {
+func runSetup(configureUpdates bool) (result error) {
 	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
 		return errors.New("Servereinrichtung als root auf Linux mit systemd ausführen")
 	}
@@ -315,6 +315,9 @@ func runSetup(configureUpdates bool) error {
 	}
 	display := newSetupDisplay()
 	display.Header()
+	if _, err = setupRecoverPending("/etc/anker"); err != nil {
+		return err
+	}
 	display.Section("01", "Administratorzugang")
 	initialized, err := setupInitialized(filepath.Join(updater.DataDir, "catalog.db"))
 	if err != nil {
@@ -342,19 +345,51 @@ func runSetup(configureUpdates bool) error {
 	if err != nil {
 		return err
 	}
-	web, err := setupConfigureWeb(string(priorEnv), initialized)
-	if err != nil {
-		return err
-	}
 	policy, err := updater.LoadTLSPolicy("/etc/anker")
 	if err != nil {
 		return err
 	}
+	var web setupWebConfig
+	reuse := false
+	if initialized {
+		display.Note("Benutzer, Sicherungen und SSH-Schlüssel bleiben bei beiden Optionen erhalten.")
+		display.Fact("1 · Fortsetzen", "Vorhandene Einstellungen übernehmen")
+		display.Fact("2 · Neu konfigurieren", "Verbindung erneut einrichten")
+		choice, choiceErr := setupPrompt("Einrichtung", "1")
+		if choiceErr != nil {
+			return choiceErr
+		}
+		if choice != "1" && choice != "2" {
+			return errors.New("Einrichtung 1 oder 2 wählen")
+		}
+		if choice == "1" {
+			_, completeErr := os.Stat("/etc/anker/setup-complete")
+			_, backupErr := os.Stat("/etc/anker/keys/backup")
+			_, restoreErr := os.Stat("/etc/anker/keys/restore")
+			_, startedErr := os.Stat("/etc/anker/setup-started")
+			configured := completeErr == nil || setupEnvValue(string(priorEnv), "ANKER_TLS_CERT") != "" || os.IsNotExist(startedErr) && backupErr == nil && restoreErr == nil
+			if configured {
+				web, err = setupExistingWeb(string(priorEnv), policy)
+				reuse = err == nil
+			}
+			if !reuse {
+				display.Note("Verbindung fehlt oder ist nicht mehr gültig. Jetzt vervollständigen.")
+			}
+		}
+	}
+	if !reuse {
+		web, err = setupConfigureWeb(string(priorEnv), initialized)
+		if err != nil {
+			return err
+		}
+	}
 	cfg := updater.Config{Repository: "jahartmann/Anker"}
-	if b, err := os.ReadFile(updater.ConfigPath); err == nil {
+	if b, readErr := os.ReadFile(updater.ConfigPath); readErr == nil {
 		if err = json.Unmarshal(b, &cfg); err != nil {
 			return err
 		}
+	} else if !os.IsNotExist(readErr) {
+		return readErr
 	}
 	defaultKey := ""
 	if _, err = os.Stat("/etc/anker/release-public.key"); err == nil {
@@ -480,7 +515,8 @@ func runSetup(configureUpdates bool) error {
 	if err != nil {
 		return err
 	}
-	defer updateLock.Close()
+	updateLockReleased := false
+	defer func() { updateLock.Close() }()
 	if err = unix.Flock(int(updateLock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		return errors.New("Updater ist noch aktiv; Einrichtung nicht verändert")
 	}
@@ -500,10 +536,65 @@ func runSetup(configureUpdates bool) error {
 	if err = setupCommand("systemctl", "stop", "anker.service"); err != nil {
 		return err
 	}
+	var created []string
+	if web.Cert != "" && web.Cert != setupEnvValue(string(priorEnv), "ANKER_TLS_CERT") {
+		created = append(created, web.Cert, web.Key)
+	}
+	if token != "" {
+		created = append(created, cfg.TokenFile)
+	}
+	if _, completeErr := os.Stat("/etc/anker/setup-complete"); os.IsNotExist(completeErr) {
+		if err = setupWrite("/etc/anker/setup-started", []byte("1\n"), 0600, 0, 0); err != nil {
+			return err
+		}
+	}
+	change, err := setupBeginChange("/etc/anker", created, wasRunning, wasUpdaterRunning)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if change == nil {
+			return
+		}
+		if updateLockReleased {
+			if stopErr := setupCommand("systemctl", "stop", "anker-updater.service"); stopErr != nil {
+				wasRunning, wasUpdaterRunning = false, false
+				result = errors.Join(result, stopErr)
+				return
+			}
+			lock, lockErr := os.OpenFile(filepath.Join(updater.StateDir, "lock"), os.O_RDWR, 0600)
+			if lockErr == nil {
+				lockErr = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+				defer lock.Close()
+			}
+			if lockErr != nil {
+				wasRunning, wasUpdaterRunning = false, false
+				result = errors.Join(result, fmt.Errorf("Wiederherstellung gesperrt; anker setup erneut ausführen: %w", lockErr))
+				return
+			}
+		}
+		if stopErr := setupCommand("systemctl", "stop", "anker.service"); stopErr != nil {
+			wasRunning, wasUpdaterRunning = false, false
+			result = errors.Join(result, stopErr)
+			return
+		}
+		if rollbackErr := change.rollback("/etc/anker"); rollbackErr != nil {
+			wasRunning, wasUpdaterRunning = false, false
+			result = errors.Join(result, fmt.Errorf("Konfiguration nicht wiederhergestellt; anker setup erneut ausführen: %w", rollbackErr))
+		} else {
+			display.Note("Letzter Konfigurationsstand wiederhergestellt. Einrichtung erneut mit anker setup starten.")
+		}
+	}()
 	if err = setupInitializeAccess(admin, password); err != nil {
 		return err
 	}
-	if web.Cert != "" {
+	for _, name := range []string{"backup", "restore"} {
+		path := "/etc/anker/keys/" + name
+		if err = setupSSHKey(path, uid, gid); err != nil {
+			return err
+		}
+	}
+	if web.Cert != "" && web.Cert != setupEnvValue(string(priorEnv), "ANKER_TLS_CERT") {
 		if err = os.MkdirAll(filepath.Dir(web.Cert), 0750); err != nil {
 			return err
 		}
@@ -517,12 +608,13 @@ func runSetup(configureUpdates bool) error {
 			return err
 		}
 	}
-	text, err := web.env()
-	if err != nil {
-		return err
-	}
-	if err = setupWrite("/etc/anker/service.env", []byte(text), 0640, 0, gid); err != nil {
-		return err
+	text := string(priorEnv)
+	if !reuse {
+		newEnv, envErr := web.env()
+		if envErr != nil {
+			return envErr
+		}
+		text = setupMergeWebEnv(string(priorEnv), newEnv)
 	}
 	if web.Managed {
 		if policy.ManagedCert == "" {
@@ -563,11 +655,11 @@ func runSetup(configureUpdates bool) error {
 			return err
 		}
 	}
-	for _, name := range []string{"backup", "restore"} {
-		path := "/etc/anker/keys/" + name
-		if err = setupSSHKey(path, uid, gid); err != nil {
-			return err
-		}
+	if err = setupWrite("/etc/anker/service.env", []byte(text), 0640, 0, gid); err != nil {
+		return err
+	}
+	if err = setupWrite("/etc/anker/setup-complete", []byte("1\n"), 0600, 0, 0); err != nil {
+		return err
 	}
 	if err = setupCommand("systemctl", "enable", "--now", "anker.service"); err != nil {
 		return err
@@ -580,6 +672,7 @@ func runSetup(configureUpdates bool) error {
 	if err = updateLock.Close(); err != nil {
 		return err
 	}
+	updateLockReleased = true
 	{
 		if err = setupCommand("systemctl", "enable", "--now", "anker-updater.service"); err != nil {
 			return err
@@ -591,11 +684,15 @@ func runSetup(configureUpdates bool) error {
 			return err
 		}
 	}
+	if err = change.commit("/etc/anker"); err != nil {
+		return err
+	}
+	change = nil
 	fmt.Println("\n" + display.style("1;32", "✓ Einrichtung abgeschlossen"))
 	fmt.Println(display.style("1", web.URL()))
 	if web.Cert == "" {
 		display.Note("SSH-Tunnel vom Arbeitsplatz öffnen:")
-		fmt.Println("ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER")
+		fmt.Println(setupTunnelCommand(web))
 	} else {
 		leaf, err := setupTLSLeaf(web.CertBytes, web.KeyBytes)
 		if err != nil {

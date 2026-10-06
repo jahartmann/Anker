@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Wiederholte Terminaleinrichtung mit „Fortsetzen“ oder „Neu konfigurieren“. Vorhandene Ports, Zertifikate, Benutzer und SSH-Schlüssel bleiben erhalten; unterbrochene Konfigurationsänderungen werden beim nächsten Einrichtungsaufruf aus einem geschützten Journal zurückgenommen.
+
 - Terminaleinrichtung mit klaren Abschnitten, kompakter Konfigurationsübersicht und animierter Dienstprüfung; ruhige Ausgabe für einfache Terminals und Logs.
 
 - Ersteinrichtung auf einem direkt eingebundenen Dateisystem funktioniert auch mit root-eigenem `lost+found`; dessen Rechte und Inhalte bleiben unverändert.

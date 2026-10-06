@@ -22,7 +22,9 @@ def restart_updater():
  subprocess.run(['systemctl','reset-failed','anker-updater'],check=True)
  subprocess.run(['systemctl','restart','anker-updater'],check=True)
 
-def setup(first,mode="1",tls_choice="1",plain=False):
+def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,expect_error=False):
+ # This fixture deliberately performs many independent restarts in succession.
+ subprocess.run(['systemctl','reset-failed','anker','anker-updater'],check=True)
  child,terminal=pty.fork()
  if child==0:
   os.environ['TERM']='dumb' if plain else 'xterm-256color'
@@ -33,15 +35,17 @@ def setup(first,mode="1",tls_choice="1",plain=False):
   os.execv('/usr/local/bin/anker',['anker','setup'])
  steps=[]
  if first:steps+=[(b'Administratorname',b'\n'),(b'Administratorpasswort',b'init2026\n'),(b'Passwort wiederholen',b'init2026\n')]
- steps+=[(b'Webzugriff',mode.encode()+b'\n')]
- if mode=='2':steps+=[(b'Adresse im Browser',b'127.0.0.1\n'),(b'TLS',tls_choice.encode()+b'\n')]
- steps+=[(b'Einrichtung speichern',b'j\n')]
+ if not first:steps+=[(b'Einrichtung [1]',b'1\n' if reuse else b'2\n')]
+ if not reuse:
+  steps+=[(b'Webzugriff',mode.encode()+b'\n')]
+  if mode=='2':steps+=[(b'Adresse im Browser',b'127.0.0.1\n'),(b'TLS',tls_choice.encode()+b'\n')]
+ steps+=[(b'Einrichtung speichern',b'n\n' if cancel else b'j\n')]
  received=b'';transcript=b'';deadline=time.monotonic()+90;index=0
  try:
   while time.monotonic()<deadline:
    finished,status=os.waitpid(child,os.WNOHANG)
    if finished:
-    if os.waitstatus_to_exitcode(status)!=0 or index!=len(steps):raise RuntimeError('Setup failed: '+received.decode(errors='replace'))
+    if os.waitstatus_to_exitcode(status)!=(1 if cancel or expect_error else 0) or index!=len(steps):raise RuntimeError('Setup failed: '+received.decode(errors='replace'))
     assert b'init2026' not in transcript,'Password leaked into terminal output'
     if plain:assert b'\x1b' not in transcript,'Plain terminal received escape sequences'
     return transcript
@@ -65,7 +69,7 @@ def setup(first,mode="1",tls_choice="1",plain=False):
 
 setup(True)
 keys={name:pathlib.Path('/etc/anker/keys/'+name).read_bytes() for name in ['backup','restore']}
-setup(False,plain=True)
+setup(False,plain=True,reuse=True)
 for name,content in keys.items():
  assert pathlib.Path('/etc/anker/keys/'+name).read_bytes()==content,'Setup replaced an existing SSH key'
 print('Terminal setup and repeated setup passed; existing SSH keys preserved.')
@@ -103,6 +107,60 @@ next_cert,next_key=tls_paths()
 assert next_cert==cert and next_key==key,'Repeated setup duplicated TLS files'
 assert next_cert.read_bytes()==original_cert and next_key.read_bytes()==original_key,'Repeated setup changed TLS identity'
 with urllib.request.urlopen(request,context=context) as response:assert response.status==200
+# Reuse must skip the connection questions and retain custom settings.
+env_path=pathlib.Path('/etc/anker/service.env')
+original_env=env_path.read_bytes()
+policy_path=pathlib.Path('/etc/anker/tls-renewal.json')
+original_policy=policy_path.read_bytes()
+transcript=setup(False,reuse=True)
+assert b'Adresse im Browser' not in transcript,'Reuse asked to configure the connection again'
+assert tls_paths()==(cert,key),'Reuse replaced TLS paths'
+assert cert.read_bytes()==original_cert and key.read_bytes()==original_key,'Reuse replaced TLS identity'
+assert policy_path.read_bytes()==original_policy,'Reuse changed renewal policy'
+# Cancellation before saving must leave services and configuration alone.
+main_pid=subprocess.check_output(['systemctl','show','anker','--property=MainPID','--value']).strip()
+setup(False,'1',cancel=True)
+assert env_path.read_bytes()==original_env,'Cancelled setup changed connection'
+assert subprocess.check_output(['systemctl','show','anker','--property=MainPID','--value']).strip()==main_pid,'Cancelled setup restarted service'
+# Failure after the web service has started must still restore all settings.
+dropin=pathlib.Path('/etc/systemd/system/anker-updater.service.d')
+dropin.mkdir(exist_ok=True)
+failure=dropin/'99-ci-setup-failure.conf'
+failure.write_text('[Service]\nExecStart=\nExecStart=/bin/false\nRestart=no\n')
+try:
+ subprocess.run(['systemctl','daemon-reload'],check=True)
+ setup(False,'1',expect_error=True)
+ assert env_path.read_bytes()==original_env,'Helper startup failure left new web configuration active'
+ assert policy_path.read_bytes()==original_policy,'Helper startup failure changed TLS policy'
+ assert not pathlib.Path('/etc/anker/setup-pending.json').exists(),'Error rollback left a journal'
+finally:
+ failure.unlink()
+ subprocess.run(['systemctl','daemon-reload'],check=True)
+ restart_updater()
+with urllib.request.urlopen(request,context=context) as response:assert response.status==200
+print('System service startup failure restored previous HTTPS configuration.')
+# Durable journal fixture reproduces a killed process with partially written files.
+import base64
+saved=[]
+for name in ['service.env','tls-renewal.json','update.json','setup-complete']:
+ path=pathlib.Path('/etc/anker')/name
+ if path.exists():
+  info=path.stat();saved.append({'Name':name,'Exists':True,'Data':base64.b64encode(path.read_bytes()).decode(),'Mode':info.st_mode&0o777,'UID':info.st_uid,'GID':info.st_gid})
+ else:saved.append({'Name':name,'Exists':False,'Data':None,'Mode':0,'UID':0,'GID':0})
+pending=pathlib.Path('/etc/anker/setup-pending.json')
+unused=pathlib.Path('/etc/anker/tls/server-interrupted.crt')
+pending.write_text(json.dumps({'Version':1,'Files':saved,'Created':[str(unused)],'MainRunning':True,'UpdaterRunning':True}));pending.chmod(0o600)
+subprocess.run(['systemctl','stop','anker-updater','anker'],check=True)
+env_path.write_text('ANKER_LISTEN=127.0.0.1:9191\n')
+policy_path.write_text('{}\n');unused.write_text('partial certificate')
+transcript=setup(False,reuse=True)
+assert 'Unterbrochene Einrichtung erkannt'.encode() in transcript,'Interrupted setup not recognized'
+assert env_path.read_bytes()==original_env,'Interrupted configuration not recovered'
+assert not pending.exists() and not unused.exists(),'Pending configuration not cleaned up'
+assert cert.read_bytes()==original_cert and key.read_bytes()==original_key,'Recovery changed existing TLS identity'
+for name,content in keys.items():assert pathlib.Path('/etc/anker/keys/'+name).read_bytes()==content,'Recovery replaced SSH key'
+with urllib.request.urlopen(request,context=context) as response:assert response.status==200
+print('Resume, cancellation and interrupted configuration recovery passed.')
 print('Automatic TLS setup, verified HTTPS login and retained certificate identity passed.')
 
 def tls_cli(*args):
