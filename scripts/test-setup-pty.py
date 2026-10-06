@@ -24,7 +24,7 @@ def restart_updater():
 
 def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,expect_error=False):
  # This fixture deliberately performs many independent restarts in succession.
- subprocess.run(['systemctl','reset-failed','anker','anker-updater'],check=True)
+ if not first:subprocess.run(['systemctl','reset-failed','anker','anker-updater'],check=True)
  child,terminal=pty.fork()
  if child==0:
   os.environ['TERM']='dumb' if plain else 'xterm-256color'
