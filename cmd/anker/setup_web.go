@@ -112,7 +112,7 @@ func setupConfigureWeb(prior string, initialized bool) (setupWebConfig, error) {
 	}
 	c.SelfSigned = bytes.Equal(leaf.RawIssuer, leaf.RawSubject) && leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature) == nil
 	if c.SelfSigned {
-		fmt.Println("Eigenes TLS-Zertifikat: Verbindung verschlüsselt; Fingerprint vor dem ersten Browserzugriff prüfen. Für verwaltete Clients eure interne CA verwenden.")
+		fmt.Println("Eigenes TLS-Zertifikat: keine interne CA oder öffentliche Domain erforderlich. Verbindung verschlüsselt; Fingerprint vor dem ersten Browserzugriff prüfen.")
 	}
 	if preserve && strings.HasPrefix(currentCert, "/etc/anker/tls/") && strings.HasPrefix(currentKey, "/etc/anker/tls/") {
 		certInfo, certErr := os.Lstat(currentCert)

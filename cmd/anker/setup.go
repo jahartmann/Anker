@@ -544,7 +544,7 @@ func runSetup(configureUpdates bool) error {
 		}
 		fmt.Printf("TLS-Fingerprint SHA256: %X\nZertifikat gültig bis %s · Datei: %s\n", sha256.Sum256(leaf.Raw), leaf.NotAfter.UTC().Format("02.01.2006"), web.Cert)
 		if web.SelfSigned {
-			fmt.Println("Den Fingerprint vor Bestätigen der Browserwarnung vergleichen. Für eine warnungsfreie Anmeldung ein Zertifikat eurer internen CA importieren. Erneuern über sudo anker setup vor dem Ablaufdatum.")
+			fmt.Println("Keine interne CA erforderlich. Den Fingerprint vor Bestätigen der Browserwarnung auf jedem Arbeitsplatz vergleichen. Ein bereits vertrautes Zertifikat lässt sich optional importieren. Erneuern über sudo anker setup vor dem Ablaufdatum.")
 		}
 	}
 	fmt.Println("SSH-Schlüssel: /etc/anker/keys/backup und restore\nÖffentliche Schlüssel: gleiche Pfade mit .pub. Host-Anbindung: README → Proxmox-Hosts anbinden.\nEinrichtung erneut öffnen: sudo anker setup")

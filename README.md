@@ -54,9 +54,9 @@ Bestehende Benutzer und private SSH-Schlüssel bleiben erhalten. Der Assistent f
 | --- | --- |
 | LAN/VPN, mehrere Nutzer | Im Assistenten HTTPS wählen. DNS-Name oder feste IP angeben. Anker bindet beim ersten Einrichten an Port 8087. |
 | Nur über SSH-Tunnel | Im Assistenten SSH-Tunnel wählen. Anker bleibt auf `127.0.0.1:8087`; kein zusätzliches TLS-Zertifikat nötig. |
-| Eigene interne CA oder vorhandenes Zertifikat | HTTPS wählen und Zertifikat samt Kette und passendem privatem Schlüssel importieren. Der Assistent prüft Adresse, Gültigkeit und Schlüsselpaar. |
+| Optional: vorhandenes Zertifikat | HTTPS wählen und Zertifikat samt Kette und passendem privatem Schlüssel importieren. Der Assistent prüft Adresse, Gültigkeit und Schlüsselpaar. |
 
-Für LAN/VPN kann Anker selbst ein Zertifikat erzeugen. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Für verwaltete Clients ein Zertifikat eurer bereits vertrauten internen CA verwenden.
+Ohne interne CA und ohne eigene öffentliche Domain im Assistenten „automatisch erzeugen“ wählen. Anker erstellt ein Zertifikat für den angegebenen internen DNS-Namen oder die IP. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Eine interne CA wird dafür nicht vorausgesetzt. Die Prüfung ist in jedem verwendeten Browser beziehungsweise auf jedem Arbeitsplatz erforderlich. Bereits vorhandene, vom Browser vertraute Zertifikate lassen sich optional importieren.
 
 Das automatisch erzeugte Zertifikat gilt ein Jahr. Der Assistent zeigt das Ablaufdatum. Es wird nicht im Hintergrund verlängert: vor Ablauf `sudo anker setup` öffnen und „automatisch erzeugen“ wählen. Innerhalb der letzten 30 Tage wird dann ein neues Zertifikat erzeugt; bei der Browserprüfung den neuen Fingerprint verwenden. Wiederholte Einrichtung behält ein noch ausreichend gültiges Zertifikat mit gleicher Adresse bei.
 
