@@ -28,6 +28,28 @@ Der Server braucht nur `public.key`. Ein öffentlicher Release braucht keinen Gi
 
 ## Erstinstallation aus einem Release
 
+Der geführte Weg benötigt einen veröffentlichten stabilen Release. Aus einem bekannten Projektstand auf dem Linux-Server:
+
+```sh
+sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
+```
+
+Der Installer erkennt amd64/arm64, lädt über die GitHub-API, prüft Signatur, Version, Architektur, Größe und SHA-256 und entpackt erst danach. Links, Gerätedateien und ausbrechende Archivpfade werden abgelehnt. Anschließend fragt Anker die Ersteinrichtung ab, erzeugt die beiden SSH-Schlüssel und aktiviert die Dienste. Der bereits vertraute öffentliche Schlüssel wird für Updates übernommen. Pakete enthalten ausschließlich den öffentlichen Schlüssel, keine private Signieridentität.
+
+Für ein privates Repository:
+
+```sh
+sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem --repo OWNER/Anker --private
+```
+
+Der GitHub-Token wird verdeckt abgefragt. Ein Fine-grained Token mit Zugriff nur auf dieses Repository und **Contents: read-only** reicht für Release-Downloads. Er wird root-eigen mit `0600` gespeichert und bei Weiterleitungen zu Asset-Storage nicht übertragen. Alternativ `--token-file /etc/mein-geschützter-token`. Bei Ablauf oder Widerruf des Tokens scheitert die Updateprüfung; Anker selbst und vorhandene Sicherungen bleiben lokal nutzbar. Privates GitHub ist jederzeit vom Server erreichbar, solange Token, Repositoryberechtigung und Netzwerk verfügbar sind. SSH-Deploy-Keys erlauben einen Quellcode-Clone, ersetzen aber nicht den HTTP-Token für die Release-API.
+
+Die Einrichtung kann mit `sudo anker setup` wiederholt werden. Bestehende Benutzer und private SSH-Schlüssel werden erhalten; unvollständige öffentliche Schlüssel und Dateirechte werden repariert. Die Einrichtung sperrt den Updater während Änderungen. Der Webzugriff bleibt standardmäßig lokal; für LAN/VPN vorhandene, vertrauenswürdige TLS-Dateien angeben.
+
+Unterbrechung während der Installation: Solange `/etc/anker/install-pending` existiert, dasselbe geprüfte Installationsskript erneut ausführen. Der Hauptprogrammwechsel erfolgt erst nach synchronisierten Grundlagen. Ist die Installation abgeschlossen, `anker setup` verwenden; der Installer ersetzt keine bestehende Installation. Eine reine Quellcode-Installation unterstützt `scripts/install-server.sh --no-setup` für automatisierte Abläufe.
+
+Manueller Paketweg:
+
 Zum Prozessor passendes Paket, `release.json` und `release.json.sig` herunterladen. `amd64` gilt für übliche Intel-/AMD-Server, `arm64` für 64-Bit-ARM.
 
 Den öffentlichen Schlüssel vor der ersten Installation unabhängig prüfen. Ein Schlüssel aus demselben ungeprüften Download beweist keine Identität. Auch das Prüfskript aus einem bekannten Projektstand verwenden. OpenSSL 3 und Python 3 reichen für die Paketprüfung; kein Go oder Node auf dem Server nötig.
@@ -41,7 +63,7 @@ cd anker-install
 sudo ./scripts/install-server.sh ./anker
 ```
 
-Danach den Administrator wie in der README initialisieren. Der Installer überschreibt eine bestehende Anker-Installation nicht. Eine ältere Entwicklungsinstallation zuerst im Wartungsfenster stoppen und nach Sicherung des Katalogs auf diesen Installationsstand bringen.
+Das Installationsskript öffnet die Einrichtung automatisch. Der Installer überschreibt eine bestehende Anker-Installation nicht. Eine ältere Entwicklungsinstallation zuerst im Wartungsfenster stoppen und nach Sicherung des Katalogs auf diesen Installationsstand bringen.
 
 ## Updater auf dem Server einrichten
 
@@ -105,6 +127,8 @@ Der Updater startet aus der separaten, root-eigenen Datei `/usr/local/libexec/an
 
 Die persistente Sperrdatei `/etc/anker/update-maintenance` und ein root-eigenes Journal verhindern neue Aufträge während der Wiederanlaufprüfung nach einem abgebrochenen Update. Der Updater behandelt ein offenes Journal beim nächsten Start, bevor er weitere Installationen annimmt.
 
+Die Wartungssperre wird erst entfernt und das Verzeichnis synchronisiert, wenn der laufende Dienst die Freigabe bestätigt hat. Ist dessen Socket beim Booten noch nicht bereit, bleibt der Marker für den nächsten Versuch erhalten.
+
 ## Fehler und Rückfall
 
 ```sh
@@ -117,4 +141,4 @@ Ein Neustart des Updaters stößt bei vorhandenem Journal die Wiederherstellung 
 
 Das Verfahren sichert Programm und Katalog, keine komplette Maschine. SSH-Schlüssel, TLS-Dateien, Servicekonfiguration und Backupordner bleiben beim Update unverändert und gehören weiterhin in das betriebliche Sicherungskonzept. Releases mit inkompatiblen Datenformaten brauchen eine gesonderte Migration; der normale Updater führt sie nicht aus.
 
-Die automatische Wiederherstellung ist mit lokalen Fehlerfällen geprüft. Eine Abnahme auf dem tatsächlichen Linux-/systemd-Server und ein kontrollierter Test mit Strom- beziehungsweise Prozessabbruch bleiben vor dem produktiven Einsatz erforderlich.
+Lokale Tests prüfen unter anderem beschädigte Downloads, volle Datenträger, defekte Kandidaten, Katalog/WAL-Rückfall und unterbrochene Prozesse. Der GitHub-Workflow ergänzt eine isolierte Linux-VM mit echten systemd-Diensten: interaktive Erst- und Wiederholeinrichtung, Programmwechsel, defektes neues Binary, Journal-Wiederherstellung vor und nach dem Katalogsnapshot, Sitzungen und Dienstneustarts. Das sind Dienst- und Prozessneustarts, kein tatsächlicher Maschinen-Reboot oder Stromausfall. Ein kontrollierter Reboot-/Stromausfalltest auf der Zielumgebung bleibt erforderlich; eine hundertprozentige Garantie lässt sich daraus nicht ableiten.

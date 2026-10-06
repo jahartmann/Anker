@@ -40,8 +40,19 @@ func writeNew(p string, b []byte, mode os.FileMode) error {
 	}
 	return err
 }
+func signingKey() (ed25519.PrivateKey, error) {
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(os.Getenv("ANKER_SIGNING_KEY")))
+	if err != nil || len(key) != ed25519.PrivateKeySize {
+		return nil, errors.New("ANKER_SIGNING_KEY muss einen base64-kodierten Ed25519-Schlüssel enthalten")
+	}
+	expected := ed25519.NewKeyFromSeed(key[:32])
+	if string(expected) != string(key) {
+		return nil, errors.New("Signierschlüssel inkonsistent")
+	}
+	return ed25519.PrivateKey(key), nil
+}
 func run() error {
-	mode := flag.String("mode", "sign", "keygen or sign")
+	mode := flag.String("mode", "sign", "keygen, public or sign")
 	dir := flag.String("dir", "dist", "output directory")
 	version := flag.String("version", "", "release tag vX.Y.Z")
 	flag.Parse()
@@ -69,17 +80,22 @@ func run() error {
 		fmt.Println("Signierschlüssel erstellt. private.key außerhalb des Repositorys aufbewahren.")
 		return nil
 	}
-	if *mode != "sign" {
+	if *mode != "sign" && *mode != "public" {
 		return errors.New("unbekannter Modus")
 	}
-	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(os.Getenv("ANKER_SIGNING_KEY")))
-	if err != nil || len(key) != ed25519.PrivateKeySize {
-		return errors.New("ANKER_SIGNING_KEY muss einen base64-kodierten Ed25519-Schlüssel enthalten")
+	key, err := signingKey()
+	if err != nil {
+		return err
 	}
-	// Validate the internal public half rather than signing with malformed private bytes.
-	expected := ed25519.NewKeyFromSeed(key[:32])
-	if string(expected) != string(key) {
-		return errors.New("Signierschlüssel inkonsistent")
+	if *mode == "public" {
+		der, err := x509.MarshalPKIXPublicKey(key.Public())
+		if err != nil {
+			return err
+		}
+		if err = writeNew(filepath.Join(*dir, "public.key"), []byte(base64.StdEncoding.EncodeToString(key[32:])+"\n"), 0644); err != nil {
+			return err
+		}
+		return writeNew(filepath.Join(*dir, "public.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0644)
 	}
 	m := updater.Manifest{Version: *version, Format: 1}
 	checksums := []string{}

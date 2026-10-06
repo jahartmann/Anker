@@ -56,3 +56,18 @@ func TestPreparePersistsGuardBeforeDrainAndCleansRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReleaseKeepsGuardUntilServiceAcknowledges(t *testing.T) {
+	root := t.TempDir()
+	guard := filepath.Join(root, "guard")
+	if err := os.WriteFile(guard, []byte("update\n"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	c := SystemControl{Socket: filepath.Join(root, "missing.sock"), guard: guard}
+	if err := c.Release(context.Background()); err == nil {
+		t.Fatal("offline service acknowledged release")
+	}
+	if _, err := os.Stat(guard); err != nil {
+		t.Fatal("retry marker removed before acknowledgement", err)
+	}
+}

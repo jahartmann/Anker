@@ -134,6 +134,10 @@ func (a *Auth) CreateUser(name, password, role string, secrets bool) error {
 	})
 }
 func validRole(role string) bool { return role == "admin" || role == "restore" || role == "reader" }
+func (a *Auth) Initialized() (bool, error) {
+	users, err := records[User](a.store, "users")
+	return len(users) > 0, err
+}
 func (a *Auth) SetPassword(id, password string) error {
 	if utf8.RuneCountInString(password) < 12 || len(password) > 1024 {
 		return errors.New("Passwort muss 12 bis 1024 Zeichen enthalten")

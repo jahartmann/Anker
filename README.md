@@ -27,22 +27,28 @@ Voraussetzungen für den Build: Go 1.27.1 oder neuer, Node.js 22.12+ und npm. Di
 
 Die Installation ist für einen zentralen Linux-Server mit systemd vorgesehen. Release-Pakete enthalten die fertige Anwendung für amd64 oder arm64; Go und Node werden nur zum Bauen benötigt. Pakete vor der ersten Installation mit dem veröffentlichten, unabhängig geprüften Signierschlüssel verifizieren. Die vollständigen Schritte für Erstinstallation, GitHub-Releases und Updates stehen in [UPDATES.md](docs/UPDATES.md).
 
+Mit einem veröffentlichten signierten Release und einer bereits geprüften `public.pem` reicht aus einem bekannten Projektstand:
+
+```sh
+sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
+```
+
+Das Skript lädt die passende Architektur, prüft Signatur und Paket und öffnet die Einrichtung. Benötigt werden Python 3, OpenSSL 3, OpenSSH und systemd. Solange noch kein signierter Release veröffentlicht ist, den Quellcode-Build verwenden.
+
 ## Linux-Server aus dem Quellcode installieren
 
 ```sh
 make linux
-sudo ./scripts/install-server.sh ./bin/anker-linux-amd64
+sudo ./scripts/install-server.sh
 ```
 
-`init` verlangt `ANKER_INITIAL_PASSWORD` mit mindestens 12 Zeichen. Passwort verdeckt einlesen und nur für diesen Aufruf bereitstellen, beispielsweise in Bash:
+Die Einrichtung fragt nach Administratorname, verdecktem Passwort mit Wiederholung, Webzugriff und optionaler Updatequelle. Sie erzeugt getrennte SSH-Schlüssel für Sicherung und Wiederherstellung und startet die Dienste. Vorhandene Benutzer und private SSH-Schlüssel bleiben erhalten. Eine abgebrochene Ersteinrichtung lässt sich erneut öffnen:
 
 ```sh
-read -rs -p 'Administratorpasswort: ' ANKER_INITIAL_PASSWORD; echo
-export ANKER_INITIAL_PASSWORD
-sudo --preserve-env=ANKER_INITIAL_PASSWORD -u anker /usr/local/bin/anker --data /srv/anker init
-unset ANKER_INITIAL_PASSWORD
-sudo systemctl enable --now anker
+sudo anker setup
 ```
+
+Ohne interaktive Einrichtung: `sudo ./scripts/install-server.sh --no-setup`. Anschließend `sudo -u anker anker init` für die verdeckte Passwortabfrage verwenden. Für Automatisierung nimmt `init` weiterhin `ANKER_INITIAL_PASSWORD` entgegen. Passwörter nicht als Befehlsargument übergeben. Erneutes `init` ersetzt keine bestehenden Benutzer.
 
 Der Administrator heißt standardmäßig `admin`. Der Dienst bindet standardmäßig nur `127.0.0.1:8087`. Für einen Zugriff über SSH-Tunnel:
 
@@ -63,7 +69,7 @@ Danach `sudo systemctl restart anker`. Der Dienstbenutzer braucht Leserechte auf
 ## Proxmox-Hosts anbinden
 
 1. Auf jedem Host `sudo ./scripts/install-host.sh` ausführen. Es installiert den root-eigenen Python-Helfer mit festem Protokoll und einer engen sudo-Regel.
-2. Auf dem Anker-Server einen eigenen Ed25519-Schlüssel erzeugen. Privaten Schlüssel unter `/etc/anker/keys` mit Eigentümer `anker`, Rechten `0600` und einem root-eigenen Elternordner ablegen.
+2. Die Einrichtung erzeugt `/etc/anker/keys/backup` und `/etc/anker/keys/restore`. Für Sicherungen den ersten verwenden. Bei manueller Einrichtung einen eigenen Ed25519-Schlüssel unter `/etc/anker/keys` mit Eigentümer `anker`, Rechten `0600` und einem root-eigenen Elternordner ablegen.
 3. Den öffentlichen Schlüssel auf dem Host in `/var/lib/anker-ssh/.ssh/authorized_keys` mit folgender Beschränkung eintragen:
 
 ```text

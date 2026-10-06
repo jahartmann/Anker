@@ -48,7 +48,7 @@ func run(args []string) error {
 		if command[0] == "version" {
 			fmt.Println("Anker " + buildinfo.Version)
 		} else {
-			fmt.Println(client.Help + "\nanker init | serve | demo\nWeb: --listen 127.0.0.1:8087 --tls-cert DATEI --tls-key DATEI")
+			fmt.Println(client.Help + "\nanker setup | init | serve | demo\nWeb: --listen 127.0.0.1:8087 --tls-cert DATEI --tls-key DATEI")
 		}
 		return nil
 	}
@@ -59,6 +59,12 @@ func run(args []string) error {
 	}
 	if command[0] == "update" {
 		return runUpdate(command[1:])
+	}
+	if command[0] == "setup" {
+		if *data != updater.DataDir {
+			return errors.New("Servereinrichtung verwendet /srv/anker")
+		}
+		return runSetup()
 	}
 	if command[0] == "demo" && *data == "/srv/anker" {
 		*data = "./var/demo"
@@ -97,9 +103,20 @@ func run(args []string) error {
 		return err
 	}
 	if command[0] == "init" {
+		initialized, err := auth.Initialized()
+		if err != nil {
+			return err
+		}
+		if initialized {
+			fmt.Println("Administratorzugang ist bereits eingerichtet; bestehende Benutzer bleiben erhalten.")
+			return nil
+		}
 		password := os.Getenv("ANKER_INITIAL_PASSWORD")
 		if password == "" {
-			return errors.New("ANKER_INITIAL_PASSWORD mit mindestens 12 Zeichen setzen; keine Standardpasswörter")
+			password, err = initialPassword()
+			if err != nil {
+				return err
+			}
 		}
 		if err = auth.CreateUser(*admin, password, "admin", true); err != nil {
 			return err

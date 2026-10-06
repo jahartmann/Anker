@@ -28,9 +28,15 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
       - run: python3 -m unittest discover -s host -p 'test_*.py'
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: go build -o bin/anker ./cmd/anker
       - run: npx --prefix web playwright install --with-deps chromium
       - run: npm test --prefix web
+      - name: Real systemd installation and recovery
+        run: |
+          go test -c ./internal/updater -o bin/updater-systemd.test
+          go build -ldflags='-X anker/internal/buildinfo.Version=v0.2.1' -o bin/anker-systemd-candidate ./cmd/anker
+          sudo env GITHUB_ACTIONS=true ./scripts/test-systemd.sh "$PWD/bin/anker" "$PWD/bin/updater-systemd.test" "$PWD/bin/anker-systemd-candidate"
       - name: Build and sign packages
         env:
           ANKER_VERSION: ${{ github.ref_name }}
@@ -40,4 +46,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ANKER_VERSION: ${{ github.ref_name }}
-        run: gh release create "$ANKER_VERSION" dist/anker-* dist/release.json dist/release.json.sig dist/SHA256SUMS --verify-tag --draft --title "Anker $ANKER_VERSION" --notes-file CHANGELOG.md
+        run: gh release create "$ANKER_VERSION" dist/anker-* dist/public.* dist/release.json dist/release.json.sig dist/SHA256SUMS --verify-tag --draft --title "Anker $ANKER_VERSION" --notes-file CHANGELOG.md

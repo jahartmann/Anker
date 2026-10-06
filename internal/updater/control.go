@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -68,11 +69,15 @@ func (c SystemControl) Prepare(ctx context.Context) (string, error) {
 	return version, nil
 }
 func (c SystemControl) Release(ctx context.Context) error {
+	// Keep the durable retry marker until the running service has acknowledged.
+	// Type=simple may have started while its socket is still unavailable at boot.
+	if _, err := c.call(ctx, "POST", "/release"); err != nil {
+		return err
+	}
 	if err := os.Remove(c.guardPath()); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	_, err := c.call(ctx, "POST", "/release")
-	return err
+	return syncDir(filepath.Dir(c.guardPath()))
 }
 func systemctl(ctx context.Context, action string) error {
 	bounded, cancel := context.WithTimeout(ctx, 70*time.Second)
