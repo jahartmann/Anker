@@ -2,9 +2,15 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
 import type { Settings as Values, User } from "../api";
-import { Dialog, Field, Heading } from "../components/shared";
+import { Dialog, Field, Heading, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
-export default function Settings({ notify }: { notify: Notify }) {
+export default function Settings({
+  notify,
+  onDirtyChange,
+}: {
+  notify: Notify;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const [value, setValue] = useState<Values | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("Sicherung");
@@ -19,24 +25,56 @@ export default function Settings({ notify }: { notify: Notify }) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("reader");
   const [secrets, setSecrets] = useState(false);
+  const [saved, setSaved] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [reload, setReload] = useState(0);
+  const dirty = !!value && JSON.stringify(value) !== saved;
   useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  useEffect(() => {
+    let active = true;
+    setLoadError("");
     api<Values>("settings")
-      .then(setValue)
-      .catch((e) => notify(e.message, true));
+      .then((v) => {
+        if (active) {
+          setValue(v);
+          setSaved(JSON.stringify(v));
+        }
+      })
+      .catch((e) => {
+        if (active) setLoadError(e.message);
+      });
     api<User[]>("users")
       .then(setUsers)
       .catch((e) => notify(e.message, true));
-  }, [notify]);
+    return () => {
+      active = false;
+    };
+  }, [notify, reload]);
   const set = (key: keyof Values, v: unknown) =>
     setValue((old) => (old ? { ...old, [key]: v } : old));
   async function save(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
+    setSaveError("");
     try {
-      setValue(await api("settings", "PUT", value));
+      const result = await api<Values>("settings", "PUT", value);
+      setValue(result);
+      setSaved(JSON.stringify(result));
       notify("Einstellungen gespeichert");
     } catch (e) {
-      notify((e as Error).message, true);
+      setSaveError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -64,7 +102,14 @@ export default function Settings({ notify }: { notify: Notify }) {
       notify((e as Error).message, true);
     }
   }
-  if (!value) return <p className="muted">Einstellungen werden geladen …</p>;
+  if (!value)
+    return loadError ? (
+      <LoadError message={loadError} retry={() => setReload((v) => v + 1)} />
+    ) : (
+      <p className="muted" role="status">
+        Einstellungen werden geladen …
+      </p>
+    );
   return (
     <>
       <Heading
@@ -76,6 +121,7 @@ export default function Settings({ notify }: { notify: Notify }) {
           <button
             key={t}
             className={t === tab ? "selected" : ""}
+            aria-pressed={t === tab}
             onClick={() => {
               setTab(t);
               if (t === "System") inspect();
@@ -87,158 +133,179 @@ export default function Settings({ notify }: { notify: Notify }) {
       </div>
       {["Sicherung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
-          {tab === "Sicherung" ? (
-            <>
-              <section>
-                <h3>Zeitplan</h3>
-                <p className="muted">
-                  Hosts starten zeitlich versetzt innerhalb einer Stunde. Eigene
-                  Hostzeiten haben Vorrang.
-                </p>
-                <div className="form-grid">
-                  <Field label="Startzeit">
-                    <input
-                      type="time"
-                      required
-                      value={value.schedule}
-                      onChange={(e) => set("schedule", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Zeitzone">
-                    <input
-                      required
-                      value={value.timezone}
-                      onChange={(e) => set("timezone", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Parallele Aufträge">
-                    <input
-                      type="number"
-                      min={1}
-                      max={16}
-                      value={value.parallel}
-                      onChange={(e) => set("parallel", +e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Wiederholungen">
-                    <input
-                      type="number"
-                      min={0}
-                      max={5}
-                      value={value.retries}
-                      onChange={(e) => set("retries", +e.target.value)}
-                    />
-                  </Field>
-                </div>
-              </section>
-              <section>
-                <h3>Aufbewahrung</h3>
-                <p className="muted">
-                  Geschützte Stände, unvollständige Sicherungen und
-                  referenzierte Pläne bleiben erhalten.
-                </p>
-                <div className="form-grid">
-                  {(
-                    [
-                      ["daily", "Tagesstände"],
-                      ["weekly", "Wochenstände"],
-                      ["monthly", "Monatsstände"],
-                      ["archive_days", "Archivierung nach Tagen"],
-                      ["stale_hours", "Überfällig nach Stunden"],
-                    ] as const
-                  ).map(([k, l]) => (
-                    <Field key={k} label={l}>
+          <fieldset className="form-fields" disabled={busy}>
+            {tab === "Sicherung" ? (
+              <>
+                <section>
+                  <h3>Zeitplan</h3>
+                  <p className="muted">
+                    Hosts starten zeitlich versetzt innerhalb einer Stunde.
+                    Eigene Hostzeiten haben Vorrang.
+                  </p>
+                  <div className="form-grid">
+                    <Field label="Startzeit">
+                      <input
+                        type="time"
+                        required
+                        value={value.schedule}
+                        onChange={(e) => set("schedule", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Zeitzone">
+                      <input
+                        required
+                        value={value.timezone}
+                        onChange={(e) => set("timezone", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Parallele Aufträge">
                       <input
                         type="number"
                         min={1}
-                        value={value[k]}
-                        onChange={(e) => set(k, +e.target.value)}
+                        max={16}
+                        value={value.parallel}
+                        onChange={(e) => set("parallel", +e.target.value)}
                       />
                     </Field>
-                  ))}
-                </div>
-              </section>
-            </>
-          ) : (
-            <>
-              <section>
-                <h3>Benachrichtigungen</h3>
-                <p className="muted">
-                  Anker meldet fehlgeschlagene Sicherungen und die anschließende
-                  Erholung.
-                </p>
-                <Field label="Webhook-URL">
-                  <input
-                    type="url"
-                    value={value.webhook}
-                    onChange={(e) => set("webhook", e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="SMTP-Server"
-                  hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
-                >
-                  <input
-                    value={value.smtp_server}
-                    onChange={(e) => set("smtp_server", e.target.value)}
-                    placeholder="mail.example.de:587"
-                  />
-                </Field>
-                <div className="form-grid">
-                  <Field label="SMTP-Benutzer">
+                    <Field label="Wiederholungen">
+                      <input
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={value.retries}
+                        onChange={(e) => set("retries", +e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </section>
+                <section>
+                  <h3>Aufbewahrung</h3>
+                  <p className="muted">
+                    Geschützte Stände, unvollständige Sicherungen und
+                    referenzierte Pläne bleiben erhalten.
+                  </p>
+                  <div className="form-grid">
+                    {(
+                      [
+                        ["daily", "Tagesstände"],
+                        ["weekly", "Wochenstände"],
+                        ["monthly", "Monatsstände"],
+                        ["archive_days", "Archivierung nach Tagen"],
+                        ["stale_hours", "Überfällig nach Stunden"],
+                      ] as const
+                    ).map(([k, l]) => (
+                      <Field key={k} label={l}>
+                        <input
+                          type="number"
+                          min={1}
+                          value={value[k]}
+                          onChange={(e) => set(k, +e.target.value)}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <section>
+                  <h3>Benachrichtigungen</h3>
+                  <p className="muted">
+                    Anker meldet fehlgeschlagene Sicherungen und die
+                    anschließende Erholung.
+                  </p>
+                  <Field label="Webhook-URL">
                     <input
-                      value={value.smtp_user}
-                      onChange={(e) => set("smtp_user", e.target.value)}
+                      type="url"
+                      value={value.webhook}
+                      onChange={(e) => set("webhook", e.target.value)}
                     />
                   </Field>
                   <Field
-                    label="SMTP-Passwort"
-                    hint="Leer lassen, um das vorhandene Passwort zu behalten."
+                    label="SMTP-Server"
+                    hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
                   >
                     <input
-                      type="password"
-                      autoComplete="new-password"
-                      value={value.smtp_password || ""}
-                      onChange={(e) => set("smtp_password", e.target.value)}
+                      value={value.smtp_server}
+                      onChange={(e) => set("smtp_server", e.target.value)}
+                      placeholder="mail.example.de:587"
                     />
                   </Field>
-                  <Field label="Absender">
-                    <input
-                      type="email"
-                      value={value.mail_from}
-                      onChange={(e) => set("mail_from", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Empfänger">
-                    <input
-                      type="email"
-                      value={value.mail_to}
-                      onChange={(e) => set("mail_to", e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={async () => {
-                    try {
-                      await api("notifications/test", "POST", {});
-                      notify("Testnachricht gesendet");
-                    } catch (e) {
-                      notify((e as Error).message, true);
+                  <div className="form-grid">
+                    <Field label="SMTP-Benutzer">
+                      <input
+                        value={value.smtp_user}
+                        onChange={(e) => set("smtp_user", e.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="SMTP-Passwort"
+                      hint="Leer lassen, um das vorhandene Passwort zu behalten."
+                    >
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={value.smtp_password || ""}
+                        onChange={(e) => set("smtp_password", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Absender">
+                      <input
+                        type="email"
+                        value={value.mail_from}
+                        onChange={(e) => set("mail_from", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Empfänger">
+                      <input
+                        type="email"
+                        value={value.mail_to}
+                        onChange={(e) => set("mail_to", e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={dirty || busy}
+                    title={
+                      dirty ? "Zuerst die Änderungen speichern" : undefined
                     }
-                  }}
-                >
-                  Gespeicherte Verbindung testen
-                </button>
-              </section>
-            </>
-          )}
-          <footer className="form-footer">
-            <button disabled={busy}>
-              {busy ? "Speichert …" : "Einstellungen speichern"}
-            </button>
-          </footer>
+                    onClick={async () => {
+                      try {
+                        await api("notifications/test", "POST", {});
+                        notify("Testnachricht gesendet");
+                      } catch (e) {
+                        notify((e as Error).message, true);
+                      }
+                    }}
+                  >
+                    Gespeicherte Verbindung testen
+                  </button>
+                  {dirty && (
+                    <p className="field-hint">
+                      Zum Testen zuerst die Änderungen speichern.
+                    </p>
+                  )}
+                </section>
+              </>
+            )}
+            {saveError && (
+              <p className="notice warning" role="alert">
+                {saveError}
+              </p>
+            )}
+            <footer className="form-footer">
+              <span className="save-state" role="status">
+                {dirty
+                  ? "Ungespeicherte Änderungen"
+                  : "Alle Änderungen gespeichert"}
+              </span>
+              <button disabled={busy || !dirty}>
+                {busy ? "Speichert …" : "Einstellungen speichern"}
+              </button>
+            </footer>
+          </fieldset>
         </form>
       )}
       {tab === "Zugriff" && (
@@ -346,6 +413,7 @@ export default function Settings({ notify }: { notify: Notify }) {
       {form && (
         <Dialog
           title="Benutzer hinzufügen"
+          busy={busy}
           onClose={() => {
             setForm(false);
             setPassword("");
@@ -379,7 +447,8 @@ export default function Settings({ notify }: { notify: Notify }) {
             <label className="check">
               <input
                 type="checkbox"
-                checked={secrets}
+                checked={role === "admin" || secrets}
+                disabled={role === "admin"}
                 onChange={(e) => setSecrets(e.target.checked)}
               />
               Geschützte Inhalte und vollständige Exporte erlauben
@@ -388,7 +457,11 @@ export default function Settings({ notify }: { notify: Notify }) {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setForm(false)}
+                disabled={busy}
+                onClick={() => {
+                  setForm(false);
+                  setPassword("");
+                }}
               >
                 Abbrechen
               </button>
@@ -429,7 +502,7 @@ function ResetPassword({
     }
   }
   return (
-    <Dialog title="Passwort ändern" onClose={onClose}>
+    <Dialog title="Passwort ändern" onClose={onClose} busy={busy}>
       <p className="dialog-intro">
         Neues Passwort für {user.name}. Bestehende Sitzungen dieses Benutzers
         werden beendet.

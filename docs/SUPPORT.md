@@ -50,6 +50,22 @@ Prüfstand vom 05.10.2026: simulierte Zeitpunkte und Fehler, keine behaupteten d
 | Stromverlust lässt eine Änderung ohne dauerhaft gespeicherte Rollbackkopie zurück | Rollbackdateien, Metadaten und Verzeichnisse vor erster Änderung synchronisieren; anschließend Zieldatei und Elternverzeichnis synchronisieren. Reihenfolge im Helfertest geprüft, echter Stromverlust bleibt Laborfall. |
 | Tausende Sicherungen/Aufträge machen die Tabelle unhandlich | Anzeige in 50er-Schritten; Statusantworten übertragen keine vollständigen Inventardetails jedes alten Plans. Vollständige Pläne werden beim Öffnen neu gelesen. Entfernte Hosts bleiben im Sicherungsfilter erreichbar. |
 
-Aktueller lokaler Nachweis: 69 Go-Tests mit Race Detector, Go Vet, zehn Python-Helfertests, 15 Browserabläufe, TypeScript-/Webbuild und Linux-Crossbuild für amd64/arm64. Browser: Desktop 1440×1000 und Mobilansicht 390×844; Downloads als Vollstand, Einzeldatei und Plan tatsächlich geprüft. Im eingebauten Browser wurde zusätzlich eine Einzeldatei heruntergeladen und die Oberfläche visuell kontrolliert.
+Aktueller lokaler Nachweis: 69 Go-Tests mit Race Detector, Go Vet, zehn Python-Helfertests, 27 Browserabläufe, TypeScript-/Webbuild und Linux-Crossbuild für amd64/arm64. Browser: Desktop 1440×1000 und Mobilansicht 390×844; Downloads als Vollstand, Einzeldatei und Plan tatsächlich geprüft. Im eingebauten Browser wurde zusätzlich eine Einzeldatei heruntergeladen und die Oberfläche visuell kontrolliert.
 
 Diese Prüfung kann unbekannte Kombinationen und echte Infrastrukturfehler nicht vollständig ausschließen. Noch offen sind reale SSH-/sudo-/SFTP-Installation, ein erzwungen voller Datenträger, physischer Stromverlust, Neustart-/Dienstprüfung nach Restore, Disk-/Storage-Migration, abweichende Hardware sowie isolierte Cluster-/Quorum-/HA-/Ceph-Szenarien. Gesamtrecovery bleibt bis zu dieser Abnahme manuell geführt und automatisch gesperrt.
+
+## Ergänzende Bedienungsprüfung vom 06.10.2026
+
+| Beobachteter Fehler | Korrektur |
+|---|---|
+| Dateiauswahl geht beim Wechsel zur Wiederherstellung verloren | Ausgewählte Datei ausdrücklich übernehmen; erneuter Einstieg erzeugt eine frische Anfrage. |
+| Ladefehler sehen wie ein leerer oder dauerhaft ladender Dialog aus | Fehlermeldung und Wiederholen in Dateiliste, Vorschau, Wiederherstellung und Einstellungen. |
+| Menüs werden am Tabellenrand abgeschnitten | Außerhalb des scrollenden Tabellenbereichs positionieren; Escape, Pfeiltasten und Fokus-Rückgabe. Fenstergrößenwechsel schließt das Menü ohne Laufzeitfehler. |
+| Downloads und Dateien liegen mobil außerhalb des sichtbaren Bereichs | Sicherungszeilen mit sämtlichen Aktionen untereinander; mobile Dialogaktionen über die volle Breite. |
+| Gleicher Stand lässt sich nach Änderung der Quelle mit sich selbst vergleichen | Identisches Vergleichsziel zurücksetzen und Vergleich sperren; Änderungen deutsch beschriften. |
+| Offene Einstellungen gehen beim Navigieren verloren | Speicherzustand anzeigen, unverändertes Speichern sperren, Seitenwechsel und Browser-Neuladen mit offenen Änderungen schützen. Verbindungstest erst nach Speichern. |
+| Pausierte Hosts werden als vollständig gesichert dargestellt | Gesonderte Zustände für pausierte Zeitpläne und noch nicht eingerichtete Hosts. |
+| Laufende Planerstellung lässt sich schließen oder erneut starten | Dialog und Formulare während der Anfrage sperren; Fehler im bestehenden Formular anzeigen. |
+| Abmelden bei Netzfehler erzeugt einen unbehandelten Fehler | Sitzungsansicht behalten und Verbindungsfehler anzeigen. |
+
+Zwölf zusätzliche Browserregressionen wurden zunächst gegen den alten Stand mit dem jeweiligen Fehler beobachtet und nach der Korrektur erfolgreich ausgeführt. Visuelle Prüfung auf Desktop und bei 390×844 Pixeln; keine Behauptung einer vollständigen WCAG-Abnahme oder einer realen Hardwareabnahme.

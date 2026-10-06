@@ -1,7 +1,15 @@
 import { useEffect, useState, useRef } from "react";
 import { api, bytes, date } from "../api";
 import type { Backup, Entry, Status, User } from "../api";
-import { Dialog, Download, Empty, Heading, State } from "../components/shared";
+import {
+  ActionMenu,
+  Dialog,
+  Download,
+  Empty,
+  Heading,
+  LoadError,
+  State,
+} from "../components/shared";
 import type { Notify } from "../components/shared";
 export function BackupTable({
   backups,
@@ -21,7 +29,12 @@ export function BackupTable({
   onRestore: (id: string) => void;
 }) {
   const [visible, setVisible] = useState(50);
+  const [pending, setPending] = useState("");
+  const acting = useRef(false);
   async function act(b: Backup, action: string) {
+    if (acting.current) return;
+    acting.current = true;
+    setPending(b.id);
     try {
       await api(
         "backups/" + b.id + "/" + action,
@@ -40,12 +53,15 @@ export function BackupTable({
       refresh();
     } catch (e) {
       notify((e as Error).message, true);
+    } finally {
+      acting.current = false;
+      setPending("");
     }
   }
   return backups.length ? (
     <div>
       <div className="table-scroll">
-        <table>
+        <table className="backup-table">
           <thead>
             <tr>
               <th>Host / Zeitpunkt</th>
@@ -79,7 +95,7 @@ export function BackupTable({
                   )}
                 </td>
                 <td>
-                  {b.files} Dateien
+                  {b.files} Einträge
                   <div className="secondary-line">{bytes(b.size)}</div>
                 </td>
                 <td className="right">
@@ -100,25 +116,39 @@ export function BackupTable({
                       Dateien
                     </button>
                     {canEdit && (
-                      <details className="action-menu">
-                        <summary aria-label={"Aktionen für " + b.id}>
-                          •••
-                        </summary>
-                        <div>
-                          <button onClick={() => onRestore(b.id)}>
-                            Wiederherstellen
-                          </button>
-                          <button onClick={() => act(b, "verify")}>
-                            Prüfsummen prüfen
-                          </button>
-                          <button onClick={() => act(b, "pin")}>
-                            {b.pinned ? "Schutz aufheben" : "Stand schützen"}
-                          </button>
-                          <button onClick={() => act(b, "archive")}>
-                            Archivieren
-                          </button>
-                        </div>
-                      </details>
+                      <ActionMenu
+                        label={
+                          "Aktionen für " +
+                          b.host_name +
+                          " · " +
+                          date(b.created_at)
+                        }
+                        disabled={!!pending}
+                        actions={[
+                          {
+                            label: "Wiederherstellen",
+                            run: () => onRestore(b.id),
+                          },
+                          {
+                            label: "Prüfsummen prüfen",
+                            run: () => act(b, "verify"),
+                          },
+                          {
+                            label: b.pinned
+                              ? "Schutz aufheben"
+                              : "Stand schützen",
+                            run: () => act(b, "pin"),
+                          },
+                          ...(!b.archived
+                            ? [
+                                {
+                                  label: "Archivieren",
+                                  run: () => act(b, "archive"),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
                     )}
                   </div>
                 </td>
@@ -210,7 +240,10 @@ export default function Backups({
           <select
             aria-label="Vergleich von"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              if (e.target.value === to) setTo("");
+            }}
           >
             <option value="">Älterer Stand</option>
             {backups.map((b) => (
@@ -236,7 +269,7 @@ export default function Backups({
           </select>
           <button
             className="secondary"
-            disabled={!from || !to || busy}
+            disabled={!from || !to || from === to || busy}
             onClick={compare}
           >
             {busy ? "Vergleicht …" : "Vergleichen"}
@@ -254,7 +287,13 @@ export default function Backups({
               <details className="file-diff" key={d.path}>
                 <summary>
                   <span className="mono">{d.path}</span>
-                  <span className="muted">{d.change}</span>
+                  <span className="muted">
+                    {{
+                      added: "Hinzugefügt",
+                      changed: "Geändert",
+                      removed: "Entfernt",
+                    }[d.change] || d.change}
+                  </span>
                 </summary>
                 <pre>
                   {d.secret
@@ -284,7 +323,7 @@ export function FileBrowser({
   user: User;
   onClose: () => void;
   notify: Notify;
-  onRestore: (id: string) => void;
+  onRestore: (id: string, file?: string) => void;
 }) {
   const [files, setFiles] = useState<Entry[]>([]);
   const [query, setQuery] = useState("");
@@ -296,25 +335,41 @@ export function FileBrowser({
   } | null>(null);
   const request = useRef(0);
   const [busy, setBusy] = useState(false);
+  const [listing, setListing] = useState(true);
+  const [listError, setListError] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     let active = true;
     request.current++;
     setSelected("");
     setPreview(null);
+    setFiles([]);
+    setQuery("");
+    setBusy(false);
+    setListing(true);
+    setListError("");
+    setPreviewError("");
     api<Entry[]>("backups/" + backup.id + "/files")
       .then((v) => {
         if (active) setFiles(v);
       })
-      .catch((e) => notify(e.message, true));
+      .catch((e) => {
+        if (active) setListError(e.message);
+      })
+      .finally(() => {
+        if (active) setListing(false);
+      });
     return () => {
       active = false;
       request.current++;
     };
-  }, [backup.id, notify]);
+  }, [backup.id, reload]);
   async function open(path: string, reveal = false) {
     const sequence = ++request.current;
     setSelected(path);
     setPreview(null);
+    setPreviewError("");
     setBusy(true);
     try {
       const result = await api<{
@@ -330,16 +385,22 @@ export function FileBrowser({
       );
       if (sequence === request.current) setPreview(result);
     } catch (e) {
-      if (sequence === request.current) notify((e as Error).message, true);
+      if (sequence === request.current) setPreviewError((e as Error).message);
     } finally {
       if (sequence === request.current) setBusy(false);
     }
   }
+  const visibleFiles = files.filter(
+    (f) =>
+      f.type !== "directory" &&
+      f.path.toLowerCase().includes(query.toLowerCase()),
+  );
+  const selectedEntry = files.find((f) => f.path === selected);
   return (
     <Dialog title={"Dateien · " + backup.host_name} wide onClose={onClose}>
       <p className="dialog-intro">
-        {date(backup.created_at)} · {backup.files} Dateien · Originalrechte
-        bleiben im Manifest erhalten.
+        {date(backup.created_at)} · {backup.files} Einträge · Dateien werden im
+        Original heruntergeladen.
       </p>
       {backup.warnings?.map((w, i) => (
         <p className="notice warning" key={i}>
@@ -355,11 +416,26 @@ export function FileBrowser({
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="file-items">
-            {files
-              .filter((f) => f.type !== "directory" && f.path.includes(query))
-              .map((f) => (
+            {listing ? (
+              <p className="muted file-list-message" role="status">
+                Dateien werden geladen …
+              </p>
+            ) : listError ? (
+              <LoadError
+                message={listError}
+                retry={() => setReload((v) => v + 1)}
+              />
+            ) : !visibleFiles.length ? (
+              <p className="muted file-list-message">
+                {query
+                  ? "Keine passenden Dateien"
+                  : "Keine Dateien in diesem Stand"}
+              </p>
+            ) : (
+              visibleFiles.map((f) => (
                 <button
                   className={selected === f.path ? "selected" : ""}
+                  aria-pressed={selected === f.path}
                   key={f.path}
                   onClick={() => open(f.path)}
                 >
@@ -372,12 +448,30 @@ export function FileBrowser({
                         : bytes(f.size)}
                   </small>
                 </button>
-              ))}
+              ))
+            )}
           </div>
+          {!listing && !listError && (
+            <p className="file-list-count">
+              {visibleFiles.length} von{" "}
+              {files.filter((f) => f.type !== "directory").length} Dateien
+            </p>
+          )}
         </div>
         <div className="file-preview">
           {busy ? (
             <p className="muted">Datei wird gelesen …</p>
+          ) : previewError ? (
+            <>
+              <div className="preview-heading">
+                <strong className="mono">{selected}</strong>
+              </div>
+              <LoadError
+                message={previewError}
+                label="Erneut lesen"
+                retry={() => open(selected)}
+              />
+            </>
           ) : preview ? (
             <>
               <div className="preview-heading">
@@ -413,7 +507,8 @@ export function FileBrowser({
       </div>
       <footer className="dialog-footer">
         {selected &&
-          (user.secrets || !files.find((f) => f.path === selected)?.secret) && (
+          selectedEntry &&
+          (user.secrets || !selectedEntry.secret) && (
             <Download
               path={
                 "backups/" +
@@ -435,10 +530,10 @@ export function FileBrowser({
           <button
             onClick={() => {
               onClose();
-              onRestore(backup.id);
+              onRestore(backup.id, selected || undefined);
             }}
           >
-            Wiederherstellung planen
+            {selected ? "Datei wiederherstellen" : "Wiederherstellung planen"}
           </button>
         )}
       </footer>

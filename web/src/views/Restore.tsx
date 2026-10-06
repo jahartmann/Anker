@@ -8,18 +8,21 @@ import {
   Empty,
   Field,
   Heading,
+  LoadError,
   State,
 } from "../components/shared";
 import type { Notify } from "../components/shared";
 export default function Restore({
   status,
   initialBackup,
+  initialFile,
   user,
   notify,
   refresh,
 }: {
   status: Status;
   initialBackup: string;
+  initialFile?: string;
   user: User;
   notify: Notify;
   refresh: () => void;
@@ -37,6 +40,10 @@ export default function Restore({
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [confirmation, setConfirmation] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     if (initialBackup) {
       setBackup(initialBackup);
@@ -45,33 +52,49 @@ export default function Restore({
   }, [initialBackup]);
   useEffect(() => {
     setFiles([]);
-    if (!backup) {
-      setEntries([]);
-      return;
-    }
-    let active = true;
     setSource(null);
     setEntries([]);
     setInterfaces({});
     setConsoleOK(false);
     setOffline(false);
-    api<Inventory>("backups/" + backup + "/inventory")
-      .then((v) => {
-        if (active) setSource(v);
+    setLoadError("");
+    setFormError("");
+    if (!backup) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    Promise.all([
+      api<Inventory>("backups/" + backup + "/inventory"),
+      api<Entry[]>("backups/" + backup + "/files"),
+    ])
+      .then(([inventory, items]) => {
+        if (!active) return;
+        setSource(inventory);
+        setEntries(items);
+        if (
+          backup === initialBackup &&
+          initialFile &&
+          items.some((f) => f.path === initialFile && f.type !== "directory")
+        )
+          setFiles([initialFile]);
       })
-      .catch((e) => notify(e.message, true));
-    api<Entry[]>("backups/" + backup + "/files")
-      .then((v) => {
-        if (active) setEntries(v);
+      .catch((e) => {
+        if (active) setLoadError(e.message);
       })
-      .catch((e) => notify(e.message, true));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [backup, notify]);
+  }, [backup, initialBackup, initialFile, reload]);
   async function create(e: FormEvent) {
     e.preventDefault();
+    if (busy || loading || loadError) return;
     setBusy(true);
+    setFormError("");
     try {
       const p = await api<Plan>("plans", "POST", {
         backup_id: backup,
@@ -88,7 +111,7 @@ export default function Restore({
       refresh();
       notify("Wiederherstellungsplan erstellt");
     } catch (e) {
-      notify((e as Error).message, true);
+      setFormError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -96,13 +119,14 @@ export default function Restore({
   async function apply() {
     if (!plan) return;
     setBusy(true);
+    setFormError("");
     try {
       await api("plans/" + plan.id + "/apply", "POST", { confirmation });
       setPlan(null);
       refresh();
       notify("Wiederherstellung gestartet. Ergebnis im Auftrag prüfen.");
     } catch (e) {
-      notify((e as Error).message, true);
+      setFormError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -119,6 +143,7 @@ export default function Restore({
               onClick={() => {
                 setWizard(true);
                 setPlan(null);
+                setFormError("");
               }}
             >
               Plan erstellen
@@ -159,6 +184,7 @@ export default function Restore({
                           try {
                             setPlan(await api<Plan>("plans/" + p.id));
                             setConfirmation("");
+                            setFormError("");
                           } catch (e) {
                             notify((e as Error).message, true);
                           }
@@ -182,166 +208,194 @@ export default function Restore({
         <Dialog
           title="Wiederherstellung vorbereiten"
           wide
+          busy={busy}
           onClose={() => setWizard(false)}
         >
           <form onSubmit={create}>
-            <p className="dialog-intro">
-              Der Plan liest das Zielinventar und verändert noch keine
-              Konfiguration.
-            </p>
-            <div className="form-grid">
-              <Field label="Sicherung">
+            <fieldset className="form-fields" disabled={busy}>
+              <p className="dialog-intro">
+                Der Plan liest das Zielinventar und verändert noch keine
+                Konfiguration.
+              </p>
+              <div className="form-grid">
+                <Field label="Sicherung">
+                  <select
+                    required
+                    value={backup}
+                    onChange={(e) => setBackup(e.target.value)}
+                  >
+                    <option value="">Stand auswählen</option>
+                    {status.backups.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.host_name} · {date(b.created_at)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Zielhost">
+                  <select
+                    required
+                    value={target}
+                    onChange={(e) => {
+                      setTarget(e.target.value);
+                      setInterfaces({});
+                    }}
+                  >
+                    <option value="">Ziel auswählen</option>
+                    {status.hosts.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Szenario">
                 <select
-                  required
-                  value={backup}
-                  onChange={(e) => setBackup(e.target.value)}
+                  value={scenario}
+                  onChange={(e) => setScenario(e.target.value)}
                 >
-                  <option value="">Stand auswählen</option>
-                  {status.backups.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.host_name} · {date(b.created_at)}
+                  {[
+                    "files",
+                    "standalone",
+                    "migration",
+                    "version",
+                    "cluster-node",
+                    "cluster-disaster",
+                    "topology",
+                  ].map((s) => (
+                    <option key={s} value={s}>
+                      {labels[s]}
                     </option>
                   ))}
                 </select>
               </Field>
-              <Field label="Zielhost">
-                <select
-                  required
-                  value={target}
-                  onChange={(e) => {
-                    setTarget(e.target.value);
-                    setInterfaces({});
-                  }}
-                >
-                  <option value="">Ziel auswählen</option>
-                  {status.hosts.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Field label="Szenario">
-              <select
-                value={scenario}
-                onChange={(e) => setScenario(e.target.value)}
-              >
-                {[
-                  "files",
-                  "standalone",
-                  "migration",
-                  "version",
-                  "cluster-node",
-                  "cluster-disaster",
-                  "topology",
-                ].map((s) => (
-                  <option key={s} value={s}>
-                    {labels[s]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {scenario === "files" && (
-              <fieldset className="file-selection">
-                <legend>Dateien auswählen</legend>
-                {entries
-                  .filter((f) => f.type !== "directory")
-                  .map((f) => (
-                    <label className="check" key={f.path}>
-                      <input
-                        type="checkbox"
-                        checked={files.includes(f.path)}
-                        onChange={(e) =>
-                          setFiles((old) =>
-                            e.target.checked
-                              ? [...old, f.path]
-                              : old.filter((v) => v !== f.path),
-                          )
-                        }
-                      />
-                      <span className="mono">{f.path}</span>
-                      {f.secret && <small className="muted">Geschützt</small>}
-                    </label>
-                  ))}
-              </fieldset>
-            )}
-            {source?.interfaces.length && dest ? (
-              <section className="mapping">
-                <h3>Netzwerkports zuordnen</h3>
-                <p className="muted">
-                  Für neue Hardware werden Ports ausdrücklich zugeordnet. Das
-                  Ziel wird bei der Planerstellung erneut geprüft.
+              {loading && (
+                <p className="notice" role="status">
+                  Sicherung wird gelesen …
                 </p>
-                {source.interfaces
-                  .filter((p) => p.name !== "lo")
-                  .map((p) => (
-                    <Field key={p.name} label={p.name + " → Zielport"}>
-                      <select
-                        value={interfaces[p.name] || ""}
-                        onChange={(e) =>
-                          setInterfaces((old) => ({
-                            ...old,
-                            [p.name]: e.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">
-                          Gleicher Name, sofern vorhanden
-                        </option>
-                        {dest.inventory?.interfaces.map((t) => (
-                          <option key={t.name} value={t.name}>
-                            {t.name} · {t.mac}
+              )}
+              {loadError && (
+                <LoadError
+                  message={loadError}
+                  retry={() => setReload((v) => v + 1)}
+                />
+              )}
+              {scenario === "files" && !loading && !loadError && (
+                <fieldset className="file-selection">
+                  <legend>Dateien auswählen · {files.length} ausgewählt</legend>
+                  {entries
+                    .filter((f) => f.type !== "directory")
+                    .map((f) => (
+                      <label className="check" key={f.path}>
+                        <input
+                          type="checkbox"
+                          checked={files.includes(f.path)}
+                          onChange={(e) =>
+                            setFiles((old) =>
+                              e.target.checked
+                                ? [...old, f.path]
+                                : old.filter((v) => v !== f.path),
+                            )
+                          }
+                        />
+                        <span className="mono">{f.path}</span>
+                        {f.secret && <small className="muted">Geschützt</small>}
+                      </label>
+                    ))}
+                </fieldset>
+              )}
+              {source?.interfaces.length &&
+              dest &&
+              (scenario !== "files" ||
+                files.some((f) => f.startsWith("etc/network/"))) ? (
+                <section className="mapping">
+                  <h3>Netzwerkports zuordnen</h3>
+                  <p className="muted">
+                    Für neue Hardware werden Ports ausdrücklich zugeordnet. Das
+                    Ziel wird bei der Planerstellung erneut geprüft.
+                  </p>
+                  {source.interfaces
+                    .filter((p) => p.name !== "lo")
+                    .map((p) => (
+                      <Field key={p.name} label={p.name + " → Zielport"}>
+                        <select
+                          value={interfaces[p.name] || ""}
+                          onChange={(e) =>
+                            setInterfaces((old) => ({
+                              ...old,
+                              [p.name]: e.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">
+                            Gleicher Name, sofern vorhanden
                           </option>
-                        ))}
-                      </select>
-                    </Field>
-                  ))}
-              </section>
-            ) : null}
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={consoleOK}
-                onChange={(e) => setConsoleOK(e.target.checked)}
-              />
-              Konsolenzugang zum Ziel ist verfügbar
-            </label>
-            {scenario !== "files" && (
-              <>
+                          {dest.inventory?.interfaces.map((t) => (
+                            <option key={t.name} value={t.name}>
+                              {t.name} · {t.mac}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ))}
+                </section>
+              ) : null}
+              {(scenario !== "files" ||
+                files.some((f) => f.startsWith("etc/network/"))) && (
                 <label className="check">
                   <input
                     type="checkbox"
-                    checked={offline}
-                    onChange={(e) => setOffline(e.target.checked)}
+                    checked={consoleOK}
+                    onChange={(e) => setConsoleOK(e.target.checked)}
                   />
-                  Alter Host ist ausgeschaltet oder isoliert
+                  Konsolenzugang zum Ziel ist verfügbar
                 </label>
-                <p className="notice">
-                  Gesamtszenarien werden auf realen Hosts manuell geführt, bis
-                  Hardware und Clusterabläufe im Labor validiert sind.
+              )}
+              {scenario !== "files" && (
+                <>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={offline}
+                      onChange={(e) => setOffline(e.target.checked)}
+                    />
+                    Alter Host ist ausgeschaltet oder isoliert
+                  </label>
+                  <p className="notice">
+                    Gesamtszenarien werden auf realen Hosts manuell geführt, bis
+                    Hardware und Clusterabläufe im Labor validiert sind.
+                  </p>
+                </>
+              )}
+              {formError && (
+                <p className="notice warning" role="alert">
+                  {formError}
                 </p>
-              </>
-            )}
-            <footer className="dialog-footer">
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setWizard(false)}
-              >
-                Abbrechen
-              </button>
-              <button
-                disabled={
-                  busy ||
-                  !backup ||
-                  !target ||
-                  (scenario === "files" && !files.length)
-                }
-              >
-                {busy ? "Ziel wird geprüft …" : "Plan prüfen"}
-              </button>
-            </footer>
+              )}
+              <footer className="dialog-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setWizard(false)}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  disabled={
+                    busy ||
+                    loading ||
+                    !!loadError ||
+                    !backup ||
+                    !target ||
+                    (scenario === "files" && !files.length)
+                  }
+                >
+                  {busy ? "Ziel wird geprüft …" : "Plan prüfen"}
+                </button>
+              </footer>
+            </fieldset>
           </form>
         </Dialog>
       )}
@@ -349,6 +403,7 @@ export default function Restore({
         <Dialog
           title="Wiederherstellungsplan"
           wide
+          busy={busy}
           onClose={() => setPlan(null)}
         >
           <div className="plan-meta">
@@ -413,6 +468,11 @@ export default function Restore({
                 placeholder={plan.id}
               />
             </Field>
+          )}
+          {formError && (
+            <p className="notice warning" role="alert">
+              {formError}
+            </p>
           )}
           <footer className="dialog-footer">
             {user.secrets && (

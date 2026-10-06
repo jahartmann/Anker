@@ -40,6 +40,307 @@ test("host search and backup files work", async ({ page }) => {
     page.getByText("bridge-ports eno1", { exact: false }),
   ).toBeVisible();
 });
+
+test("selected file carries into a fresh restore request", async ({ page }) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Dateien", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: /^etc\/sysctl.d\/99-anker.conf/ })
+    .click();
+  await page
+    .getByRole("button", { name: "Datei wiederherstellen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("checkbox", {
+      name: "etc/sysctl.d/99-anker.conf",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "etc/hostname", exact: true }),
+  ).not.toBeChecked();
+});
+
+test("file list failures can be retried without closing the dialog", async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route("**/api/backups/*/files", (route) =>
+    fail
+      ? route.fulfill({
+          status: 503,
+          json: { error: "Ablage vorübergehend nicht erreichbar" },
+        })
+      : route.continue(),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Dateien", exact: true })
+    .first()
+    .click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Ablage vorübergehend nicht erreichbar",
+  );
+  fail = false;
+  await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /^etc\/hostname/ }),
+  ).toBeVisible();
+  await page.getByPlaceholder("Pfad suchen").fill("no-match");
+  await expect(
+    page.getByText("Keine passenden Dateien", { exact: true }),
+  ).toBeVisible();
+});
+
+test("preview failure retains selected file and supports retry", async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route("**/api/backups/*/file?*", (route) =>
+    fail
+      ? route.fulfill({
+          status: 503,
+          json: { error: "Datei momentan nicht lesbar" },
+        })
+      : route.continue(),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Dateien", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: /^etc\/hostname/ }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Datei momentan nicht lesbar",
+  );
+  await expect(
+    page.getByRole("link", { name: "Datei herunterladen", exact: true }),
+  ).toBeVisible();
+  fail = false;
+  await page.getByRole("button", { name: "Erneut lesen", exact: true }).click();
+  await expect(page.locator(".file-preview pre")).toBeVisible();
+});
+
+test("comparison cannot retain the same source and destination", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  const { backups } = await (await page.request.get("/api/status")).json();
+  await page.getByLabel("Vergleich von").selectOption(backups[0].id);
+  await page.getByLabel("Vergleich bis").selectOption(backups[1].id);
+  await page.getByLabel("Vergleich von").selectOption(backups[1].id);
+  await expect(
+    page.getByRole("button", { name: "Vergleichen", exact: true }),
+  ).toBeDisabled();
+});
+
+test("last backup actions stay visible and close with Escape", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  const trigger = page
+    .locator(".action-menu > summary, .action-menu > button")
+    .last();
+  await trigger.click();
+  const archive = page.getByRole("button", {
+    name: "Archivieren",
+    exact: true,
+  });
+  await expect(archive).toBeInViewport();
+  const visible = await archive.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return el.contains(
+      document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      ),
+    );
+  });
+  expect(visible).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(archive).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+});
+
+test("mobile backup actions require no sideways scrolling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  const files = page
+    .getByRole("button", { name: "Dateien", exact: true })
+    .first();
+  await expect(files).toBeInViewport();
+  expect(
+    await page
+      .locator(".table-scroll")
+      .first()
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
+});
+
+test("settings load failure offers retry and changes have a visible saved state", async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route("**/api/settings", (route) =>
+    fail
+      ? route.fulfill({
+          status: 503,
+          json: { error: "Einstellungen momentan nicht verfügbar" },
+        })
+      : route.continue(),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "Einstellungen momentan nicht verfügbar",
+  );
+  fail = false;
+  await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
+  await page.getByLabel("Tagesstände").fill("37");
+  await expect(
+    page.getByText("Ungespeicherte Änderungen", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Einstellungen speichern" }).click();
+  await expect(
+    page.getByText("Alle Änderungen gespeichert", { exact: true }),
+  ).toBeVisible();
+});
+
+test("an overview with paused hosts does not claim they are secured", async ({
+  page,
+}) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = await response.json();
+    status.hosts.forEach(
+      (host: { enabled: boolean }) => (host.enabled = false),
+    );
+    await route.fulfill({ response, json: status });
+  });
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Übersicht", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Automatische Sicherung pausiert",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Alle Hosts sind aktuell gesichert",
+      exact: true,
+    }),
+  ).not.toBeVisible();
+});
+
+test("settings drafts stay intact when navigating away is cancelled", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByLabel("Tagesstände").fill("39");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Hosts", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Änderungen noch nicht gespeichert" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Weiter bearbeiten", exact: true })
+    .click();
+  await expect(page.getByLabel("Tagesstände")).toHaveValue("39");
+});
+
+test("a running plan request cannot be dismissed or submitted twice", async ({
+  page,
+}) => {
+  let calls = 0;
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => (finish = resolve));
+  await page.route("**/api/plans", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    calls++;
+    await gate;
+    await route.fulfill({
+      status: 503,
+      json: { error: "Ziel für Prüfung nicht erreichbar" },
+    });
+  });
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Plan erstellen", exact: true })
+    .click();
+  const status = await (await page.request.get("/api/status")).json();
+  await page
+    .getByLabel("Sicherung", { exact: true })
+    .selectOption(status.backups[0].id);
+  await page
+    .getByLabel("Zielhost", { exact: true })
+    .selectOption(status.hosts[0].id);
+  await page
+    .getByRole("checkbox", { name: "etc/sysctl.d/99-anker.conf", exact: true })
+    .check();
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dialog schließen", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(calls).toBe(1);
+  finish();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Ziel für Prüfung nicht erreichbar",
+  );
+});
+
+test("logout network failure stays visible without losing the session", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/api/logout", (route) => route.abort("connectionfailed"));
+  await page.getByRole("button", { name: "Abmelden", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Verbindung");
+  await expect(
+    page.getByRole("heading", { name: "Hosts", exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
 test("host form validates and creates real record", async ({ page }) => {
   await page.getByRole("button", { name: "Host hinzufügen" }).click();
   await page.getByLabel("Hostname", { exact: true }).fill("pve-browser-test");
@@ -436,4 +737,25 @@ test("maintenance and notification failures remain visible to administrators", a
       .getByRole("alert")
       .filter({ hasText: "Benachrichtigung konnte nicht zugestellt werden" }),
   ).toBeVisible();
+});
+
+test("resizing with an open action menu closes it without browser errors", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: /^Aktionen für/ })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Archivieren", exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await expect(page.locator(".action-popover")).not.toBeVisible();
+  expect(errors).toEqual([]);
 });

@@ -10,7 +10,7 @@ import {
   labels,
 } from "./api";
 import type { Status, User } from "./api";
-import { Empty, Field, Heading, State } from "./components/shared";
+import { Dialog, Empty, Field, Heading, State } from "./components/shared";
 import Hosts from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
 import Restore from "./views/Restore";
@@ -85,8 +85,14 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState("");
   const [page, setPage] = useState("Hosts");
   const [nav, setNav] = useState(false);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [pendingPage, setPendingPage] = useState("");
   const [file, setFile] = useState("");
-  const [restoreBackup, setRestoreBackup] = useState("");
+  const [restoreRequest, setRestoreRequest] = useState<{
+    id: string;
+    file?: string;
+    sequence: number;
+  } | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     error: boolean;
@@ -118,8 +124,10 @@ export default function App() {
       setUser(null);
       setStatus(emptyStatus);
       setFile("");
-      setRestoreBackup("");
+      setRestoreRequest(null);
       setPage("Hosts");
+      setSettingsDirty(false);
+      setPendingPage("");
     };
     window.addEventListener("anker:session-expired", expired);
     return () => window.removeEventListener("anker:session-expired", expired);
@@ -145,12 +153,25 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   function navigate(p: string) {
+    if (p === page) {
+      setNav(false);
+      return;
+    }
+    if (page === "Einstellungen" && settingsDirty) {
+      setPendingPage(p);
+      setNav(false);
+      return;
+    }
     setPage(p);
     setNav(false);
-    setRestoreBackup("");
+    setRestoreRequest(null);
   }
-  function restore(id: string) {
-    setRestoreBackup(id);
+  function restore(id: string, file?: string) {
+    setRestoreRequest((old) => ({
+      id,
+      file,
+      sequence: (old?.sequence || 0) + 1,
+    }));
     setPage("Wiederherstellung");
   }
   if (loading) return <div className="loading">Anker wird geladen …</div>;
@@ -188,7 +209,7 @@ export default function App() {
           onClick={() => setNav(false)}
         />
       )}
-      <aside className={nav ? "sidebar open" : "sidebar"}>
+      <aside id="anker-navigation" className={nav ? "sidebar open" : "sidebar"}>
         <div className="brand">Anker</div>
         <nav aria-label="Hauptnavigation">
           {pages
@@ -197,6 +218,7 @@ export default function App() {
               <button
                 key={p}
                 className={page === p ? "active" : ""}
+                aria-current={page === p ? "page" : undefined}
                 onClick={() => navigate(p)}
               >
                 {p}
@@ -220,8 +242,18 @@ export default function App() {
               className="icon-button"
               aria-label="Abmelden"
               onClick={async () => {
-                await api("logout", "POST", {});
-                setUser(null);
+                try {
+                  await api("logout", "POST", {});
+                  setUser(null);
+                  setFile("");
+                  setRestoreRequest(null);
+                  setStatus(emptyStatus);
+                  setPage("Hosts");
+                  setSettingsDirty(false);
+                  setPendingPage("");
+                } catch (e) {
+                  notify((e as Error).message, true);
+                }
               }}
             >
               <LogOut size={15} />
@@ -234,6 +266,8 @@ export default function App() {
           <button
             className="icon-button mobile-menu"
             aria-label="Navigation öffnen"
+            aria-expanded={nav}
+            aria-controls="anker-navigation"
             onClick={() => setNav(true)}
           >
             <Menu size={19} />
@@ -271,15 +305,17 @@ export default function App() {
             {page === "Sicherungen" && <Backups {...common} />}{" "}
             {page === "Wiederherstellung" && (
               <Restore
+                key={restoreRequest?.sequence || "restore"}
                 status={status}
-                initialBackup={restoreBackup}
+                initialBackup={restoreRequest?.id || ""}
+                initialFile={restoreRequest?.file}
                 user={user}
                 notify={notify}
                 refresh={refresh}
               />
             )}{" "}
             {page === "Einstellungen" && user.role === "admin" && (
-              <Settings notify={notify} />
+              <Settings notify={notify} onDirtyChange={setSettingsDirty} />
             )}{" "}
             {page === "Übersicht" && (
               <>
@@ -289,13 +325,24 @@ export default function App() {
                 />
                 <section className="overview-summary">
                   <p>
-                    <strong>
-                      {status.hosts.filter((h) => h.enabled).length -
-                        overdue.length}{" "}
-                      von {status.hosts.filter((h) => h.enabled).length} aktiven
-                      Hosts
-                    </strong>{" "}
-                    haben eine aktuelle Sicherung.
+                    {status.hosts.some((h) => h.enabled) ? (
+                      <>
+                        <strong>
+                          {status.hosts.filter((h) => h.enabled).length -
+                            overdue.length}{" "}
+                          von {status.hosts.filter((h) => h.enabled).length}{" "}
+                          aktiven Hosts
+                        </strong>{" "}
+                        haben eine aktuelle Sicherung.
+                      </>
+                    ) : status.hosts.length ? (
+                      <>
+                        <strong>{status.hosts.length} Hosts</strong> ·
+                        automatische Sicherung pausiert.
+                      </>
+                    ) : (
+                      "Noch keine Hosts eingerichtet."
+                    )}
                   </p>
                   <p className="muted">
                     {active.length
@@ -339,6 +386,15 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
+                  ) : !status.hosts.length ? (
+                    <Empty title="Noch keine Hosts eingerichtet">
+                      Mit „Host hinzufügen“ richtest du die erste Sicherung ein.
+                    </Empty>
+                  ) : !status.hosts.some((h) => h.enabled) ? (
+                    <Empty title="Automatische Sicherung pausiert">
+                      Für alle Hosts ist der Zeitplan ausgeschaltet. Die
+                      vorhandenen Stände bleiben erreichbar.
+                    </Empty>
                   ) : (
                     <Empty title="Alle Hosts sind aktuell gesichert">
                       Die Aufbewahrung läuft nach dem hinterlegten Zeitplan.
@@ -378,6 +434,31 @@ export default function App() {
           onRestore={restore}
         />
       )}{" "}
+      {pendingPage && (
+        <Dialog
+          title="Änderungen noch nicht gespeichert"
+          onClose={() => setPendingPage("")}
+        >
+          <p className="dialog-intro">
+            Deine Änderungen an den Einstellungen sind noch offen.
+          </p>
+          <footer className="dialog-footer">
+            <button
+              className="secondary"
+              onClick={() => {
+                setPage(pendingPage);
+                setPendingPage("");
+                setSettingsDirty(false);
+              }}
+            >
+              Änderungen verwerfen
+            </button>
+            <button onClick={() => setPendingPage("")}>
+              Weiter bearbeiten
+            </button>
+          </footer>
+        </Dialog>
+      )}
       {toast && (
         <div
           className={"toast " + (toast.error ? "toast-error" : "")}
