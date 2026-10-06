@@ -99,6 +99,12 @@ func (s *Service) saveHost(h Host) error {
 	if h.SSHUser == "" {
 		h.SSHUser = "anker"
 	}
+	if h.KeyPath == "" {
+		h.KeyPath = "/etc/anker/keys/backup"
+	}
+	if h.KnownHostsPath == "" {
+		h.KnownHostsPath = "/etc/anker/known_hosts"
+	}
 	if !safeHost.MatchString(h.SSHUser) || strings.Contains(h.SSHUser, ":") {
 		return errors.New("SSH-Benutzer ungültig")
 	}

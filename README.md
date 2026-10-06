@@ -1,177 +1,203 @@
 # Anker
 
-Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Weboberfläche, Terminaloberfläche und Befehle greifen auf denselben Dienst zu. Sicherungen bleiben als lesbare, geschützte Ordner verfügbar; Wiederherstellungspläne enthalten Originale, Zielinventar, Portzuordnungen und eine unabhängige Anleitung.
+Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Die Sicherungen bleiben als lesbare Ordner verfügbar. Weboberfläche, Terminaloberfläche und Befehle verwenden denselben Dienst.
 
-VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker ist kein Festplattenimage und ersetzt keine Sicherung der Gastdaten.
+VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker sichert Hostkonfigurationen, keine kompletten Festplattenimages. Für den zentralen Dienst einen eigenen Linux-Server oder eine VM mit systemd verwenden.
 
-## Releases
+## Installation
 
-Die Installation ist für einen zentralen Linux-Server mit systemd vorgesehen. Release-Pakete enthalten die fertige Anwendung für amd64 oder arm64; Go und Node werden nur zum Bauen benötigt. Pakete vor der ersten Installation mit dem veröffentlichten, unabhängig geprüften Signierschlüssel verifizieren. Die vollständigen Schritte für Erstinstallation, GitHub-Releases und Updates stehen in [UPDATES.md](docs/UPDATES.md).
+Ein produktiver signierter Release ist noch nicht veröffentlicht. Bis dahin aus dem Quellcode bauen. Dafür werden Go 1.27.1+, Node.js 22.12+, npm und make benötigt:
 
-Mit einem veröffentlichten signierten Release und einer bereits geprüften `public.pem` reicht aus einem bekannten Projektstand:
+```sh
+git clone --depth 1 https://github.com/jahartmann/Anker.git
+cd Anker
+make linux
+sudo ./scripts/install-server.sh
+```
+
+Der Installer wählt amd64 oder arm64 und öffnet die Einrichtung. Auf dem Server werden systemd, Python 3, OpenSSH und `runuser` benötigt. Go und Node.js werden nur zum Bauen verwendet. Der Build kann auch auf einem anderen Rechner erfolgen; anschließend den Projektordner einschließlich `bin/anker-linux-*` auf den Server übertragen und dort den Installer ausführen.
+
+Sobald ein signierter Release bereitsteht, geht es ohne Compiler auf dem Server:
 
 ```sh
 sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
 ```
 
-Das Skript lädt die passende Architektur, prüft Signatur und Paket und öffnet die Einrichtung. Benötigt werden Python 3, OpenSSL 3, OpenSSH und systemd. Solange noch kein signierter Release veröffentlicht ist, den Quellcode-Build verwenden.
+Das Skript erkennt die Architektur, lädt das Paket, prüft Signatur und SHA-256 und startet dieselbe Einrichtung. Es benötigt zusätzlich OpenSSL 3. Den öffentlichen Signierschlüssel vor der ersten Verwendung unabhängig prüfen. Details zu privaten Repositories und Release-Erstellung stehen in [UPDATES.md](docs/UPDATES.md).
 
-## Linux-Server aus dem Quellcode installieren
+## Erste Einrichtung
 
-Voraussetzungen für den Build: Go 1.27.1 oder neuer, Node.js 22.12+ und npm. Die Weboberfläche wird in das Binary eingebettet. Der Linux-Dienst braucht kein Node.js. `make linux` baut amd64 und arm64 ohne CGo.
+Der Assistent fragt nur nach den Angaben, die er nicht selbst bestimmen kann:
 
-```sh
-make linux
-sudo ./scripts/install-server.sh
-```
+1. Administratorname und ein eigenes Passwort mit Wiederholung.
+2. Webzugriff: direkt über LAN/VPN mit HTTPS oder über einen SSH-Tunnel.
+3. Bei HTTPS: DNS-Name oder IP für den Browser und die Zertifikatswahl.
+4. Die angezeigte Konfiguration bestätigen.
 
-Die Einrichtung fragt nach Administratorname, verdecktem Passwort mit Wiederholung, Webzugriff und optionaler Updatequelle. Sie erzeugt getrennte SSH-Schlüssel für Sicherung und Wiederherstellung und startet die Dienste. Vorhandene Benutzer und private SSH-Schlüssel bleiben erhalten. Eine abgebrochene Ersteinrichtung lässt sich erneut öffnen:
+Anker legt Benutzer und Ordner an, setzt die Dateirechte, erzeugt getrennte SSH-Schlüssel für Sicherung und Wiederherstellung und startet die Dienste. Eine bereits bekannte Updatequelle wird übernommen. Bei einem geprüften Release wird dessen öffentlicher Signierschlüssel automatisch verwendet. Für ein öffentliches Repository ist kein GitHub-Token nötig.
+
+Die normale Installation startet leer. Es gibt keine Beispielhosts, Backups, Aufträge oder Demobenutzer. Voreingestellt sind tägliche Sicherungen ab 02:00 Uhr in Europe/Berlin, vier parallele Aufträge sowie 30 Tages-, 12 Wochen- und 12 Monatsstände. Zusätzliche Benutzer, SMTP und Webhooks können später in der Oberfläche eingerichtet werden.
+
+Einrichtung wiederholen oder nach einem Abbruch fortsetzen:
 
 ```sh
 sudo anker setup
 ```
 
-Die normale Installation startet leer: keine Beispielhosts, Sicherungen, Aufträge oder Demobenutzer. Nur der selbst eingerichtete Administrator und die Betriebseinstellungen werden angelegt. Hosts werden anschließend ausdrücklich hinzugefügt. Der Dienst startet immer im Produktionsbetrieb.
+Bestehende Benutzer und private SSH-Schlüssel bleiben erhalten. Der Assistent fragt nicht nochmals nach dem Administratorpasswort. Ein gültiges vorhandenes TLS-Zertifikat kann ohne erneute Dateiauswahl behalten werden. Für eine andere Updatequelle oder einen privaten GitHub-Zugang ausdrücklich `sudo anker setup --updates` verwenden.
 
-Ohne interaktive Einrichtung: `sudo ./scripts/install-server.sh --no-setup`. Anschließend `sudo -u anker anker init` für die verdeckte Passwortabfrage verwenden. Für Automatisierung nimmt `init` weiterhin `ANKER_INITIAL_PASSWORD` entgegen. Passwörter nicht als Befehlsargument übergeben. Erneutes `init` ersetzt keine bestehenden Benutzer.
+`--no-setup` am Installer installiert nur die Dateien. Für einen regulären ersten Start danach `sudo anker setup` ausführen. `anker init` ist der kleinere Weg zur reinen Benutzeranlage; er ersetzt keine vollständige Einrichtung und überschreibt keine vorhandenen Zugänge. Für Automatisierung akzeptiert `init` die Umgebungsvariable `ANKER_INITIAL_PASSWORD`, kein Passwortargument.
 
-Der Administrator heißt standardmäßig `admin`. Der Dienst bindet standardmäßig nur `127.0.0.1:8087`. Für einen Zugriff über SSH-Tunnel:
+## Webzugriff und TLS
+
+| Zugriff | Was einzurichten ist |
+| --- | --- |
+| LAN/VPN, mehrere Nutzer | Im Assistenten HTTPS wählen. DNS-Name oder feste IP angeben. Anker bindet beim ersten Einrichten an Port 8087. |
+| Nur über SSH-Tunnel | Im Assistenten SSH-Tunnel wählen. Anker bleibt auf `127.0.0.1:8087`; kein zusätzliches TLS-Zertifikat nötig. |
+| Eigene interne CA oder vorhandenes Zertifikat | HTTPS wählen und Zertifikat samt Kette und passendem privatem Schlüssel importieren. Der Assistent prüft Adresse, Gültigkeit und Schlüsselpaar. |
+
+Für LAN/VPN kann Anker selbst ein Zertifikat erzeugen. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Für verwaltete Clients ein Zertifikat eurer bereits vertrauten internen CA verwenden.
+
+Das automatisch erzeugte Zertifikat gilt ein Jahr. Der Assistent zeigt das Ablaufdatum. Es wird nicht im Hintergrund verlängert: vor Ablauf `sudo anker setup` öffnen und „automatisch erzeugen“ wählen. Innerhalb der letzten 30 Tage wird dann ein neues Zertifikat erzeugt; bei der Browserprüfung den neuen Fingerprint verwenden. Wiederholte Einrichtung behält ein noch ausreichend gültiges Zertifikat mit gleicher Adresse bei.
+
+HTTPS schützt Anmeldung, Sitzung und heruntergeladene Konfigurationen. Ein VPN ersetzt die Absicherung der Webverbindung auf den beteiligten Rechnern und Netzabschnitten nicht automatisch. Deshalb bleibt direkter Webzugriff im Assistenten bei HTTPS. Hintergrund: [OWASP TLS](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html).
+
+Für den SSH-Tunnel auf dem Arbeitsplatz:
 
 ```sh
-ssh -L 8087:127.0.0.1:8087 admin@anker-server
+ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER
 ```
 
-Direkter LAN-/VPN-Zugriff verlangt TLS. In `/etc/anker/service.env` beispielsweise setzen:
-
-```ini
-ANKER_LISTEN=0.0.0.0:8087
-ANKER_TLS_CERT=/etc/anker/tls/server.crt
-ANKER_TLS_KEY=/etc/anker/tls/server.key
-```
-
-Danach `sudo systemctl restart anker`. Der Dienstbenutzer braucht Leserechte auf diese Dateien. Ein vom Browser vertrauenswürdiges Zertifikat verwenden; Anker kann TLS selbst terminieren. Eine Reverse-Proxy-Terminierung erfordert passende Cookie-/Proxy-Konfiguration und ist in dieser Fassung kein fertig getesteter Installationsweg.
+Danach `http://127.0.0.1:8087` öffnen. Die Netzwerkverbindung wird bereits durch SSH verschlüsselt. Den Tunnel für die Nutzung offen lassen. Ein Reverse Proxy ist für diese Wege nicht erforderlich; Proxy-Terminierung ist in dieser Fassung kein getesteter Installationsweg.
 
 ## Proxmox-Hosts anbinden
 
-1. Auf jedem Host `sudo ./scripts/install-host.sh` ausführen. Es installiert den root-eigenen Python-Helfer mit festem Protokoll und einer engen sudo-Regel.
-2. Die Einrichtung erzeugt `/etc/anker/keys/backup` und `/etc/anker/keys/restore`. Für Sicherungen den ersten verwenden. Bei manueller Einrichtung einen eigenen Ed25519-Schlüssel unter `/etc/anker/keys` mit Eigentümer `anker`, Rechten `0600` und einem root-eigenen Elternordner ablegen.
-3. Den öffentlichen Schlüssel auf dem Host in `/var/lib/anker-ssh/.ssh/authorized_keys` mit folgender Beschränkung eintragen:
+Auf jedem Host werden der Helfer und ein eingeschränkter SSH-Zugang eingerichtet. Dafür das Projekt- oder Release-Paket und **nur den öffentlichen** Sicherungsschlüssel auf den Host übertragen. Der öffentliche Schlüssel liegt auf dem Anker-Server unter `/etc/anker/keys/backup.pub`.
 
-```text
-restrict,command="sudo -n /usr/local/lib/anker/anker-host --read-only" ssh-ed25519 PUBLIC_KEY ANKER
+Auf dem Proxmox-Host:
+
+```sh
+sudo ./scripts/install-host.sh --backup-key /pfad/backup.pub
 ```
 
-4. Den SSH-Hostfingerprint über eine unabhängige, vertrauenswürdige Verbindung prüfen. Erst danach den Hostschlüssel in `/etc/anker/known_hosts` hinterlegen. Ein ungeprüftes `ssh-keyscan` ist keine Identitätsprüfung.
-5. In Anker Hostname, Adresse, Gruppe, SSH-Schlüssel und `known_hosts` eintragen. „Verbindung prüfen“, danach „Jetzt sichern“ ausführen. Auftrag, Pflichtlücken und gespeicherte Dateien prüfen.
+Das Skript installiert Helfer, Benutzer, sudo-Regel und den eingeschränkten Schlüsseleintrag gemeinsam. Manuelles Bearbeiten von `authorized_keys` entfällt. Wiederholung erzeugt keine doppelten Schlüssel; vorhandene Profile und andere Schlüssel bleiben erhalten. Der Zugang kann nur den festen Sicherungshelfer ausführen, keine freie Shell.
 
-Für automatische Einzeldateiübernahme zusätzlich auf dem Ziel `sudo ./scripts/install-host.sh --enable-restore` ausführen. Ein **anderes** Schlüsselpaar in `/var/lib/anker-restore-ssh/.ssh/authorized_keys` mit `restrict,command="sudo -n /usr/local/lib/anker/anker-host"` eintragen. In den erweiterten Hosteinstellungen Benutzer `anker-restore` und den eigenen Wiederherstellungsschlüssel hinterlegen. Der normale `anker`-Zugang kann ausschließlich Probe/Collect ausführen. Der Restorezugang kann privilegierte Konfiguration ändern und wird deshalb separat vergeben und geschützt. Ohne Restorezugang bleiben Planung und Export möglich; der Plan erklärt die fehlende Freigabe und sperrt die Ausführung.
+Das Skript zeigt den **Ed25519-SSH-Hostfingerprint**. Diesen über die Proxmox-Konsole oder eine schon vertrauenswürdige Administrationsverbindung ablesen. Auf dem Anker-Server:
 
-Passwortlose Synchronisation verwendet hier **SSH-Schlüssel**, keine Zertifikate. SSH-Zertifikate sind bei einer vorhandenen SSH-CA optional möglich, aber nicht Teil dieses Installationswegs. TLS-Zertifikate sichern den Webzugriff.
+```sh
+sudo anker host trust HOSTADRESSE --fingerprint SHA256:FINGERPRINT
+```
 
-Das Hostprofil `/etc/anker-host.json` enthält beispielsweise `{"paths":["/etc","/usr/local","/opt/my-config"]}`. Es muss root gehören und darf nicht von anderen beschreibbar sein. Zusätzliche Pflichtpfade in Anker müssen in diesem Profil tatsächlich enthalten sein. Fehlende oder unlesbare Dateien erzeugen eine unvollständige Sicherung. VM-Datenträger und große Anwendungsdaten nicht als Configprofil hinzufügen.
+Bei einem anderen SSH-Port zusätzlich `--port PORT` angeben. Anker fragt den Schlüssel ab, vergleicht ihn mit dem angegebenen Fingerprint und schreibt ihn erst bei Übereinstimmung nach `/etc/anker/known_hosts`. Ein ungeprüftes `ssh-keyscan` oder abgeschaltete Hostprüfung gehört nicht zum Einrichtungsweg. Bereits vorhandene vertrauenswürdige Hosteinträge können weiterhin verwendet werden. [OpenSSH-Hostprüfung](https://man.openbsd.org/ssh_config#StrictHostKeyChecking).
+
+Danach in der Weboberfläche „Host hinzufügen“ öffnen: Hostname und Adresse reichen für den Standardzugang. Schlüsselpfad, Benutzer, Port und bekannte Hostschlüssel sind bereits gesetzt. „Verbindung prüfen“, anschließend „Jetzt sichern“. Bei Fehlern den Auftrag und die Pflichtlücken ansehen. Gruppe, eigener Zeitplan und zusätzliche Pfade sind optional.
+
+Alternativ im Terminal:
+
+```sh
+sudo anker host add --name HOSTNAME --address HOSTADRESSE
+sudo anker host list
+sudo anker host probe HOST-ID
+sudo anker backup run HOST-ID
+```
+
+Für abweichende SSH-Zugänge die erweiterten Hosteinstellungen beziehungsweise `--key` und `--known-hosts` verwenden.
+
+### Optional: Einzeldateien zurückspielen
+
+Für Planung, Download und manuelle Wiederherstellung ist kein privilegierter Restorezugang nötig. Nur für die automatische Einzeldateiübernahme zusätzlich `/etc/anker/keys/restore.pub` auf den Zielhost übertragen:
+
+```sh
+sudo ./scripts/install-host.sh --backup-key /pfad/backup.pub --restore-key /pfad/restore.pub
+```
+
+`--restore-key` richtet den separaten Benutzer `anker-restore` mit dem festen Wiederherstellungshelfer ein. Die beiden Schlüssel müssen verschieden sein. In den erweiterten Hosteinstellungen den Wiederherstellungsschlüssel `/etc/anker/keys/restore` hinterlegen; der Benutzer ist bereits vorbelegt. Der normale Sicherungsschlüssel bleibt auf Lesezugriff beschränkt.
+
+Passwortlose Synchronisation verwendet **SSH-Schlüssel**. SSH-Zertifikate oder eine zusätzliche SSH-CA sind dafür nicht erforderlich. TLS-Zertifikate sichern ausschließlich den Webzugriff.
+
+Das Hostprofil `/etc/anker-host.json` sichert standardmäßig `/etc` und `/usr/local`. Zusätzliche Konfiguration beispielsweise unter `/opt` ausdrücklich im Profil und als Pflichtpfad in Anker ergänzen. Das Profil muss root gehören und darf nicht von anderen beschreibbar sein. VM-Datenträger und große Anwendungsdaten nicht in das Configprofil aufnehmen.
+
+## Einrichtung im Überblick
+
+| Schritt | Vereinfachung oder Grund für die manuelle Angabe |
+| --- | --- |
+| Server installieren | Ein Installer wählt die Architektur und öffnet den Assistenten. Benutzer, Ordner, Rechte und Dienste werden eingerichtet. |
+| Zugang anlegen | Ein eigener Administrator; kein Standardpasswort. Vorhandene Zugänge werden bei Wiederholung erkannt. |
+| Webzugriff | HTTPS mit erzeugtem Zertifikat oder vorhandener CA; alternativ SSH-Tunnel ohne TLS-Einrichtung. Adresse und erstes Vertrauen kann Anker nicht sicher erraten. |
+| Updates | Bereits geprüfter Schlüssel und Repository werden übernommen. Keine wiederholten Fragen; öffentliche Downloads brauchen keinen Token. |
+| Hostzugang | Helferinstallation und eingeschränkter Schlüsseleintrag in einem Aufruf. Standardpfade sind im Interface und in der CLI hinterlegt. |
+| Hostidentität | Ein unabhängig geprüfter Fingerprint; Eintrag und Dateirechte übernimmt `host trust`. |
+| Betrieb | Gemeinsamer Zeitplan, Aufbewahrung und 30-Tage-Anmeldung sind vorbelegt. Benachrichtigungen und Restorezugänge nur bei Bedarf einrichten. |
 
 ## Anmeldung und Benutzer
 
-Die Weboberfläche verlangt eine Anmeldung. Es gibt im Produktionsbetrieb kein Standardpasswort. Der bei `init` angelegte Administrator verwaltet die weiteren Zugänge unter „Einstellungen → Zugriff“.
+Die Weboberfläche verlangt eine Anmeldung. Standardmäßig gilt sie 30 Tage, einstellbar von 1 bis 365 Tagen für neue Sitzungen. Anmeldung bleibt über Dienstneustarts erhalten. Abmelden, Passwort- oder Rechteänderungen sowie Sperren und Löschen beenden die betroffenen Sitzungen.
 
-- **Lesen:** Hosts, Aufträge und freigegebene Dateien ansehen; erlaubte Dateien herunterladen.
+Unter „Einstellungen → Zugriff“ weitere Benutzer anlegen:
+
+- **Lesen:** Hosts, Aufträge und freigegebene Dateien ansehen und herunterladen.
 - **Wiederherstellung:** Zusätzlich Sicherungen starten und Wiederherstellungen ausführen.
 - **Administrator:** Zusätzlich Benutzer, Einstellungen und Updates verwalten.
 
-Geschützte Inhalte und vollständige Exporte brauchen eine eigene Freigabe; Administratoren erhalten diese bei der Anlage. Sitzungen gelten standardmäßig 30 Tage und überstehen Dienstneustarts. Die Dauer ist zwischen 1 und 365 Tagen einstellbar und gilt für neue Anmeldungen. Abmelden, Passwortänderungen, Rechteänderungen, Sperren und Löschen beenden die betroffenen Sitzungen. Pro Benutzer sind höchstens zehn Sitzungen aktiv.
+Secrets und vollständige Exporte brauchen eine eigene Freigabe. Der eigene Administrator und der letzte aktive Administrator sind gegen Aussperren geschützt. Der lokale Unix-Socket erlaubt root und dem Dienstbenutzer Administration ohne Webpasswort; er darf nicht über das Netz freigegeben werden. Passwort zurücksetzen: [Betrieb](docs/OPERATIONS.md).
 
-Benutzer lassen sich sperren, entsperren und löschen. Der eigene Administratorzugang und der letzte aktive Administrator sind gegen Aussperren geschützt. Bei einem vergessenen Passwort ist eine Rücksetzung über den lokalen, durch Dateirechte geschützten Socket möglich:
+## Bedienung und Sicherungsformat
 
-```sh
-read -rs -p 'Neues Passwort: ' ANKER_USER_PASSWORD; echo
-export ANKER_USER_PASSWORD
-sudo --preserve-env=ANKER_USER_PASSWORD anker user password admin
-unset ANKER_USER_PASSWORD
-```
-
-Der Unix-Socket ist ein lokaler Administrationszugang für root und den Dienstbenutzer. Er ersetzt keine Webanmeldung und darf nicht über das Netz freigegeben werden.
-
-## Updates
-
-Unter „Einstellungen → System“ kann ein Administrator neue Releases prüfen und installieren. Alternativ `sudo anker update check`, `sudo anker update install` und `sudo anker update status`. Signatur und Prüfsumme werden vor der Installation geprüft. Laufende Sicherungen oder Wiederherstellungen blockieren das Update. Bei einem fehlgeschlagenen Start stellt der Updater die vorherige Programmversion und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
-
-## Bedienung
-
-- **Hosts:** Verbindung, Inventar, Sicherungszeit und zusätzliche Pflichtpfade.
-- **Sicherungen:** Dateien ansehen, Stände vergleichen, Prüfsummen prüfen, schützen, archivieren und herunterladen. „Herunterladen“ in der Liste liefert einen vollständigen TAR-Stand mit Inventar, Manifest, Anleitung und Originaldateien. „Datei herunterladen“ im Dateidialog liefert unveränderte Originalbytes, auch ohne Textvorschau. „Plan herunterladen“ liefert vorbereitete Dateien und den ursprünglichen Stand.
-- **Wiederherstellung:** Einzeldateien, neue Hardware, Standalone-, Cluster- und Versionsszenarien planen. Ziel wird neu gelesen; Drift blockiert die Ausführung.
-- **Aufträge:** Fortschritt, Abbruch und Fehler; unterbrochene Aufträge bleiben nach Neustart erkennbar.
-- **Einstellungen:** Zeitplan, Aufbewahrung, E-Mail/Webhook, Benutzer, Sitzungen, Updates und Aktivitätsprotokoll.
-
-Im Terminal: Tab oder 1–5 wechseln die Bereiche, Pfeile/Enter öffnen Einträge, `b` startet eine Sicherung, `v` prüft einen Stand, `/` öffnet den Befehlseingang, `q` beendet. Mausauswahl wird unterstützt. Der Befehlseingang bietet dieselben CLI-Funktionen; `help` zeigt die genaue Syntax. Der lokale Unix-Socket ist nur für den Dienstbenutzer beziehungsweise root zugänglich und erlaubt Administration ohne Webpasswort.
-
-## Sicherungsformat
+Hosts verwalten, Sicherungen prüfen, vergleichen, schützen, archivieren oder herunterladen. „Herunterladen“ liefert den vollständigen Stand mit Manifest, Inventar, Anleitung und Originaldateien. Einzeldateien und vorbereitete Wiederherstellungspläne lassen sich ebenfalls direkt herunterladen.
 
 ```text
 /srv/anker/
+  .anker-mode
   catalog.db
   hosts/<host-id>/backups/<backup-id>/
     files/etc/...
-    files/usr/local/...
     recovery/config.db
     inventory/host.json
     manifest.json
     checksums.sha256
     WIEDERHERSTELLUNG.md
-    archive.tar.gz             # nur bei Archivierung
   plans/<plan-id>/
     prepared-files/...
     plan.json
     mapping.json
-    manifest.json
     WIEDERHERSTELLUNG.md
 ```
 
-Dateien werden unter Anker mit `0600`, Ordner mit `0700` gespeichert. Originalrechte, UID/GID, Zeitstempel, Links und erfasste Extended Attributes stehen im Manifest. Symbolische Links sind im lesbaren Baum bewusst inert als Linkzieltext gespeichert. Der vollständige TAR-Export enthält zusätzlich `original-files/` mit Originalmodi und tatsächlichen Links. Niemals ein komplettes Exportarchiv ungeprüft in `/` entpacken.
+Dateien liegen mit `0600`, Ordner mit `0700` vor. Originalrechte und weitere Metadaten stehen im Manifest und im vollständigen TAR-Export. Ein Exportarchiv nicht ungeprüft in `/` entpacken. Archivierung komprimiert ältere Dateiordner; Manifeste und Anleitungen bleiben lesbar.
 
-Archivierung komprimiert nur den Dateiordner. Manifest und Anleitung bleiben sichtbar; Anker prüft das Archiv vor Entfernen der lesbaren Dateien und öffnet es bei Bedarf wieder. Geschützte Stände, der letzte erfolgreiche Stand und von Plänen referenzierte Sicherungen werden nicht durch Aufbewahrung gelöscht. Tages-, Wochen- und Monatsregeln bilden zusammen die aufzubewahrenden Stände. Zeitplan und Aufbewahrung stehen in `docs/OPERATIONS.md`.
+Im Terminal `sudo anker tui` öffnen. Tab oder 1–5 wechseln die Bereiche, Pfeile/Enter öffnen Einträge, `b` startet eine Sicherung, `v` prüft einen Stand, `/` öffnet den Befehlseingang und `q` beendet. `anker help` zeigt die Befehle.
 
-## Wiederherstellung und SFTP
+Updates: „Einstellungen → System“ oder `sudo anker update check`, danach `sudo anker update install`. Signatur und SHA-256 werden vor der Installation geprüft. Laufende Sicherungen und Wiederherstellungen blockieren das Update. Bei fehlgeschlagenem Start stellt der Updater die vorherige Version und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
 
-Siehe [Recovery](docs/RECOVERY.md) und [Betrieb](docs/OPERATIONS.md). Der Planexport ist ohne laufenden Anker-Dienst nutzbar. Ein optionaler read-only SFTP-Zugang stellt die bestehenden Ordner bereit und erzeugt keine zweite Sicherungskopie. Zugang zu Originalen bedeutet Zugang zu den darin enthaltenen Secrets; nur ausdrücklich berechtigten Administratoren geben.
+## Wiederherstellung und Grenzen
 
-## Geprüfter Umfang
+Gesamtrecovery, Hardwaremigration und Cluster-/Versionswechsel sind derzeit **manuell geführte Pläne**. Automatische Gesamtausführung bleibt gesperrt, bis die Proxmox-, Hardware- und Clusterfälle im Labor geprüft sind. Reboot, Storage, Quorum, HA und PBS-Erreichbarkeit separat bestätigen.
 
-Diese Fassung bietet ausführbare lokale Abläufe und abgesicherte Dateiübernahme. Gesamtrecovery, Hardwaremigration und Cluster-/Versionswechsel bleiben auf echten Hosts **manuell geführte Pläne**. Automatische Gesamtausführung ist gesperrt, bis passende Proxmox-Versionen und Hardware-/Clusterfälle im Labor geprüft wurden. Reboot, Storage, Quorum, HA und PBS-Erreichbarkeit müssen separat bestätigt werden. Details: [Unterstützung](docs/SUPPORT.md).
-
-```sh
-go test -race ./...
-go vet ./...
-python3 -m unittest discover -s host -p '*test*.py'
-cd web && npm ci && npm run build && npx playwright install chromium && npm test
-```
-
-Die Browsertests starten eine isolierte Demo auf Port 8088 und eine leere Produktionsinstanz auf Port 8089, jeweils mit einem neuen Datenordner unter `/tmp`. Sie prüfen auch, dass der Produktionsbetrieb keine Demodaten und keinen bekannten Demozugang enthält. Sie verändern keine Produktionshosts. Python-Helfertests verwenden ebenfalls ausschließlich temporäre lokale Verzeichnisse.
-
-Die zusätzliche Betriebsprüfung simuliert 90 tägliche Stände, 3.600 Einträge im Webinterface und gezielte Fehler bei Download, Planung, Archivierung, Zeitplan und Wiederanlauf. Gefundene Probleme, Korrekturen und verbleibende Laborfälle stehen in [Unterstützung](docs/SUPPORT.md).
+[Recovery](docs/RECOVERY.md), [Betrieb und optionaler SFTP-Export](docs/OPERATIONS.md), [geprüfter Umfang](docs/SUPPORT.md). Planexporte bleiben ohne laufenden Anker-Dienst verwendbar. SFTP kann bestehende Ordner ohne zweite Kopie bereitstellen.
 
 ## Optionale lokale Demo
 
-Die Demo wird ausschließlich mit dem Befehl `demo` aktiviert. Installation, `init` und `serve` erzeugen keine Demodaten.
+Nur der ausdrückliche Befehl `demo` erzeugt Beispieldaten:
 
 ```sh
 make build
 ./bin/anker --data ./var/demo demo
 ```
 
-Öffnen: http://127.0.0.1:8087 — Anmeldung mit `demo` / `anker-demo-2026`. Mit `Ctrl+C` beenden. Die Demo arbeitet nur mit Dateien im eigenen Datenordner und kontaktiert keine echten Hosts. Ihr Webzugriff bleibt auf Loopback beschränkt, ihr Socket liegt im Demoordner.
+Auf `http://127.0.0.1:8087` mit `demo` / `anker-demo-2026` anmelden. Mit `Ctrl+C` beenden. Die Demo kontaktiert keine echten Hosts und bleibt auf Loopback beschränkt. Ohne `--data` verwendet sie `./var/demo`, unabhängig von `ANKER_DATA`.
+
+Beim ersten Start muss der Demoordner leer sein. `.anker-mode` hält die Betriebsart fest. Demo und Produktion dürfen sich nicht überlappen; `/srv/anker` und seine Eltern- und Unterverzeichnisse sind für Demo gesperrt. Alte unmarkierte Demoordner bleiben erhalten; stattdessen einen neuen Demoordner wählen. Den Marker nicht zum Wechseln der Betriebsart entfernen oder ändern.
+
+## Entwicklung und Lizenz
 
 ```sh
-./bin/anker --data ./var/demo status
-./bin/anker --data ./var/demo tui
+go test -race ./...
+go vet ./...
+python3 -m unittest discover -s host -p 'test_*.py'
+python3 -m unittest discover -s scripts -p 'test_*.py'
+cd web && npm ci && npm run build && npx playwright install chromium && npm test
 ```
 
-Der Demoordner muss beim ersten Start leer sein. Anker speichert seine Betriebsart in `.anker-mode`; danach lässt sich dieselbe Demo wieder starten. Überlappende Demo- und Produktionsordner sind gesperrt. Für die Demo sind `/srv/anker`, seine Unterverzeichnisse und seine übergeordneten Verzeichnisse ausgeschlossen. Auch `init` und `serve` verweigern einen Demoordner. Ohne `--data` verwendet `demo` immer `./var/demo`, unabhängig von `ANKER_DATA`.
+Browserprüfungen verwenden getrennte temporäre Ordner für Demo und leere Produktion. Linux-/systemd-Prüfungen testen den echten Installer, Terminaleinrichtung, HTTPS-Anmeldung, Updates und Wiederanlauf in einer isolierten CI-VM. Tests und Designentwürfe werden nicht in Release-Pakete aufgenommen.
 
-Bereits vorhandene, unmarkierte Demoordner aus älteren Entwicklungsständen werden nicht übernommen. Dafür einen neuen Ordner wählen, beispielsweise `--data ./var/demo-neu`. Alte Dateien bleiben erhalten. Die Betriebsart nicht durch Entfernen oder Ändern des Markers wechseln; produktive Daten gehören in einen getrennten Ordner.
-
-## Lizenz und Mitarbeit
-
-Anker steht unter der [MIT-Lizenz](LICENSE). Abhängigkeiten behalten ihre eigenen Lizenzen; die Release-Pakete enthalten deren Lizenztexte. Fehlerberichte und Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmeldungen: [SECURITY.md](SECURITY.md).
-
-Ein öffentliches Repository erlaubt Downloads und eigene Forks. Schreibrechte am Original erhalten nur freigegebene Maintainer. Die MIT-Lizenz schränkt Änderungen an eigenen Kopien nicht ein.
+[MIT-Lizenz](LICENSE), [Beiträge](CONTRIBUTING.md), [Sicherheitsmeldungen](SECURITY.md). Schreibrechte am öffentlichen Originalrepository erhalten nur freigegebene Maintainer. Eigene Forks und Änderungen sind unter MIT erlaubt.

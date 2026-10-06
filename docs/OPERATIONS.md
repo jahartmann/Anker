@@ -60,6 +60,15 @@ Das Dateisystem enthält absichtlich nutzbare Originale. Vertraulichkeit des Spe
 
 Referenzen auf Proxmox-Hooks sowie explizite Config-/Schlüsselpfade werden begrenzt gescannt. Nicht erfasste Referenzen erscheinen als Pflichtlücken. Anwendungsspezifische indirekte Referenzen und große/binäre Configs müssen zusätzlich im root-eigenen Hostprofil angegeben und manuell geprüft werden. Metadaten-/ACL-Lesefehler erzeugen ebenfalls eine unvollständige Sicherung.
 
+Passwort zurücksetzen (lokal als root, nicht in die Befehlszeile schreiben):
+
+```sh
+read -rs -p 'Neues Passwort: ' ANKER_USER_PASSWORD; echo
+export ANKER_USER_PASSWORD
+sudo --preserve-env=ANKER_USER_PASSWORD anker user password admin
+unset ANKER_USER_PASSWORD
+```
+
 ## Programmupdates
 
 Signierte GitHub-Releases, getrennte Updateberechtigung und automatische Wiederherstellung von Binärdatei und Katalog: [UPDATES.md](UPDATES.md).

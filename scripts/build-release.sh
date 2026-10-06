@@ -16,7 +16,7 @@ for ANKER_ARCH in amd64 arm64; do
  mkdir -p "$ANKER_PACKAGE"
  cp "$ANKER_OUT/anker-linux-$ANKER_ARCH" "$ANKER_PACKAGE/anker"
  mkdir -p "$ANKER_PACKAGE/scripts" "$ANKER_PACKAGE/deploy" "$ANKER_PACKAGE/host" "$ANKER_PACKAGE/docs"
- cp scripts/install-server.sh scripts/install-state.py scripts/install-release.py scripts/verify-release.sh scripts/install-host.sh scripts/setup-sftp-export.sh "$ANKER_PACKAGE/scripts/"
+ cp scripts/install-server.sh scripts/install-state.py scripts/install-release.py scripts/verify-release.sh scripts/install-host.sh scripts/host-authorize.py scripts/setup-sftp-export.sh "$ANKER_PACKAGE/scripts/"
  cp deploy/anker.service deploy/anker-updater.service "$ANKER_PACKAGE/deploy/"
  cp host/anker_host.py "$ANKER_PACKAGE/host/"
  cp docs/OPERATIONS.md docs/RECOVERY.md docs/UPDATES.md docs/SUPPORT.md "$ANKER_PACKAGE/docs/"

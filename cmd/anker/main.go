@@ -64,7 +64,16 @@ func run(args []string) error {
 		if *data != updater.DataDir {
 			return errors.New("Servereinrichtung verwendet /srv/anker")
 		}
-		return runSetup()
+		if len(command) > 2 || (len(command) == 2 && command[1] != "--updates") {
+			return errors.New("Einrichtung: anker setup [--updates]")
+		}
+		return runSetup(len(command) == 2)
+	}
+	if command[0] == "host" && len(command) > 1 && command[1] == "trust" {
+		if *data != updater.DataDir {
+			return errors.New("Hostanbindung verwendet die produktive Einrichtung unter /etc/anker")
+		}
+		return runHostTrust(command[2:])
 	}
 	demo := command[0] == "demo"
 	if demo {

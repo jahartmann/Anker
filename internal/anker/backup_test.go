@@ -9,6 +9,26 @@ import (
 
 type fixtureCollector struct{ partial bool }
 
+func TestHostUsesInstalledSSHDefaults(t *testing.T) {
+	s := testService(t)
+	h, err := s.Host("host1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.KeyPath != "/etc/anker/keys/backup" || h.KnownHostsPath != "/etc/anker/known_hosts" {
+		t.Fatal("host needs manual key paths", h)
+	}
+	h.KeyPath = "/custom/key"
+	h.KnownHostsPath = "/custom/known_hosts"
+	if err := s.SaveHost(h); err != nil {
+		t.Fatal(err)
+	}
+	h, err = s.Host("host1")
+	if err != nil || h.KeyPath != "/custom/key" || h.KnownHostsPath != "/custom/known_hosts" {
+		t.Fatal("custom paths overwritten", h, err)
+	}
+}
+
 func (f fixtureCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 	return Inventory{Hostname: h.Name, PVEVersion: "8.4", Interfaces: []Interface{{Name: "eno1", MAC: "aa:bb"}}}, nil
 }

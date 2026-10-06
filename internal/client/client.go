@@ -353,7 +353,8 @@ const Help = `Anker — Hostkonfigurationen sichern und wiederherstellen
 
 anker status | doctor | tui
 anker host list | probe HOST | remove HOST
-anker host add --name NAME --address IP --key /PFAD --known-hosts /PFAD
+anker host trust ADRESSE --fingerprint SHA256:... [--port 22] (root, Servereinrichtung)
+anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
 anker backup run HOST | list | files BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
 anker diff ALT NEU
 anker export BACKUP ./sicherung.tar

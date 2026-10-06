@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -91,20 +92,26 @@ func initialPassword() (string, error) {
 		return first, nil
 	}
 }
-func setupWebEnv(listen, cert, key string) (string, error) {
+func setupListen(listen string) (bool, error) {
 	if strings.ContainsAny(listen, " \t\r\n\"'\\") {
-		return "", errors.New("Listen-Adresse enthält ungültige Zeichen")
+		return false, errors.New("Listen-Adresse enthält ungültige Zeichen")
 	}
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 	number, err := strconv.Atoi(port)
 	if err != nil || number < 1 || number > 65535 {
-		return "", errors.New("Port muss zwischen 1 und 65535 liegen")
+		return false, errors.New("Port muss zwischen 1 und 65535 liegen")
 	}
 	ip := net.ParseIP(host)
-	local := host == "localhost" || (ip != nil && ip.IsLoopback())
+	return host == "localhost" || (ip != nil && ip.IsLoopback()), nil
+}
+func setupWebEnv(listen, cert, key string) (string, error) {
+	local, err := setupListen(listen)
+	if err != nil {
+		return "", err
+	}
 	if !local && (cert == "" || key == "") {
 		return "", errors.New("LAN-/VPN-Zugriff benötigt TLS")
 	}
@@ -272,7 +279,7 @@ func setupReady(socket, path string) error {
 		}
 	}
 }
-func runSetup() error {
+func runSetup(configureUpdates bool) error {
 	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
 		return errors.New("Servereinrichtung als root auf Linux mit systemd ausführen")
 	}
@@ -311,64 +318,30 @@ func runSetup() error {
 		return err
 	}
 	fmt.Println("Anker · Servereinrichtung\nBestehende Benutzer und SSH-Schlüssel bleiben erhalten.")
-	admin, err := setupPrompt("Administratorname (nur bei Erstinitialisierung)", "admin")
+	initialized, err := setupInitialized(filepath.Join(updater.DataDir, "catalog.db"))
 	if err != nil {
 		return err
 	}
-	priorEnv, _ := os.ReadFile("/etc/anker/service.env")
-	defaultMode := "1"
-	if setupEnvValue(string(priorEnv), "ANKER_TLS_CERT") != "" {
-		defaultMode = "2"
+	admin, password := "admin", ""
+	if !initialized {
+		admin, err = setupPrompt("Administratorname", "admin")
+		if err != nil {
+			return err
+		}
+		password, err = initialPassword()
+		if err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("Administratorzugang ist bereits eingerichtet.")
 	}
-	mode, err := setupPrompt("Webzugriff: 1 = SSH-Tunnel, 2 = LAN/VPN mit TLS", defaultMode)
+	priorEnv, err := os.ReadFile("/etc/anker/service.env")
 	if err != nil {
 		return err
 	}
-	listen, cert, key := "127.0.0.1:8087", "", ""
-	var certBytes, keyBytes []byte
-	if mode == "2" {
-		defaultListen := setupEnvValue(string(priorEnv), "ANKER_LISTEN")
-		if defaultListen == "" || defaultMode == "1" {
-			defaultListen = "0.0.0.0:8087"
-		}
-		listen, err = setupPrompt("Listen-Adresse", defaultListen)
-		if err != nil {
-			return err
-		}
-		cert, err = setupPrompt("Zertifikat mit Zertifikatskette (PEM)", setupEnvValue(string(priorEnv), "ANKER_TLS_CERT"))
-		if err != nil {
-			return err
-		}
-		key, err = setupPrompt("Zugehöriger privater TLS-Schlüssel (PEM)", setupEnvValue(string(priorEnv), "ANKER_TLS_KEY"))
-		if err != nil {
-			return err
-		}
-		if _, err = setupWebEnv(listen, cert, key); err != nil {
-			return err
-		}
-		for index, p := range []string{cert, key} {
-			info, err := os.Stat(p)
-			if err != nil {
-				return err
-			}
-			if !info.Mode().IsRegular() || info.Size() > 1<<20 {
-				return errors.New("TLS-Datei ungültig oder zu groß")
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			if index == 0 {
-				certBytes = b
-			} else {
-				keyBytes = b
-			}
-		}
-		// Keep the old pair intact if either write fails during reconfiguration.
-		generation := strconv.FormatInt(time.Now().UnixNano(), 10)
-		cert, key = "/etc/anker/tls/server-"+generation+".crt", "/etc/anker/tls/server-"+generation+".key"
-	} else if mode != "1" {
-		return errors.New("Webzugriff 1 oder 2 wählen")
+	web, err := setupConfigureWeb(string(priorEnv), initialized)
+	if err != nil {
+		return err
 	}
 	cfg := updater.Config{Repository: "jahartmann/Anker"}
 	if b, err := os.ReadFile(updater.ConfigPath); err == nil {
@@ -380,12 +353,33 @@ func runSetup() error {
 	if _, err = os.Stat("/etc/anker/release-public.key"); err == nil {
 		defaultKey = "/etc/anker/release-public.key"
 	}
-	keyFile, err := setupPrompt("Update-Schlüssel public.key (leer = bestehende Einrichtung behalten/überspringen)", defaultKey)
-	if err != nil {
-		return err
+	keyFile := ""
+	if configureUpdates {
+		keyFile, err = setupPrompt("Update-Schlüssel public.key (leer = bestehende Einrichtung behalten/überspringen)", defaultKey)
+		if err != nil {
+			return err
+		}
+	} else if cfg.PublicKey == "" && defaultKey != "" {
+		keyFile = defaultKey
+		b, err := os.ReadFile(keyFile)
+		if err != nil {
+			return err
+		}
+		cfg.PublicKey = strings.TrimSpace(string(b))
+	}
+	if cfg.PublicKey != "" {
+		if err = validateSetupKey(cfg.PublicKey); err != nil {
+			return err
+		}
+		if err = validateSetupRepo(cfg.Repository); err != nil {
+			return err
+		}
+		fmt.Println("Updatequelle:", cfg.Repository, "· signierte Updates eingerichtet")
+	} else if !configureUpdates {
+		fmt.Println("Updates noch nicht eingerichtet. Später: sudo anker setup --updates")
 	}
 	token := ""
-	if keyFile != "" {
+	if keyFile != "" && configureUpdates {
 		b, err := os.ReadFile(keyFile)
 		if err != nil {
 			return err
@@ -432,6 +426,7 @@ func runSetup() error {
 			return errors.New("Repositoryzugriff 1 oder 2 wählen")
 		}
 	}
+	fmt.Println("Webzugriff:", web.URL(), "· automatische Sicherung nach Hostanbindung")
 	confirm, err := setupPrompt("Einrichtung speichern und Dienste starten? j/n", "j")
 	if err != nil {
 		return err
@@ -475,24 +470,24 @@ func runSetup() error {
 	if err = setupCommand("systemctl", "stop", "anker.service"); err != nil {
 		return err
 	}
-	if err = setupCommand("runuser", "-u", "anker", "--", updater.BinaryPath, "--data", updater.DataDir, "--admin", admin, "init"); err != nil {
+	if err = setupInitializeAccess(admin, password); err != nil {
 		return err
 	}
-	if cert != "" {
-		if err = os.MkdirAll(filepath.Dir(cert), 0750); err != nil {
+	if web.Cert != "" {
+		if err = os.MkdirAll(filepath.Dir(web.Cert), 0750); err != nil {
 			return err
 		}
-		if err = os.Chown(filepath.Dir(cert), 0, gid); err != nil {
+		if err = os.Chown(filepath.Dir(web.Cert), 0, gid); err != nil {
 			return err
 		}
-		if err = setupWrite(cert, certBytes, 0640, 0, gid); err != nil {
+		if err = setupWrite(web.Cert, web.CertBytes, 0640, 0, gid); err != nil {
 			return err
 		}
-		if err = setupWrite(key, keyBytes, 0640, 0, gid); err != nil {
+		if err = setupWrite(web.Key, web.KeyBytes, 0640, 0, gid); err != nil {
 			return err
 		}
 	}
-	text, err := setupWebEnv(listen, cert, key)
+	text, err := web.env()
 	if err != nil {
 		return err
 	}
@@ -539,10 +534,18 @@ func runSetup() error {
 			return err
 		}
 	}
-	if mode == "1" {
-		fmt.Println("Bereit. SSH-Tunnel: ssh -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER\nDann http://127.0.0.1:8087 öffnen.")
+	if web.Cert == "" {
+		fmt.Println("Bereit. SSH-Tunnel: ssh -N -L 8087:127.0.0.1:8087 BENUTZER@ANKER-SERVER\nDann http://127.0.0.1:8087 öffnen.")
 	} else {
-		fmt.Println("Bereit. Webzugriff über TLS auf", listen)
+		fmt.Println("Bereit:", web.URL())
+		leaf, err := setupTLSLeaf(web.CertBytes, web.KeyBytes)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("TLS-Fingerprint SHA256: %X\nZertifikat gültig bis %s · Datei: %s\n", sha256.Sum256(leaf.Raw), leaf.NotAfter.UTC().Format("02.01.2006"), web.Cert)
+		if web.SelfSigned {
+			fmt.Println("Den Fingerprint vor Bestätigen der Browserwarnung vergleichen. Für eine warnungsfreie Anmeldung ein Zertifikat eurer internen CA importieren. Erneuern über sudo anker setup vor dem Ablaufdatum.")
+		}
 	}
 	fmt.Println("SSH-Schlüssel: /etc/anker/keys/backup und restore\nÖffentliche Schlüssel: gleiche Pfade mit .pub. Host-Anbindung: README → Proxmox-Hosts anbinden.\nEinrichtung erneut öffnen: sudo anker setup")
 	return nil

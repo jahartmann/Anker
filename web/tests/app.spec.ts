@@ -349,6 +349,11 @@ test("host form validates and creates real record", async ({ page }) => {
   await expect(
     page.getByText("pve-browser-test", { exact: true }),
   ).toBeVisible();
+  const hosts = await (await page.request.get("/api/hosts")).json();
+  expect(hosts.find((h: { name: string }) => h.name === "pve-browser-test")).toMatchObject({
+    key_path: "/etc/anker/keys/backup",
+    known_hosts_path: "/etc/anker/known_hosts",
+  });
 });
 test("settings save and mobile navigation", async ({ page }) => {
   await page
