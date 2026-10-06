@@ -2,8 +2,10 @@ package main
 
 import (
 	"anker/internal/anker"
+	"anker/internal/buildinfo"
 	"anker/internal/client"
 	"anker/internal/tui"
+	"anker/internal/updater"
 	"anker/internal/webassets"
 	"context"
 	"errors"
@@ -29,9 +31,9 @@ func run(args []string) error {
 	f := flag.NewFlagSet("anker", flag.ContinueOnError)
 	data := f.String("data", env("ANKER_DATA", "/srv/anker"), "Datenverzeichnis")
 	socket := f.String("socket", "", "Unix-Socket")
-	listen := f.String("listen", "127.0.0.1:8087", "Webadresse")
-	cert := f.String("tls-cert", "", "TLS-Zertifikat")
-	key := f.String("tls-key", "", "TLS-Key")
+	listen := f.String("listen", env("ANKER_LISTEN", "127.0.0.1:8087"), "Webadresse")
+	cert := f.String("tls-cert", env("ANKER_TLS_CERT", ""), "TLS-Zertifikat")
+	key := f.String("tls-key", env("ANKER_TLS_KEY", ""), "TLS-Key")
 	allowHTTP := f.Bool("allow-http", false, "HTTP außerhalb Loopback ausdrücklich zulassen")
 	admin := f.String("admin", "admin", "initialer Benutzer")
 	if err := f.Parse(args); err != nil {
@@ -44,11 +46,19 @@ func run(args []string) error {
 	}
 	if command[0] == "help" || command[0] == "version" {
 		if command[0] == "version" {
-			fmt.Println("Anker 0.1.0")
+			fmt.Println("Anker " + buildinfo.Version)
 		} else {
 			fmt.Println(client.Help + "\nanker init | serve | demo\nWeb: --listen 127.0.0.1:8087 --tls-cert DATEI --tls-key DATEI")
 		}
 		return nil
+	}
+	if command[0] == "updater-serve" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return updater.Serve(ctx, buildinfo.Version)
+	}
+	if command[0] == "update" {
+		return runUpdate(command[1:])
 	}
 	if command[0] == "demo" && *data == "/srv/anker" {
 		*data = "./var/demo"
@@ -151,17 +161,22 @@ func run(args []string) error {
 	if err = os.Chmod(*socket, 0600); err != nil {
 		return err
 	}
+	webSocket, tlsConfig, err := bindWeb(*listen, *cert, *key)
+	if err != nil {
+		return err
+	}
+	defer webSocket.Close()
 	local := &http.Server{Handler: anker.Handler(s, auth, true), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
-	web := &http.Server{Addr: *listen, Handler: webassets.Handler(anker.Handler(s, auth, false)), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	web := &http.Server{TLSConfig: tlsConfig, Addr: *listen, Handler: webassets.Handler(anker.Handler(s, auth, false)), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	errs := make(chan error, 2)
 	go func() { errs <- local.Serve(unix) }()
 	go func() {
 		if *cert != "" {
-			errs <- web.ListenAndServeTLS(*cert, *key)
+			errs <- web.ServeTLS(webSocket, "", "")
 		} else {
-			errs <- web.ListenAndServe()
+			errs <- web.Serve(webSocket)
 		}
 	}()
 	if !s.Demo {

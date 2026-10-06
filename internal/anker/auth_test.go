@@ -18,7 +18,7 @@ func TestLoginAndSessionExpiry(t *testing.T) {
 	if err != nil || u.Role != "admin" {
 		t.Fatal(err)
 	}
-	if _, err = a.Session(token, time.Now().Add(9*time.Hour)); err == nil {
+	if _, err = a.Session(token, time.Now().Add(31*24*time.Hour)); err == nil {
 		t.Fatal("expired session accepted")
 	}
 	a = NewAuth(s.Store)

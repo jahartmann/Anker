@@ -1,0 +1,32 @@
+name: Checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: python3 -m unittest discover -s host -p 'test_*.py'
+      - run: go build -o bin/anker ./cmd/anker
+      - run: npx --prefix web playwright install --with-deps chromium
+      - run: npm test --prefix web
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin/anker-linux-arm64 ./cmd/anker
+      - run: for ANKER_SCRIPT in scripts/*.sh; do sh -n "$ANKER_SCRIPT"; done

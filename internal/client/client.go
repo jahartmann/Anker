@@ -300,6 +300,43 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			}
 			return call("POST", "users", map[string]any{"name": args[2], "role": args[3], "password": os.Getenv("ANKER_USER_PASSWORD"), "secrets": false})
 		}
+		if args[1] == "remove" || args[1] == "revoke" || args[1] == "sessions" {
+			if err := need(3); err != nil {
+				return err
+			}
+			path := "users/" + args[2]
+			method := "DELETE"
+			if args[1] != "remove" {
+				path += "/sessions"
+			}
+			if args[1] == "sessions" {
+				method = "GET"
+			}
+			return call(method, path, nil)
+		}
+		if args[1] == "disable" || args[1] == "enable" || args[1] == "role" {
+			if err := need(3); err != nil {
+				return err
+			}
+			var users []anker.User
+			if err := c.Call(ctx, "GET", "users", nil, &users); err != nil {
+				return err
+			}
+			for _, u := range users {
+				if u.ID == args[2] {
+					if args[1] == "role" {
+						if err := need(4); err != nil {
+							return err
+						}
+						u.Role = args[3]
+					} else {
+						u.Disabled = args[1] == "disable"
+					}
+					return call("PUT", "users/"+u.ID, map[string]any{"role": u.Role, "secrets": u.Secrets, "disabled": u.Disabled})
+				}
+			}
+			return errors.New("Benutzer nicht gefunden")
+		}
 		if args[1] == "password" {
 			if err := need(3); err != nil {
 				return err
@@ -328,6 +365,8 @@ anker restore export PLAN ./plan.tar
 anker job cancel ID
 anker settings show | save DATEI.json
 anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
+anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME
+anker update status | check | install
 anker reindex
 
 Globale Optionen vor dem Befehl: --data /srv/anker --socket /srv/anker/anker.sock`

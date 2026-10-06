@@ -34,6 +34,14 @@ func (sc *Scheduler) Run(ctx context.Context) {
 	}
 }
 func (sc *Scheduler) Tick(at time.Time) error {
+	sc.s.jobMu.Lock()
+	if sc.s.maintenance {
+		sc.s.jobMu.Unlock()
+		return nil
+	}
+	sc.s.schedulerBusy = true
+	sc.s.jobMu.Unlock()
+	defer func() { sc.s.jobMu.Lock(); sc.s.schedulerBusy = false; sc.s.jobMu.Unlock() }()
 	settings, err := sc.s.Settings()
 	if err != nil {
 		return err

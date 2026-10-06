@@ -1,4 +1,5 @@
 export interface User {
+  disabled: boolean;
   id: string;
   name: string;
   role: string;
@@ -108,6 +109,7 @@ export interface Plan {
   };
 }
 export interface Settings {
+  session_days: number;
   timezone: string;
   schedule: string;
   parallel: number;

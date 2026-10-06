@@ -1,0 +1,29 @@
+[Unit]
+Description=Anker signed release updater
+After=network-online.target anker.service
+Wants=network-online.target
+ConditionPathExists=/etc/anker/update.json
+
+[Service]
+Type=simple
+User=root
+Group=anker
+ExecStart=/usr/local/libexec/anker-updater updater-serve
+Restart=on-failure
+RestartSec=10
+RuntimeDirectory=anker-updater
+RuntimeDirectoryMode=0750
+StateDirectory=anker-updater
+StateDirectoryMode=0700
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/bin /usr/local/libexec /srv/anker /var/lib/anker-updater /etc/anker
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

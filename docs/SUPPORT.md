@@ -50,7 +50,7 @@ Prüfstand vom 05.10.2026: simulierte Zeitpunkte und Fehler, keine behaupteten d
 | Stromverlust lässt eine Änderung ohne dauerhaft gespeicherte Rollbackkopie zurück | Rollbackdateien, Metadaten und Verzeichnisse vor erster Änderung synchronisieren; anschließend Zieldatei und Elternverzeichnis synchronisieren. Reihenfolge im Helfertest geprüft, echter Stromverlust bleibt Laborfall. |
 | Tausende Sicherungen/Aufträge machen die Tabelle unhandlich | Anzeige in 50er-Schritten; Statusantworten übertragen keine vollständigen Inventardetails jedes alten Plans. Vollständige Pläne werden beim Öffnen neu gelesen. Entfernte Hosts bleiben im Sicherungsfilter erreichbar. |
 
-Aktueller lokaler Nachweis: 69 Go-Tests mit Race Detector, Go Vet, zehn Python-Helfertests, 27 Browserabläufe, TypeScript-/Webbuild und Linux-Crossbuild für amd64/arm64. Browser: Desktop 1440×1000 und Mobilansicht 390×844; Downloads als Vollstand, Einzeldatei und Plan tatsächlich geprüft. Im eingebauten Browser wurde zusätzlich eine Einzeldatei heruntergeladen und die Oberfläche visuell kontrolliert.
+Aktueller lokaler Nachweis: 90 Go-Testfunktionen mit Race Detector, Go Vet, zehn Python-Helfertests, 30 Browserabläufe, TypeScript-/Webbuild und Linux-Crossbuild für amd64/arm64. Browser: Desktop 1440×1000 und Mobilansicht 390×844; Downloads als Vollstand, Einzeldatei und Plan tatsächlich geprüft. Im eingebauten Browser wurde zusätzlich eine Einzeldatei heruntergeladen und die Oberfläche visuell kontrolliert.
 
 Diese Prüfung kann unbekannte Kombinationen und echte Infrastrukturfehler nicht vollständig ausschließen. Noch offen sind reale SSH-/sudo-/SFTP-Installation, ein erzwungen voller Datenträger, physischer Stromverlust, Neustart-/Dienstprüfung nach Restore, Disk-/Storage-Migration, abweichende Hardware sowie isolierte Cluster-/Quorum-/HA-/Ceph-Szenarien. Gesamtrecovery bleibt bis zu dieser Abnahme manuell geführt und automatisch gesperrt.
 
@@ -69,3 +69,18 @@ Diese Prüfung kann unbekannte Kombinationen und echte Infrastrukturfehler nicht
 | Abmelden bei Netzfehler erzeugt einen unbehandelten Fehler | Sitzungsansicht behalten und Verbindungsfehler anzeigen. |
 
 Zwölf zusätzliche Browserregressionen wurden zunächst gegen den alten Stand mit dem jeweiligen Fehler beobachtet und nach der Korrektur erfolgreich ausgeführt. Visuelle Prüfung auf Desktop und bei 390×844 Pixeln; keine Behauptung einer vollständigen WCAG-Abnahme oder einer realen Hardwareabnahme.
+
+## Anmeldung und Updates
+
+| Fall | Verhalten und Nachweis |
+|---|---|
+| Neustart oder Update während einer gültigen Anmeldung | Gehashte Sitzungen im Katalog, mit echtem Schließen und Wiederöffnen des Speichers geprüft. |
+| Passwort, Rolle oder Secretfreigabe geändert | Betroffene Sitzungen werden zusammen mit der Änderung atomar widerrufen. |
+| Zwei Administratoren gleichzeitig herabgestuft | Einer bleibt aktiv; nebenläufiger Test vorhanden. |
+| Manipuliertes oder falsch zugeordnetes Release | Signatur, Tag, Format, Plattform, Größe und SHA-256 werden vor dem Austausch geprüft. |
+| Update bei aktivem Auftrag | Installation wird abgewiesen. Neue Aufträge und automatische Wartung bleiben in der Startprüfung gesperrt. |
+| Neue Binärdatei lässt sich nicht ausführen | Separate bekannte Updater-Binärdatei bleibt startfähig; Wiederherstellung aus einem neuen Testprozess geprüft. |
+| Abgebrochener Katalogaustausch mit SQLite-WAL | Wiederherstellung übernimmt auch im WAL festgeschriebene Änderungen; subprocessbasierter SQLite-Test. |
+| Web-Port belegt oder TLS-Dateien ungültig | Start meldet keine lokale Bereitschaft, bevor TCP-Bindung und Zertifikatprüfung erfolgreich waren. |
+
+Dies ist kein Nachweis einer realen Linux-/systemd- oder Stromausfallabnahme. Anleitung und bekannte Grenzen stehen in [UPDATES.md](UPDATES.md). GitHub-Releases und eine produktive Signieridentität sind lokal vorbereitet, noch nicht eingerichtet oder veröffentlicht.

@@ -1,6 +1,7 @@
 package anker
 
 import (
+	"anker/internal/buildinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +73,35 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 				}
 			}
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/update-control") {
+			if !local {
+				http.NotFound(w, r)
+				return
+			}
+			if r.URL.Path == "/api/update-control" && r.Method == "GET" {
+				jsonOut(w, map[string]string{"version": buildinfo.Version})
+				return
+			}
+			if r.Method == "POST" && r.URL.Path == "/api/update-control/prepare" {
+				if err := s.PrepareUpdate(); err != nil {
+					jsonError(w, fail(409, err.Error()))
+					return
+				}
+				jsonOut(w, map[string]string{"version": buildinfo.Version})
+				return
+			}
+			if r.Method == "POST" && r.URL.Path == "/api/update-control/release" {
+				s.ReleaseUpdate()
+				jsonOut(w, map[string]string{"version": buildinfo.Version})
+				return
+			}
+			http.NotFound(w, r)
+			return
+		}
+		if s.Updating() && r.Method != "GET" && r.Method != "HEAD" {
+			jsonError(w, fail(503, "Anker wird aktualisiert; bitte kurz warten"))
+			return
+		}
 		if r.URL.Path == "/api/login" {
 			if r.Method != "POST" {
 				jsonError(w, fail(405, "POST erforderlich"))
@@ -98,7 +128,13 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 				jsonError(w, fail(401, "Anmeldung fehlgeschlagen"))
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: "anker_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: 8 * 3600})
+			duration, err := a.SessionDuration()
+			if err != nil {
+				a.Logout(token)
+				jsonError(w, err)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "anker_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: int(duration.Seconds()), Expires: time.Now().Add(duration)})
 			jsonOut(w, u)
 			return
 		}
@@ -117,6 +153,16 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/api/logout" && r.URL.Path != "/api/backups/diff" && !userAllows(u, "restore") {
 			jsonError(w, fail(403, "Keine Schreibberechtigung"))
+			return
+		}
+		if s.Updating() && r.Method != "GET" && r.Method != "HEAD" {
+			jsonError(w, fail(503, "Anker wird aktualisiert; bitte kurz warten"))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/updates") {
+			if err := s.updates(w, r, u); err != nil {
+				jsonError(w, err)
+			}
 			return
 		}
 		if err := handleAPI(s, a, u, w, r); err != nil {
@@ -169,7 +215,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			return err
 		}
-		return jsonOut(w, map[string]any{"data_root": s.Root, "disk": disk, "demo": s.Demo, "protocol": FormatVersion, "host_helper": "Python 3, root-owned fixed helper; SSH keys and verified known_hosts required", "support": "File restore with guarded preconditions; full scenarios require manual checks and real lab validation"})
+		return jsonOut(w, map[string]any{"version": buildinfo.Version, "data_root": s.Root, "disk": disk, "demo": s.Demo, "protocol": FormatVersion, "host_helper": "Python 3, root-owned fixed helper; SSH keys and verified known_hosts required", "support": "File restore with guarded preconditions; full scenarios require manual checks and real lab validation"})
 	case "me":
 		return jsonOut(w, map[string]any{"user": u, "demo": s.Demo})
 	case "logout":
@@ -177,7 +223,9 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return fail(405, "POST erforderlich")
 		}
 		if c, err := r.Cookie("anker_session"); err == nil {
-			a.Logout(c.Value)
+			if err := a.Logout(c.Value); err != nil {
+				return err
+			}
 		}
 		http.SetCookie(w, &http.Cookie{Name: "anker_session", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		return jsonOut(w, map[string]bool{"ok": true})
@@ -644,6 +692,44 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 	case "users":
 		if err := require(u, "admin"); err != nil {
 			return err
+		}
+		if action == "" && method == "PUT" {
+			var in struct {
+				Role     string `json:"role"`
+				Secrets  bool   `json:"secrets"`
+				Disabled bool   `json:"disabled"`
+			}
+			if err := input(r, &in); err != nil {
+				return err
+			}
+			if err := a.UpdateUser(u.ID, id, in.Role, in.Secrets, in.Disabled); err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "user.update", id)
+			return jsonOut(w, map[string]bool{"ok": true})
+		}
+		if action == "" && method == "DELETE" {
+			if err := a.DeleteUser(u.ID, id); err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "user.delete", id)
+			return jsonOut(w, map[string]bool{"ok": true})
+		}
+		if action == "sessions" {
+			if method == "GET" {
+				v, err := a.Sessions(id)
+				if err != nil {
+					return err
+				}
+				return jsonOut(w, v)
+			}
+			if method == "DELETE" {
+				if err := a.RevokeSessions(id); err != nil {
+					return err
+				}
+				s.LogAudit(u.ID, "user.sessions.revoke", id)
+				return jsonOut(w, map[string]bool{"ok": true})
+			}
 		}
 		if action == "password" && method == "POST" {
 			var in struct {

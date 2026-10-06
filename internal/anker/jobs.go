@@ -99,6 +99,9 @@ func (s *Service) queue(hostID, kind string, run func(context.Context) (string, 
 	}
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
+	if s.maintenance {
+		return Job{}, errors.New("Anker wird aktualisiert; neue Aufträge sind vorübergehend gesperrt")
+	}
 	jobs, err := s.Jobs()
 	if err != nil {
 		return Job{}, err
@@ -206,6 +209,12 @@ func (s *Service) CancelJob(id string) error {
 	return nil
 }
 func (s *Service) SaveSettings(v Settings) error {
+	if v.SessionDays == 0 {
+		v.SessionDays = 30
+	}
+	if v.SessionDays < 1 || v.SessionDays > 365 {
+		return errors.New("Sitzungsdauer muss zwischen 1 und 365 Tagen liegen")
+	}
 	if v.Parallel < 1 || v.Parallel > 16 || v.Retries < 0 || v.Retries > 5 || v.Daily < 1 || v.Weekly < 1 || v.Monthly < 1 || v.StaleHours < 1 || v.ArchiveDays < 0 {
 		return errors.New("ungültige Betriebswerte")
 	}

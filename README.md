@@ -21,22 +21,26 @@ In einem zweiten Terminal:
 ./bin/anker --data ./var/demo help
 ```
 
-Voraussetzungen für den Build: Go 1.27 oder neuer, Node.js 22.12+ und npm. Die Weboberfläche wird in das Binary eingebettet. Der Linux-Dienst braucht kein Node.js. `make linux` baut amd64 und arm64 ohne CGo. Die Linux-Installationsskripte hier wurden **nicht auf diesem Mac ausgeführt**.
+Voraussetzungen für den Build: Go 1.27.1 oder neuer, Node.js 22.12+ und npm. Die Weboberfläche wird in das Binary eingebettet. Der Linux-Dienst braucht kein Node.js. `make linux` baut amd64 und arm64 ohne CGo.
 
-## Linux-Server installieren
+## Releases
+
+Die Installation ist für einen zentralen Linux-Server mit systemd vorgesehen. Release-Pakete enthalten die fertige Anwendung für amd64 oder arm64; Go und Node werden nur zum Bauen benötigt. Pakete vor der ersten Installation mit dem veröffentlichten, unabhängig geprüften Signierschlüssel verifizieren. Die vollständigen Schritte für Erstinstallation, GitHub-Releases und Updates stehen in [UPDATES.md](docs/UPDATES.md).
+
+## Linux-Server aus dem Quellcode installieren
 
 ```sh
 make linux
 sudo ./scripts/install-server.sh ./bin/anker-linux-amd64
-sudo -u anker /usr/local/bin/anker --data /srv/anker init
 ```
 
 `init` verlangt `ANKER_INITIAL_PASSWORD` mit mindestens 12 Zeichen. Passwort verdeckt einlesen und nur für diesen Aufruf bereitstellen, beispielsweise in Bash:
 
 ```sh
-read -rs -p 'Administratorpasswort: ' ANKER_PASSWORD; echo
-sudo -u anker env ANKER_INITIAL_PASSWORD="$ANKER_PASSWORD" /usr/local/bin/anker --data /srv/anker init
-unset ANKER_PASSWORD
+read -rs -p 'Administratorpasswort: ' ANKER_INITIAL_PASSWORD; echo
+export ANKER_INITIAL_PASSWORD
+sudo --preserve-env=ANKER_INITIAL_PASSWORD -u anker /usr/local/bin/anker --data /srv/anker init
+unset ANKER_INITIAL_PASSWORD
 sudo systemctl enable --now anker
 ```
 
@@ -46,7 +50,15 @@ Der Administrator heißt standardmäßig `admin`. Der Dienst bindet standardmä�
 ssh -L 8087:127.0.0.1:8087 admin@anker-server
 ```
 
-Direkter LAN-/VPN-Zugriff verlangt TLS. In `/etc/anker/service.env` die Listen-Adresse setzen und eine systemd-Override-Datei mit `ExecStart=` und einem neuen `ExecStart` samt `--tls-cert /etc/anker/tls/server.crt --tls-key /etc/anker/tls/server.key` anlegen. Der Dienstbenutzer braucht Leserechte auf diese Dateien. Ein vom Browser vertrauenswürdiges Zertifikat verwenden; Anker kann TLS selbst terminieren. Eine Reverse-Proxy-Terminierung erfordert passende Cookie-/Proxy-Konfiguration und ist in dieser Fassung kein fertig getesteter Installationsweg.
+Direkter LAN-/VPN-Zugriff verlangt TLS. In `/etc/anker/service.env` beispielsweise setzen:
+
+```ini
+ANKER_LISTEN=0.0.0.0:8087
+ANKER_TLS_CERT=/etc/anker/tls/server.crt
+ANKER_TLS_KEY=/etc/anker/tls/server.key
+```
+
+Danach `sudo systemctl restart anker`. Der Dienstbenutzer braucht Leserechte auf diese Dateien. Ein vom Browser vertrauenswürdiges Zertifikat verwenden; Anker kann TLS selbst terminieren. Eine Reverse-Proxy-Terminierung erfordert passende Cookie-/Proxy-Konfiguration und ist in dieser Fassung kein fertig getesteter Installationsweg.
 
 ## Proxmox-Hosts anbinden
 
@@ -67,13 +79,38 @@ Passwortlose Synchronisation verwendet hier **SSH-Schlüssel**, keine Zertifikat
 
 Das Hostprofil `/etc/anker-host.json` enthält beispielsweise `{"paths":["/etc","/usr/local","/opt/my-config"]}`. Es muss root gehören und darf nicht von anderen beschreibbar sein. Zusätzliche Pflichtpfade in Anker müssen in diesem Profil tatsächlich enthalten sein. Fehlende oder unlesbare Dateien erzeugen eine unvollständige Sicherung. VM-Datenträger und große Anwendungsdaten nicht als Configprofil hinzufügen.
 
+## Anmeldung und Benutzer
+
+Die Weboberfläche verlangt eine Anmeldung. Es gibt im Produktionsbetrieb kein Standardpasswort. Der bei `init` angelegte Administrator verwaltet die weiteren Zugänge unter „Einstellungen → Zugriff“.
+
+- **Lesen:** Hosts, Aufträge und freigegebene Dateien ansehen; erlaubte Dateien herunterladen.
+- **Wiederherstellung:** Zusätzlich Sicherungen starten und Wiederherstellungen ausführen.
+- **Administrator:** Zusätzlich Benutzer, Einstellungen und Updates verwalten.
+
+Geschützte Inhalte und vollständige Exporte brauchen eine eigene Freigabe; Administratoren erhalten diese bei der Anlage. Sitzungen gelten standardmäßig 30 Tage und überstehen Dienstneustarts. Die Dauer ist zwischen 1 und 365 Tagen einstellbar und gilt für neue Anmeldungen. Abmelden, Passwortänderungen, Rechteänderungen, Sperren und Löschen beenden die betroffenen Sitzungen. Pro Benutzer sind höchstens zehn Sitzungen aktiv.
+
+Benutzer lassen sich sperren, entsperren und löschen. Der eigene Administratorzugang und der letzte aktive Administrator sind gegen Aussperren geschützt. Bei einem vergessenen Passwort ist eine Rücksetzung über den lokalen, durch Dateirechte geschützten Socket möglich:
+
+```sh
+read -rs -p 'Neues Passwort: ' ANKER_USER_PASSWORD; echo
+export ANKER_USER_PASSWORD
+sudo --preserve-env=ANKER_USER_PASSWORD anker user password admin
+unset ANKER_USER_PASSWORD
+```
+
+Der Unix-Socket ist ein lokaler Administrationszugang für root und den Dienstbenutzer. Er ersetzt keine Webanmeldung und darf nicht über das Netz freigegeben werden.
+
+## Updates
+
+Unter „Einstellungen → System“ kann ein Administrator neue Releases prüfen und installieren. Alternativ `sudo anker update check`, `sudo anker update install` und `sudo anker update status`. Signatur und Prüfsumme werden vor der Installation geprüft. Laufende Sicherungen oder Wiederherstellungen blockieren das Update. Bei einem fehlgeschlagenen Start stellt der Updater die vorherige Programmversion und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
+
 ## Bedienung
 
 - **Hosts:** Verbindung, Inventar, Sicherungszeit und zusätzliche Pflichtpfade.
 - **Sicherungen:** Dateien ansehen, Stände vergleichen, Prüfsummen prüfen, schützen, archivieren und herunterladen. „Herunterladen“ in der Liste liefert einen vollständigen TAR-Stand mit Inventar, Manifest, Anleitung und Originaldateien. „Datei herunterladen“ im Dateidialog liefert unveränderte Originalbytes, auch ohne Textvorschau. „Plan herunterladen“ liefert vorbereitete Dateien und den ursprünglichen Stand.
 - **Wiederherstellung:** Einzeldateien, neue Hardware, Standalone-, Cluster- und Versionsszenarien planen. Ziel wird neu gelesen; Drift blockiert die Ausführung.
 - **Aufträge:** Fortschritt, Abbruch und Fehler; unterbrochene Aufträge bleiben nach Neustart erkennbar.
-- **Einstellungen:** Zeitplan, Aufbewahrung, E-Mail/Webhook, Benutzer und Aktivitätsprotokoll.
+- **Einstellungen:** Zeitplan, Aufbewahrung, E-Mail/Webhook, Benutzer, Sitzungen, Updates und Aktivitätsprotokoll.
 
 Im Terminal: Tab oder 1–5 wechseln die Bereiche, Pfeile/Enter öffnen Einträge, `b` startet eine Sicherung, `v` prüft einen Stand, `/` öffnet den Befehlseingang, `q` beendet. Mausauswahl wird unterstützt. Der Befehlseingang bietet dieselben CLI-Funktionen; `help` zeigt die genaue Syntax. Der lokale Unix-Socket ist nur für den Dienstbenutzer beziehungsweise root zugänglich und erlaubt Administration ohne Webpasswort.
 
@@ -121,3 +158,9 @@ cd web && npm ci && npm run build && npx playwright install chromium && npm test
 Die Browsertests starten eine isolierte Demo auf Port 8088 mit einem neuen Datenordner unter `/tmp`. Sie verändern weder Produktionshosts noch die normale Demo. Python-Helfertests verwenden ebenfalls ausschließlich temporäre lokale Verzeichnisse.
 
 Die zusätzliche Betriebsprüfung simuliert 90 tägliche Stände, 3.600 Einträge im Webinterface und gezielte Fehler bei Download, Planung, Archivierung, Zeitplan und Wiederanlauf. Gefundene Probleme, Korrekturen und verbleibende Laborfälle stehen in [Unterstützung](docs/SUPPORT.md).
+
+## Lizenz und Mitarbeit
+
+Anker steht unter der [MIT-Lizenz](LICENSE). Abhängigkeiten behalten ihre eigenen Lizenzen; die Release-Pakete enthalten deren Lizenztexte. Fehlerberichte und Beiträge: [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitsmeldungen: [SECURITY.md](SECURITY.md).
+
+Ein öffentliches Repository erlaubt Downloads und eigene Forks. Schreibrechte am Original erhalten nur freigegebene Maintainer. Die MIT-Lizenz schränkt Änderungen an eigenen Kopien nicht ein.

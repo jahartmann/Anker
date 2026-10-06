@@ -168,6 +168,7 @@ type ApplyResult struct {
 	RebootVerified bool     `json:"reboot_verified"`
 }
 type Settings struct {
+	SessionDays  int    `json:"session_days"`
 	Timezone     string `json:"timezone"`
 	Schedule     string `json:"schedule"`
 	Parallel     int    `json:"parallel"`
@@ -205,19 +206,21 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
-	backupLocks map[string]*sync.RWMutex
-	planLocks   map[string]*sync.RWMutex
-	hostMu      sync.Mutex
-	diskUsage   func() (DiskUsage, error)
-	Root        string
-	Store       *Store
-	Collector   Collector
-	mu          sync.Mutex
-	locks       map[string]bool
-	cancels     map[string]context.CancelFunc
-	Demo        bool
-	jobMu       sync.Mutex
-	notifyMu    sync.Mutex
+	backupLocks   map[string]*sync.RWMutex
+	planLocks     map[string]*sync.RWMutex
+	hostMu        sync.Mutex
+	diskUsage     func() (DiskUsage, error)
+	Root          string
+	Store         *Store
+	Collector     Collector
+	mu            sync.Mutex
+	locks         map[string]bool
+	cancels       map[string]context.CancelFunc
+	Demo          bool
+	schedulerBusy bool
+	maintenance   bool
+	jobMu         sync.Mutex
+	notifyMu      sync.Mutex
 }
 
 func ID() string {

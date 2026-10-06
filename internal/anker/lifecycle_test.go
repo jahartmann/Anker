@@ -275,11 +275,12 @@ func TestExpiredSessionsAreEvictedDuringLogin(t *testing.T) {
 	s := testService(t)
 	a := NewAuth(s.Store)
 	a.CreateUser("reader", "long-test-password", "reader", false)
-	a.sessions["old"] = session{UserID: "reader", Expires: time.Now().Add(-time.Hour)}
+	s.Store.Put("sessions", "old", SessionInfo{UserID: "reader", Expires: time.Now().Add(-time.Hour)})
 	if _, _, err := a.Login("reader", "long-test-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := a.sessions["old"]; ok {
+	var old SessionInfo
+	if err := s.Store.Get("sessions", "old", &old); err == nil {
 		t.Fatal("expired sessions accumulate over months")
 	}
 }

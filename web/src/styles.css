@@ -1378,3 +1378,93 @@ textarea {
     overflow-wrap: anywhere;
   }
 }
+
+/* Account and release details share the settings rhythm. */
+.access-policy {
+  margin-bottom: 36px;
+}
+.access-policy .field {
+  max-width: 260px;
+}
+.user-you {
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 400;
+}
+.session-list {
+  padding: 0;
+  margin: 20px 0;
+  list-style: none;
+}
+.session-list li {
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.session-list small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.update-section {
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+.update-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 48px;
+  margin: 24px 0;
+}
+.update-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.update-facts dd {
+  margin: 0;
+  font-size: 13px;
+}
+.update-release {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.update-release p {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.update-note {
+  max-width: 720px;
+  line-height: 1.6;
+}
+.update-note p {
+  margin: 8px 0;
+}
+.update-note code {
+  font-size: 12px;
+}
+.update-message {
+  margin-top: 16px;
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .update-section .section-heading,
+  .update-release,
+  .session-list li {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .update-facts {
+    gap: 20px 32px;
+  }
+}

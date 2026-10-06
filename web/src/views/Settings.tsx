@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
-import type { Settings as Values, User } from "../api";
-import { Dialog, Field, Heading, LoadError } from "../components/shared";
+import type { Settings as Values } from "../api";
+import { Field, Heading, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
+import Access from "./Access";
+import Updates from "./Updates";
 export default function Settings({
   notify,
   onDirtyChange,
@@ -14,17 +16,10 @@ export default function Settings({
   const [value, setValue] = useState<Values | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("Sicherung");
-  const [users, setUsers] = useState<User[]>([]);
   const [audit, setAudit] = useState<
     { at: string; action: string; object: string; user_id: string }[]
   >([]);
   const [doctor, setDoctor] = useState<unknown>(null);
-  const [resetUser, setResetUser] = useState<User | null>(null);
-  const [form, setForm] = useState(false);
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("reader");
-  const [secrets, setSecrets] = useState(false);
   const [saved, setSaved] = useState("");
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -55,9 +50,6 @@ export default function Settings({
       .catch((e) => {
         if (active) setLoadError(e.message);
       });
-    api<User[]>("users")
-      .then(setUsers)
-      .catch((e) => notify(e.message, true));
     return () => {
       active = false;
     };
@@ -75,21 +67,6 @@ export default function Settings({
       notify("Einstellungen gespeichert");
     } catch (e) {
       setSaveError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function addUser(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api("users", "POST", { name, password, role, secrets });
-      setUsers(await api("users"));
-      setForm(false);
-      setPassword("");
-      notify("Benutzer angelegt");
-    } catch (e) {
-      notify((e as Error).message, true);
     } finally {
       setBusy(false);
     }
@@ -309,60 +286,51 @@ export default function Settings({
         </form>
       )}
       {tab === "Zugriff" && (
-        <section className="detail-section">
-          <div className="section-heading">
-            <div>
-              <h3>Benutzer</h3>
+        <>
+          <form className="settings-form access-policy" onSubmit={save}>
+            <section>
+              <h3>Anmeldung</h3>
               <p className="muted">
-                Lesen, Wiederherstellen und Administration getrennt vergeben.
+                Eine Anmeldung ist immer erforderlich. Die Dauer gilt für neue
+                Sitzungen, auch über einen Neustart hinweg.
               </p>
-            </div>
-            <button className="secondary" onClick={() => setForm(true)}>
-              Benutzer hinzufügen
-            </button>
-          </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Rolle</th>
-                  <th>Geschützte Inhalte</th>
-                  <th className="right">Aktionen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.name}</td>
-                    <td>
-                      {u.role === "admin"
-                        ? "Administrator"
-                        : u.role === "restore"
-                          ? "Wiederherstellung"
-                          : "Lesen"}
-                    </td>
-                    <td>{u.secrets ? "Freigegeben" : "Verdeckt"}</td>
-                    <td className="right">
-                      <button
-                        className="text-button"
-                        onClick={() => setResetUser(u)}
-                      >
-                        Passwort ändern
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="table-footnote">
-            Ein neues Passwort beendet bestehende Sitzungen dieses Benutzers.
-          </p>
-        </section>
+              <Field
+                label="Sitzungsdauer in Tagen"
+                hint="1 bis 365 Tage. Standard: 30 Tage."
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  required
+                  value={value.session_days}
+                  disabled={busy}
+                  onChange={(e) => set("session_days", +e.target.value)}
+                />
+              </Field>
+              {saveError && (
+                <p className="notice warning" role="alert">
+                  {saveError}
+                </p>
+              )}
+              <footer className="form-footer">
+                <span className="save-state">
+                  {dirty
+                    ? "Ungespeicherte Änderungen"
+                    : "Alle Änderungen gespeichert"}
+                </span>
+                <button disabled={busy || !dirty}>
+                  {busy ? "Speichert …" : "Einstellungen speichern"}
+                </button>
+              </footer>
+            </section>
+          </form>
+          <Access notify={notify} />
+        </>
       )}
       {tab === "System" && (
         <section className="detail-section">
+          <Updates />
           <h3>Systemprüfung</h3>
           <pre className="system-output">
             {doctor ? JSON.stringify(doctor, null, 2) : "Wird geladen …"}
@@ -403,141 +371,6 @@ export default function Settings({
           </div>
         </section>
       )}
-      {resetUser && (
-        <ResetPassword
-          user={resetUser}
-          notify={notify}
-          onClose={() => setResetUser(null)}
-        />
-      )}
-      {form && (
-        <Dialog
-          title="Benutzer hinzufügen"
-          busy={busy}
-          onClose={() => {
-            setForm(false);
-            setPassword("");
-          }}
-        >
-          <form onSubmit={addUser}>
-            <Field label="Benutzername">
-              <input
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </Field>
-            <Field label="Passwort" hint="Mindestens 12 Zeichen.">
-              <input
-                type="password"
-                required
-                minLength={12}
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Field>
-            <Field label="Rolle">
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="reader">Lesen</option>
-                <option value="restore">Wiederherstellung</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </Field>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={role === "admin" || secrets}
-                disabled={role === "admin"}
-                onChange={(e) => setSecrets(e.target.checked)}
-              />
-              Geschützte Inhalte und vollständige Exporte erlauben
-            </label>
-            <footer className="dialog-footer">
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setForm(false);
-                  setPassword("");
-                }}
-              >
-                Abbrechen
-              </button>
-              <button disabled={busy}>Benutzer anlegen</button>
-            </footer>
-          </form>
-        </Dialog>
-      )}
     </>
-  );
-}
-
-function ResetPassword({
-  user,
-  notify,
-  onClose,
-}: {
-  user: User;
-  notify: Notify;
-  onClose: () => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [repeat, setRepeat] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api("users/" + encodeURIComponent(user.id) + "/password", "POST", {
-        password,
-      });
-      notify("Passwort geändert; bestehende Sitzungen beendet");
-      onClose();
-    } catch (e) {
-      notify((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog title="Passwort ändern" onClose={onClose} busy={busy}>
-      <p className="dialog-intro">
-        Neues Passwort für {user.name}. Bestehende Sitzungen dieses Benutzers
-        werden beendet.
-      </p>
-      <form onSubmit={save}>
-        <Field label="Neues Passwort" hint="Mindestens 12 Zeichen.">
-          <input
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={12}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-        <Field label="Passwort wiederholen">
-          <input
-            type="password"
-            autoComplete="new-password"
-            required
-            value={repeat}
-            onChange={(e) => setRepeat(e.target.value)}
-          />
-        </Field>
-        <footer className="dialog-footer">
-          <button className="secondary" type="button" onClick={onClose}>
-            Abbrechen
-          </button>
-          <button
-            disabled={busy || password.length < 12 || password !== repeat}
-          >
-            Passwort speichern
-          </button>
-        </footer>
-      </form>
-    </Dialog>
   );
 }

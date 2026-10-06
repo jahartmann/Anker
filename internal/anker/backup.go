@@ -1,6 +1,7 @@
 package anker
 
 import (
+	"anker/internal/updater"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -25,6 +26,9 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 		return nil, err
 	}
 	s := &Service{Root: root, Store: store, Collector: collector, locks: map[string]bool{}, cancels: map[string]context.CancelFunc{}}
+	if _, err := os.Stat(updater.Maintenance); err == nil {
+		s.maintenance = true
+	}
 	for _, d := range []string{"hosts", "plans", "exports", "staging", "clusters"} {
 		if err = os.MkdirAll(filepath.Join(root, d), 0700); err != nil {
 			return nil, err
@@ -35,7 +39,7 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 		if !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("Betriebseinstellungen sind nicht lesbar; Katalog prüfen: %w", err)
 		}
-		if err = store.Put("settings", "main", Settings{Timezone: "Europe/Berlin", Schedule: "02:00", Parallel: 4, Retries: 3, Daily: 30, Weekly: 12, Monthly: 12, ArchiveDays: 90, StaleHours: 26}); err != nil {
+		if err = store.Put("settings", "main", Settings{SessionDays: 30, Timezone: "Europe/Berlin", Schedule: "02:00", Parallel: 4, Retries: 3, Daily: 30, Weekly: 12, Monthly: 12, ArchiveDays: 90, StaleHours: 26}); err != nil {
 			return nil, err
 		}
 	}
@@ -44,6 +48,9 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 func (s *Service) Settings() (Settings, error) {
 	var v Settings
 	err := s.Store.Get("settings", "main", &v)
+	if v.SessionDays == 0 {
+		v.SessionDays = 30
+	}
 	return v, err
 }
 

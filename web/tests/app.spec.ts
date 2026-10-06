@@ -759,3 +759,83 @@ test("resizing with an open action menu closes it without browser errors", async
   await expect(page.locator(".action-popover")).not.toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("access administration shows session policy and protects the signed-in account", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Zugriff", exact: true }).click();
+  await expect(page.getByLabel("Sitzungsdauer in Tagen")).toHaveValue("30");
+  await page.getByRole("button", { name: "Aktionen für demo" }).click();
+  await page.getByRole("button", { name: "Zugang bearbeiten" }).click();
+  await expect(page.getByRole("dialog")).toContainText("demo");
+  await expect(page.getByLabel("Zugang gesperrt")).toBeDisabled();
+});
+test("update panel describes setup when the updater is unavailable", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Updates", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Updates sind in der Demo ausgeschaltet.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Nach Updates suchen" }),
+  ).toBeDisabled();
+});
+test("update installation requires a reviewed version and recovers after a restart", async ({
+  page,
+}) => {
+  let installing = false;
+  const state = () => ({
+    configured: true,
+    repository: "example/anker",
+    current: installing ? "0.3.0" : "0.2.0",
+    status: installing ? "successful" : "idle",
+    available: installing
+      ? undefined
+      : {
+          version: "v0.3.0",
+          url: "https://github.com/example/anker/releases/tag/v0.3.0",
+          artifact: { size: 123456 },
+        },
+    message: installing ? "Update installiert und Start geprüft" : "",
+  });
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({ json: state() }),
+  );
+  await page.route("**/api/updates/check", (route) =>
+    route.fulfill({ json: state() }),
+  );
+  await page.route("**/api/updates/install", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ version: "v0.3.0" });
+    installing = true;
+    return route.fulfill({
+      json: { ...state(), status: "installing", target: "v0.3.0" },
+    });
+  });
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Update installieren", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("v0.3.0");
+  await page
+    .getByRole("button", { name: "Jetzt installieren", exact: true })
+    .click();
+  await expect(
+    page.getByText("Update installiert und Start geprüft", { exact: true }),
+  ).toBeVisible({ timeout: 10000 });
+});
