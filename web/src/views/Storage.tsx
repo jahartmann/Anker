@@ -145,6 +145,7 @@ function History({ volume }: { volume: Volume }) {
     <div className="storage-history">
       <svg
         viewBox="0 0 500 94"
+        preserveAspectRatio="none"
         role="img"
         aria-label={`Belegungsverlauf ${volume.mount} · ${date(points[0].at)} bis ${date(points.at(-1)!.at)}`}
       >

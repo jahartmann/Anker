@@ -105,3 +105,23 @@ func TestStorageAPIRequiresAdminAndDemoNeverReadsOrChangesDevices(t *testing.T) 
 		}
 	}
 }
+
+func TestTemporaryMountFailurePreservesEarlierMeasurements(t *testing.T) {
+	s := testService(t)
+	at := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	r := storage.Report{Volumes: []storage.Volume{{ID: "backup", Total: 1000, Used: 500, Available: 450}}}
+	if err := s.recordStorage(r, at); err != nil {
+		t.Fatal(err)
+	}
+	failed := storage.Report{Volumes: []storage.Volume{{ID: "backup", Error: "Mount nicht erreichbar"}}}
+	if err := s.recordStorage(failed, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.recordStorage(r, at.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	h, err := s.storageHistory()
+	if err != nil || len(h.Samples["backup"]) != 2 {
+		t.Fatal("temporary mount failure erased valid history", h, err)
+	}
+}

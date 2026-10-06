@@ -95,11 +95,8 @@ func (s *Service) recordStorage(r storage.Report, at time.Time) error {
 func (s *Service) recordStorageLocked(r storage.Report, at time.Time, h storageHistory) error {
 	next := storageHistory{At: at.UTC().Format(time.RFC3339), Samples: map[string][]storage.Sample{}}
 	for _, v := range r.Volumes {
-		if v.Error != "" || v.Total <= 0 {
-			continue
-		}
 		points := h.Samples[v.ID]
-		if len(points) > 0 && points[len(points)-1].Total != v.Total {
+		if v.Error == "" && v.Total > 0 && len(points) > 0 && points[len(points)-1].Total != v.Total {
 			points = nil
 		}
 		valid := []storage.Sample{}
@@ -108,6 +105,12 @@ func (s *Service) recordStorageLocked(r storage.Report, at time.Time, h storageH
 			if e == nil && !t.After(at) && at.Sub(t) <= 90*24*time.Hour {
 				valid = append(valid, p)
 			}
+		}
+		if v.Error != "" || v.Total <= 0 {
+			if len(valid) > 0 {
+				next.Samples[v.ID] = valid
+			}
+			continue
 		}
 		valid = append(valid, storage.Sample{At: next.At, Total: v.Total, Used: v.Used, Available: v.Available})
 		if len(valid) > 2160 {
