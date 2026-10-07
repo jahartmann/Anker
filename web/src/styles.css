@@ -784,8 +784,8 @@ td strong {
   grid-template-columns: minmax(300px, 42%) minmax(0, 1fr);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  min-height: 350px;
-  height: min(560px, 64vh);
+  min-height: 240px;
+  height: min(560px, max(240px, calc(100dvh - 320px)));
 }
 .file-list {
   border-right: 1px solid var(--line);
@@ -1109,16 +1109,15 @@ pre {
   }
   .file-browser {
     grid-template-columns: 1fr;
-    height: 520px;
   }
   .file-list {
     border: 0;
     border-bottom: 1px solid var(--line);
-    height: 185px;
+    height: auto;
     padding-right: 0;
   }
   .file-preview {
-    height: 335px;
+    height: auto;
     padding: 15px 0;
   }
   .form-grid {
@@ -1451,8 +1450,8 @@ textarea {
     min-height: 32px;
   }
   .file-browser {
-    height: min(560px, 62dvh);
-    grid-template-rows: minmax(240px, 52%) minmax(0, 1fr);
+    height: min(520px, max(240px, calc(100dvh - 370px)));
+    grid-template-rows: minmax(200px, 42%) minmax(0, 1fr);
   }
   .file-list,
   .file-preview {

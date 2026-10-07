@@ -94,3 +94,50 @@ test("overview distinguishes active, paused and unsaved hosts from live jobs", a
     390,
   );
 });
+
+test("backup file actions remain fully visible on a short laptop viewport", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page
+    .getByRole("row")
+    .filter({ hasText: "pve-hamburg-02" })
+    .getByRole("button", { name: "Dateien", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Dateien · pve-hamburg-02" });
+  await expect(
+    dialog.getByRole("button", { name: "Wiederherstellung planen" }),
+  ).toBeEnabled();
+  const frame = await dialog.boundingBox();
+  const action = await dialog
+    .getByRole("link", { name: "Stand herunterladen", exact: true })
+    .boundingBox();
+  expect(frame).toBeTruthy();
+  expect(action).toBeTruthy();
+  expect(action!.y + action!.height).toBeLessThanOrEqual(
+    frame!.y + frame!.height - 1,
+  );
+  await dialog
+    .getByRole("textbox", { name: "Dateien durchsuchen", exact: true })
+    .fill("sysctl");
+  await dialog
+    .getByRole("button", { name: /^etc\/sysctl.d\/99-anker.conf/ })
+    .click();
+  await expect(
+    dialog.getByRole("link", { name: "Datei herunterladen", exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileFrame = await dialog.boundingBox();
+  const mobileAction = await dialog
+    .getByRole("button", { name: "Datei wiederherstellen" })
+    .boundingBox();
+  expect(mobileAction!.y + mobileAction!.height).toBeLessThanOrEqual(
+    mobileFrame!.y + mobileFrame!.height - 1,
+  );
+});

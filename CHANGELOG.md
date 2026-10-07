@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.2.7
+
+- Dateidialog passt Liste und Vorschau an die verfügbare Bildschirmhöhe an. Download und Wiederherstellungsaktionen bleiben auch auf kleineren Laptop- und Mobilansichten direkt sichtbar.
+
 ## 0.2.6
 
 - Ankersymbol im Browser-Tab und einheitliche kleine Wortmarke; der Tabtitel folgt der geöffneten Ansicht. Das Symbol bleibt auf hellen und dunklen Browserflächen erkennbar.
