@@ -40,7 +40,7 @@ if [ "${mode:-}" = public ]; then
 fi
 ''')
    executable('npm','echo "npm $*" >>"$ANKER_TEST_LOG"\n')
-   for name in ['mkdir','cp','rm','tar','cmp']:os.symlink(shutil.which(name),commands/name)
+   for name in ['mkdir','cp','rm','tar','gzip','cmp']:os.symlink(shutil.which(name),commands/name)
    os.symlink(shutil.which('python3'),commands/'python3')
    log=root/'log';env=dict(os.environ,PATH=str(commands),ANKER_TEST_LOG=str(log),ANKER_TEST_PUBLIC_KEY='other fixture key' if mismatch else 'trusted fixture key')
    result=subprocess.run(['/bin/sh','scripts/build-release.sh','v1.2.3','dist'],cwd=root,env=env,text=True,capture_output=True)
