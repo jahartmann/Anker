@@ -257,7 +257,7 @@ export function hostState(h: Host, s: Status) {
   if (hostBackups[0]?.status === "damaged")
     return {
       text: "Beschädigter Stand",
-      tone: "warning",
+      tone: "danger",
       backup: hostBackups[0],
     };
   if (hostBackups[0]?.status === "partial")
@@ -281,7 +281,7 @@ export function hostState(h: Host, s: Status) {
   )
     return {
       text: "Letzter Versuch fehlgeschlagen",
-      tone: "warning",
+      tone: latestJob.state === "failed" ? "danger" : "warning",
       backup: b,
     };
   if (!b) return { text: "Ohne Sicherung", tone: "muted", backup: undefined };

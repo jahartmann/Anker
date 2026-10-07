@@ -9,19 +9,28 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { X, MoreHorizontal } from "lucide-react";
+import { Anchor, X, MoreHorizontal } from "lucide-react";
 import { api, labels } from "../api";
 export type Notify = (message: string, error?: boolean) => void;
+export function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <Anchor size={20} strokeWidth={2.2} />
+    </span>
+  );
+}
 export function State({ value, label }: { value: string; label?: string }) {
   const tone = ["successful", "demo_applied"].includes(value)
     ? "success"
-    : ["failed", "interrupted", "blocked", "damaged", "partial"].includes(value)
-      ? "warning"
-      : ["running", "applying"].includes(value)
-        ? "active"
-        : value === "queued"
-          ? "queued"
-          : "muted";
+    : ["failed", "blocked", "damaged"].includes(value)
+      ? "danger"
+      : ["interrupted", "partial"].includes(value)
+        ? "warning"
+        : ["running", "applying"].includes(value)
+          ? "active"
+          : value === "queued"
+            ? "queued"
+            : "muted";
   return (
     <span className={"state " + tone}>{label || labels[value] || value}</span>
   );

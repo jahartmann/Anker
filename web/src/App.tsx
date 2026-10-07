@@ -10,7 +10,14 @@ import {
   labels,
 } from "./api";
 import type { Status, User } from "./api";
-import { Dialog, Empty, Field, Heading, State } from "./components/shared";
+import {
+  BrandMark,
+  Dialog,
+  Empty,
+  Field,
+  Heading,
+  State,
+} from "./components/shared";
 import ActiveJobs from "./components/ActiveJobs";
 import Jobs from "./views/Jobs";
 import Hosts from "./views/Hosts";
@@ -48,7 +55,10 @@ function Login({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) {
   return (
     <div className="login-page">
       <div className="login-form">
-        <div className="wordmark">Anker</div>
+        <div className="wordmark">
+          <BrandMark />
+          Anker
+        </div>
         <h1>Anmelden</h1>
         <p>Deine Hostkonfigurationen an einem Ort.</p>
         <form onSubmit={login}>
@@ -165,6 +175,9 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(t);
   }, [toast]);
+  useEffect(() => {
+    document.title = loading ? "Anker" : `${user ? page : "Anmelden"} · Anker`;
+  }, [loading, !!user, page]);
   function navigate(p: string) {
     if (p === page) {
       setNav(false);
@@ -215,6 +228,8 @@ export default function App() {
   const overdue = status.hosts.filter(
     (h) => h.enabled && hostState(h, status).tone !== "success",
   );
+  const enabledHosts = status.hosts.filter((h) => h.enabled);
+  const pausedHosts = status.hosts.length - enabledHosts.length;
   const active = status.jobs.filter((j) =>
     ["queued", "running"].includes(j.state),
   );
@@ -228,7 +243,10 @@ export default function App() {
         />
       )}
       <aside id="anker-navigation" className={nav ? "sidebar open" : "sidebar"}>
-        <div className="brand">Anker</div>
+        <div className="brand">
+          <BrandMark />
+          Anker
+        </div>
         <nav aria-label="Hauptnavigation">
           {pages
             .filter((p) => p !== "Einstellungen" || user.role === "admin")
@@ -361,37 +379,65 @@ export default function App() {
                   title="Übersicht"
                   description="Was gesichert ist und wo Handlungsbedarf besteht."
                 />
-                <section className="overview-summary">
-                  <p>
-                    {status.hosts.some((h) => h.enabled) ? (
-                      <>
-                        <strong>
-                          {status.hosts.filter((h) => h.enabled).length -
-                            overdue.length}{" "}
-                          von {status.hosts.filter((h) => h.enabled).length}{" "}
-                          aktiven Hosts
-                        </strong>{" "}
-                        haben eine aktuelle Sicherung.
-                      </>
-                    ) : status.hosts.length ? (
-                      <>
-                        <strong>{status.hosts.length} Hosts</strong> ·
-                        automatische Sicherung pausiert.
-                      </>
-                    ) : (
-                      "Noch keine Hosts eingerichtet."
-                    )}
-                  </p>
-                  <p className="muted">
-                    {active.length
-                      ? active.length + " Aufträge laufen oder warten."
-                      : "Keine aktiven Aufträge."}{" "}
+                <section
+                  className="overview-summary"
+                  aria-label="Sicherungsstatus"
+                >
+                  <dl className="overview-metrics">
+                    {[
+                      {
+                        label: "Aktive Hosts",
+                        count: enabledHosts.length,
+                        tone: "neutral",
+                      },
+                      {
+                        label: "Aktuell gesichert",
+                        count: enabledHosts.length - overdue.length,
+                        tone: "success",
+                      },
+                      {
+                        label: "Handlungsbedarf",
+                        count: overdue.length,
+                        tone: overdue.length ? "warning" : "neutral",
+                      },
+                      {
+                        label: "Aktive Aufträge",
+                        count: active.length,
+                        tone: active.length ? "active" : "neutral",
+                      },
+                    ].map((metric) => (
+                      <div
+                        className={"overview-metric " + metric.tone}
+                        key={metric.label}
+                      >
+                        <dt>{metric.label}</dt>
+                        <dd>{metric.count}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="overview-context">
+                    {status.demo
+                      ? "Automatischer Zeitplan in der Demo deaktiviert."
+                      : !status.hosts.length
+                        ? "Noch keine Hosts eingerichtet."
+                        : !enabledHosts.length
+                          ? "Automatische Sicherung für alle Hosts pausiert."
+                          : "Zeitplan aktiv."}{" "}
                     Zeitzone {status.timezone}.
+                    {pausedHosts > 0 && enabledHosts.length > 0 && (
+                      <span className="context-tag">
+                        {pausedHosts} {pausedHosts === 1 ? "Host" : "Hosts"}{" "}
+                        pausiert
+                      </span>
+                    )}
                   </p>
                 </section>
                 <section>
                   <div className="section-heading">
-                    <h3>Handlungsbedarf</h3>
+                    <div className="section-heading-title">
+                      <h3>Handlungsbedarf</h3>
+                      <span className="count-badge">{overdue.length}</span>
+                    </div>
                     <button
                       className="text-button"
                       onClick={() => navigate("Hosts")}
@@ -413,8 +459,14 @@ export default function App() {
                           {overdue.slice(0, 8).map((h) => (
                             <tr key={h.id}>
                               <td>{h.name}</td>
-                              <td className="warning">
-                                {hostState(h, status).text}
+                              <td>
+                                <span
+                                  className={
+                                    "state " + hostState(h, status).tone
+                                  }
+                                >
+                                  {hostState(h, status).text}
+                                </span>
                               </td>
                               <td>
                                 {date(hostState(h, status).backup?.created_at)}
@@ -449,7 +501,7 @@ export default function App() {
                   )}
                 </section>
                 <ActiveJobs status={status} openJob={common.openJob} />
-                <section className="detail-section">
+                <section className="detail-section overview-history">
                   <h3>Letzte abgeschlossene Aufträge</h3>
                   <Jobs
                     status={{

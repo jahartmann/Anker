@@ -14,6 +14,9 @@
   --soft: #f7f7f5;
   --ink: #252524;
   --warning: #886326;
+  --accent: #426c57;
+  --accent-soft: #edf3ee;
+  --danger: #a3443f;
 }
 * {
   box-sizing: border-box;
@@ -556,17 +559,63 @@ td strong {
   margin-top: 7px;
 }
 .overview-summary {
-  padding: 0 0 35px;
+  margin-bottom: 34px;
+  border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  margin-bottom: 32px;
 }
-.overview-summary p:first-child {
-  font-size: 18px;
-  letter-spacing: -0.2px;
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 24px 0;
 }
-.overview-summary p + p {
-  font-size: 13px;
-  margin-top: 10px;
+.overview-metric {
+  padding: 0 24px;
+  border-left: 1px solid var(--line);
+}
+.overview-metric:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.overview-metric dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.overview-metric dd {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.overview-metric.neutral {
+  color: var(--ink);
+}
+.overview-metric.active {
+  color: #326884;
+}
+.overview-context {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.context-tag {
+  display: inline-block;
+  margin-left: 12px;
+  color: var(--muted);
+}
+.overview-history {
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+}
+.section-heading-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .dialog-backdrop {
   position: fixed;
@@ -1296,7 +1345,7 @@ thead th {
   outline-offset: -2px;
 }
 .file-items button.selected {
-  box-shadow: inset 2px 0 0 #6d6d62;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .file-list input {
   flex-shrink: 0;
@@ -2332,5 +2381,124 @@ textarea {
     position: absolute;
     bottom: 12px;
     right: 0;
+  }
+}
+
+/* Small shared details keep the existing quiet layout consistent. */
+.brand,
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.sidebar nav button.active {
+  background: #e9efea;
+  color: #344d3d;
+  box-shadow: inset 2px 0 var(--accent);
+}
+.topbar > span:last-child {
+  color: #66665f;
+  font-weight: 500;
+}
+.tabs button.selected {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 550;
+}
+.tabs button:hover {
+  color: var(--accent);
+}
+.danger {
+  color: var(--danger);
+}
+.state.danger {
+  color: #963d38;
+  background: #fbefed;
+}
+.group-tag {
+  display: inline-flex;
+  padding: 3px 8px;
+  border: 1px solid #ecece7;
+  border-radius: 4px;
+  color: #6d6d65;
+  background: #fafaf8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.group-tag.cluster {
+  color: #68577d;
+  background: #f3eff8;
+  border-color: #ebe4f2;
+}
+.page-heading p,
+.secondary-line,
+.properties dt,
+.field small {
+  color: var(--muted);
+}
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline-color: var(--accent);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #779781;
+  box-shadow: 0 0 0 2px #426c5712;
+}
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.dialog {
+  animation: dialog-enter 140ms ease-out;
+}
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 640px) {
+  .overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0;
+  }
+  .overview-metric {
+    padding: 20px 16px;
+  }
+  .overview-metric:first-child {
+    padding-left: 0;
+  }
+  .overview-metric:nth-child(3) {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .overview-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+  .overview-metric dd {
+    font-size: 29px;
+  }
+  .overview-context {
+    line-height: 1.8;
+  }
+  .host-toolbar .search-field input {
+    max-width: none;
   }
 }

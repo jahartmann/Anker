@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.2.6
+
+- Ankersymbol im Browser-Tab und einheitliche kleine Wortmarke; der Tabtitel folgt der geöffneten Ansicht. Das Symbol bleibt auf hellen und dunklen Browserflächen erkennbar.
+- Übersicht mit getrennten Kennzahlen für aktive Hosts, aktuelle Sicherungen, Handlungsbedarf und aktive Aufträge. Pausierte Hosts und der ausdrücklich deaktivierte Demozeitplan bleiben sichtbar.
+- Dezente Akzente für Navigation, Register, Fokus und Dateiauswahl; kompakte Gruppenkennzeichnung und einheitliche Statuskapseln. Echte Fehler unterscheiden sich von Hinweisen.
+- Klarere Abschnittsabstände, besser lesbare sekundäre Texte und kurze Dialogübergänge, die bei reduzierter Bewegung deaktiviert bleiben. Die bestehende ruhige Tabellenbasis bleibt erhalten.
+
 ## 0.2.5
 
 - Wiederherstellung mit Quellhostfilter, durchsuchbarer Dateiauswahl und festen Seiten für Dateien, Pläne und Planschritte. Auswahlen bleiben beim Suchen und Blättern erhalten; neu geprüfte Zielports sind über „Zuordnungen anpassen“ direkt erreichbar.

@@ -932,7 +932,15 @@ export default function Hosts({
                               {h.address}
                             </div>
                           </td>
-                          <td>{h.group || "Standalone"}</td>
+                          <td>
+                            <span
+                              className={
+                                h.cluster_id ? "group-tag cluster" : "group-tag"
+                              }
+                            >
+                              {h.group || "Standalone"}
+                            </span>
+                          </td>
                           <td className="date">
                             {date(state.backup?.created_at)}
                           </td>
