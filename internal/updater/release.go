@@ -26,7 +26,9 @@ const StateDir = "/var/lib/anker-updater"
 const BinaryPath = "/usr/local/bin/anker"
 const HelperPath = "/usr/local/libexec/anker-updater"
 const DataDir = "/srv/anker"
-const LocalInstallLock = "/run/anker-local-install.lock"
+// Keep the coordinator lock inside the helper's writable StateDirectory so
+// existing hardened service units can inspect it during startup as well.
+const LocalInstallLock = StateDir + "/local-install.lock"
 
 type Config struct {
 	Repository string `json:"repository"`
