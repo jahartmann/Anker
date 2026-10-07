@@ -39,13 +39,39 @@ func (s *Service) updates(w http.ResponseWriter, r *http.Request, u User) error 
 	path := strings.TrimPrefix(r.URL.Path, "/api/updates")
 	if path == "" && r.Method == "GET" {
 		path = "/status"
-	} else if (path != "/check" && path != "/install") || r.Method != "POST" {
+	} else if path == "/configuration" && r.Method == "GET" {
+		// Public trust information for the administrator.
+	} else if (path != "/check" && path != "/install" && path != "/configure") || r.Method != "POST" {
 		return fail(405, "Methode nicht unterstützt")
 	}
 	if s.Demo {
-		return jsonOut(w, updater.State{Current: buildinfo.Version, Status: "unconfigured", Message: "Updates sind in der Demo ausgeschaltet. Auf dem Server den Updater einrichten."})
+		if path == "/configure" {
+			return fail(409, "Updatequelle kann in der Demo nicht geändert werden")
+		}
+		if path == "/configuration" {
+			c := updater.DefaultConfiguration()
+			c.Demo = true
+			return jsonOut(w, c)
+		}
+		return jsonOut(w, updater.State{Current: buildinfo.Version, Status: "unconfigured", Message: "Updates sind in der Demo ausgeschaltet. Auf dem eigenen Server lässt sich die Quelle hier einrichten."})
 	}
 	var body io.Reader
+	if path == "/configure" {
+		var in updater.ConfigureRequest
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&in); err != nil {
+			return fail(400, "Ungültige Updatequelle")
+		}
+		if !in.Confirmed {
+			return fail(400, "Vertrauen in Repository und Signierschlüssel ausdrücklich bestätigen")
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			return fail(400, "Zusätzliche Daten nicht erlaubt")
+		}
+		b, _ := json.Marshal(in)
+		body = bytes.NewReader(b)
+	}
 	if path == "/install" {
 		var in struct {
 			Version string `json:"version"`
@@ -64,9 +90,9 @@ func (s *Service) updates(w http.ResponseWriter, r *http.Request, u User) error 
 	response, err := updater.UnixClient(updater.Socket, 40*time.Second).Do(req)
 	if err != nil {
 		if path == "/status" {
-			return jsonOut(w, updater.State{Current: buildinfo.Version, Status: "unconfigured", Message: "Updater nicht erreichbar. Einrichtung und systemd-Dienst prüfen."})
+			return jsonOut(w, updater.State{Current: buildinfo.Version, Status: "unconfigured", Message: "Updater nicht erreichbar. systemd-Dienst prüfen."})
 		}
-		return fail(503, "Updater nicht erreichbar; Einrichtung und systemd-Dienst prüfen")
+		return fail(503, "Updater nicht erreichbar; systemd-Dienst prüfen")
 	}
 	defer response.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
@@ -74,6 +100,16 @@ func (s *Service) updates(w http.ResponseWriter, r *http.Request, u User) error 
 		return err
 	}
 	if response.StatusCode < 400 {
+		if path == "/configuration" || path == "/configure" {
+			var configuration updater.Configuration
+			if err = json.Unmarshal(b, &configuration); err != nil {
+				return err
+			}
+			if path == "/configure" {
+				s.LogAudit(u.ID, "update.configure", configuration.Repository+" "+configuration.Fingerprint)
+			}
+			return jsonOut(w, configuration)
+		}
 		var state updater.State
 		if err = json.Unmarshal(b, &state); err != nil {
 			return err

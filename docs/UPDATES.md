@@ -26,6 +26,8 @@ openssl pkey -pubin -in /sicherer/pfad/anker-release-keys/public.pem -outform DE
 
 Der Server braucht nur `public.key`. Ein öffentlicher Release braucht keinen GitHub-Zugangsschlüssel.
 
+Für die offizielle Quelle liegen `public.key` und `public.pem` im Projekt; derselbe Base64-Schlüssel steht in `internal/updater/official_public.key`. Der Release-Build prüft, dass der verwendete private Schlüssel dazu passt. Einen bestehenden Signierschlüssel weiterverwenden; ein Austausch benötigt eine geplante Vertrauensänderung auf bereits installierten Servern.
+
 ## Erstinstallation aus einem Release
 
 Der geführte Weg benötigt einen veröffentlichten stabilen Release. Aus einem bekannten Projektstand auf dem Linux-Server:
@@ -69,6 +71,18 @@ Die root-eigene Zertifikatsverwaltung verwendet denselben Dienst und startet auc
 
 ## Updater auf dem Server einrichten
 
+Im Web unter **Einstellungen → System → Updates → Updatequelle einrichten** die Anker-Quelle wählen und bestätigen. Repository und öffentlicher Schlüssel sind in der Anwendung enthalten. Der Dialog zeigt den Fingerprint; nur ein angemeldeter Administrator kann die Quelle speichern. Die Änderung gilt sofort und bleibt nach einem Neustart erhalten. Fehlt ein veröffentlichter Release, kann die Quelle trotzdem eingerichtet werden; installiert wird erst eine erfolgreich geprüfte verfügbare Version.
+
+Der mitgelieferte Ed25519-Schlüssel hat folgenden SHA-256-Fingerprint über seine 32 Rohbytes:
+
+```text
+SHA256:611d12f97e705bec95321ee726be1b8e36b8a258c293805d554145a1a033da11
+```
+
+Bei einer eigenen Quelle Repository und unabhängig geprüften öffentlichen Base64-Schlüssel eintragen und den Wechsel bestätigen. Während einer Installation oder offenen Einrichtung bleibt der Wechsel gesperrt. Ein vorhandener privater GitHub-Zugang bleibt nur beim selben Repository erhalten; bei Quellenwechsel wird er nicht an ein anderes Repository übertragen. Private Zugänge werden weiterhin ausdrücklich auf dem Server eingerichtet.
+
+Für eine normale Anker-Installation ist die folgende manuelle Einrichtung nicht nötig. Für Administration und eigene Builds:
+
 `/etc/anker/update.json` für `jahartmann/Anker` mit dem Inhalt von `public.key` erstellen:
 
 ```json
@@ -87,7 +101,7 @@ sudo anker update check
 
 `BASE64_PUBLIC_KEY` durch den Inhalt von `public.key` ersetzen. Der Updater akzeptiert keine Konfigurationsdatei, die andere Benutzer beschreiben können. Bei einem privaten Repository kann zusätzlich `token_file` auf eine root-eigene Datei mit einem passenden GitHub-Lese-Token verweisen. Den Token nicht in die Weboberfläche oder die Befehlszeile kopieren.
 
-Der Webdienst läuft als `anker`. Der Updater läuft als `root`, nimmt ausschließlich `status`, `check` und `install` über `/run/anker-updater/socket` entgegen und liest Zielpfade, Repository und Signierschlüssel aus seiner lokalen Konfiguration. Es gibt keinen allgemeinen Shell- oder Download-Endpunkt. Mitglieder der Gruppe `anker` haben damit administrative Updateberechtigung; keine gewöhnlichen Benutzer dieser Gruppe hinzufügen.
+Der Webdienst läuft als `anker`. Der Updater läuft als `root` und stellt Status, bestätigte Quelleneinrichtung, Prüfung und Installation über `/run/anker-updater/socket` bereit. Konfigurations- und Installationspfade sind fest vorgegeben. Öffentliche Vertrauensinformationen werden angezeigt; GitHub-Token und ihre Dateipfade werden nicht an den Browser ausgegeben. Es gibt keinen allgemeinen Shell- oder Download-Endpunkt. Mitglieder der Gruppe `anker` haben damit administrative Updateberechtigung; keine gewöhnlichen Benutzer dieser Gruppe hinzufügen.
 
 ## Release erstellen
 

@@ -2,7 +2,9 @@ package anker
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +41,69 @@ func TestUpdateControlOnlyAvailableThroughLocalSocket(t *testing.T) {
 		if rr.Code != want {
 			t.Fatal(local, rr.Code)
 		}
+	}
+}
+
+func TestUpdateSourceAdministrationRoleOriginAndDemo(t *testing.T) {
+	s := testService(t)
+	s.Demo = true
+	a := NewAuth(s.Store)
+	for _, role := range []string{"reader", "restore", "admin"} {
+		if err := a.CreateUser(role, "update-test-password", role, false); err != nil {
+			t.Fatal(err)
+		}
+		token, _, err := a.Login(role, "update-test-password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range []struct{ method, path, body string }{{"GET", "/api/updates/configuration", ""}, {"POST", "/api/updates/configure", `{"confirmed":true}`}} {
+			req := httptest.NewRequest(item.method, item.path, strings.NewReader(item.body))
+			req.AddCookie(&http.Cookie{Name: "anker_session", Value: token})
+			req.Header.Set("X-Anker-Request", "1")
+			res := httptest.NewRecorder()
+			Handler(s, a, false).ServeHTTP(res, req)
+			want := 403
+			if role == "admin" {
+				want = 409
+				if item.method == "GET" {
+					want = 200
+				}
+			}
+			if res.Code != want {
+				t.Fatal(role, item.path, res.Code, res.Body.String())
+			}
+			if role == "admin" && item.method == "GET" && (!strings.Contains(res.Body.String(), `"demo":true`) || strings.Contains(res.Body.String(), "token_file")) {
+				t.Fatal(res.Body.String())
+			}
+		}
+	}
+	for _, origin := range []string{"", "https://attacker.example"} {
+		req := httptest.NewRequest("POST", "/api/updates/configure", strings.NewReader(`{"confirmed":true}`))
+		if origin != "" {
+			req.Header.Set("X-Anker-Request", "1")
+			req.Header.Set("Origin", origin)
+		}
+		res := httptest.NewRecorder()
+		Handler(s, a, true).ServeHTTP(res, req)
+		if res.Code != 403 {
+			t.Fatal(origin, res.Code)
+		}
+	}
+	res := httptest.NewRecorder()
+	Handler(s, a, false).ServeHTTP(res, httptest.NewRequest("GET", "/api/updates/configuration", nil))
+	if res.Code != 401 {
+		t.Fatal(res.Code)
+	}
+}
+
+func TestUpdateSourceRejectsTrailingDataBeforeHelper(t *testing.T) {
+	s := testService(t)
+	a := NewAuth(s.Store)
+	req := httptest.NewRequest("POST", "/api/updates/configure", strings.NewReader(`{"confirmed":true} {"repository":"other/source"}`))
+	req.Header.Set("X-Anker-Request", "1")
+	res := httptest.NewRecorder()
+	Handler(s, a, true).ServeHTTP(res, req)
+	if res.Code != 400 {
+		t.Fatal(res.Code, res.Body.String())
 	}
 }

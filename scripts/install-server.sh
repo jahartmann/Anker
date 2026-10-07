@@ -35,7 +35,7 @@ if [ -z "$ANKER_BINARY" ]; then
  else ANKER_BINARY="$ANKER_SOURCE/bin/anker-linux-$ANKER_ARCH"; fi
 fi
 ANKER_PACKAGES=
-for ANKER_PAIR in systemctl:systemd useradd:passwd runuser:util-linux install:coreutils ssh-keygen:openssh-client python3:python3 flock:util-linux openssl:openssl rsync:rsync; do
+for ANKER_PAIR in systemctl:systemd useradd:passwd runuser:util-linux install:coreutils ssh-keygen:openssh-client python3:python3 flock:util-linux openssl:openssl rsync:rsync man:man-db; do
  ANKER_COMMAND=${ANKER_PAIR%%:*}; ANKER_PACKAGE=${ANKER_PAIR#*:}
  if ! command -v "$ANKER_COMMAND" >/dev/null; then ANKER_PACKAGES="$ANKER_PACKAGES $ANKER_PACKAGE"; fi
 done
@@ -71,8 +71,14 @@ fi
 [ -f "$ANKER_BINARY" ] && [ -x "$ANKER_BINARY" ] || { echo 'Passende Linux-Binärdatei fehlt; einen Quellcode-Checkout oder ein geprüftes Release verwenden.' >&2; exit 1; }
 # Detect the wrong architecture before writing anything into the installation.
 "$ANKER_BINARY" version
+[ -f "$ANKER_SOURCE/deploy/anker.1" ] || { echo 'Handbuch fehlt; vollständigen Checkout oder Release verwenden.' >&2; exit 1; }
+install_manual() {
+ install -d -o root -g root -m 0755 /usr/local/share/man/man1
+ install -o root -g root -m 0644 "$ANKER_SOURCE/deploy/anker.1" /usr/local/share/man/man1/anker.1
+}
 if [ -e /usr/local/bin/anker ] && [ ! -f /etc/anker/install-pending ]; then
  "$ANKER_BINARY" install-local
+ install_manual
  cleanup
  trap - EXIT HUP INT TERM
  exec 9>&-
@@ -103,6 +109,7 @@ if [ -f "$ANKER_SOURCE/public.key" ]; then
  install -o root -g anker -m 0640 "$ANKER_SOURCE/public.key" /etc/anker/release-public.key
 fi
 systemctl daemon-reload
+install_manual
 python3 "$ANKER_SOURCE/scripts/install-state.py" finish "$ANKER_STAGED"
 cleanup
 trap - EXIT HUP INT TERM

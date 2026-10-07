@@ -19,6 +19,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/x/term"
 )
 
 func main() {
@@ -28,7 +30,12 @@ func main() {
 	}
 }
 func run(args []string) error {
+	return runWithTerminal(args, term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()), tui.Run)
+}
+
+func runWithTerminal(args []string, terminal bool, launch func(*client.Client) error) error {
 	f := flag.NewFlagSet("anker", flag.ContinueOnError)
+	f.Usage = func() { fmt.Println(client.Help) }
 	data := f.String("data", env("ANKER_DATA", "/srv/anker"), "Datenverzeichnis")
 	socket := f.String("socket", "", "Unix-Socket")
 	listen := f.String("listen", env("ANKER_LISTEN", "127.0.0.1:8087"), "Webadresse")
@@ -37,18 +44,30 @@ func run(args []string) error {
 	allowHTTP := f.Bool("allow-http", false, "HTTP außerhalb Loopback ausdrücklich zulassen")
 	admin := f.String("admin", "admin", "initialer Benutzer")
 	if err := f.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	command := f.Args()
 	if len(command) == 0 {
-		fmt.Println(client.Help)
-		return nil
+		if !terminal {
+			fmt.Println(client.Help)
+			return nil
+		}
+		command = []string{"tui"}
+	}
+	for _, arg := range command {
+		if arg == "-h" || arg == "-help" || arg == "--help" {
+			fmt.Println(client.Help)
+			return nil
+		}
 	}
 	if command[0] == "help" || command[0] == "version" {
 		if command[0] == "version" {
 			fmt.Println("Anker " + buildinfo.Version)
 		} else {
-			fmt.Println(client.Help + "\nanker setup | init | serve | demo\nWeb: --listen 127.0.0.1:8087 --tls-cert DATEI --tls-key DATEI")
+			fmt.Println(client.Help)
 		}
 		return nil
 	}
@@ -130,7 +149,7 @@ func run(args []string) error {
 	if command[0] != "serve" && command[0] != "demo" && command[0] != "init" {
 		c := client.New(*socket)
 		if command[0] == "tui" {
-			return tui.Run(c)
+			return launch(c)
 		}
 		return c.Run(context.Background(), command)
 	}

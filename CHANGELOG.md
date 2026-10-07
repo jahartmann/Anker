@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Updatequelle direkt im Web einrichten: mitgelieferte Anker-Quelle, Fingerprint und bestätigter Wechsel; bestehende Signatur-, Start- und Rückfallprüfung bleiben erhalten.
+- Geführte Terminalverwaltung mit Formularen und bestätigten Aktionen für Hosts, Sicherungen, Wiederherstellung, Aufträge, Zeitplan, Benutzer und Systemfunktionen, einschließlich SSH-Fingerprintprüfung und Speichererweiterung. `anker` öffnet sie im Terminal; `anker -help` und die installierte Manpage erklären den Betrieb.
+
 - TLS-Ordnerrechte unabhängig von der Installer-umask setzen und bei erneuter Einrichtung reparieren. Der Webdienst kann seine Zertifikate lesen; private Schlüssel bleiben vor anderen Benutzern geschützt.
 
 - Installation direkt nach dem Clone: fehlende Werkzeuge automatisch installieren und Anker bauen. Dasselbe Skript erkennt bestehende Installationen und aktualisiert Hauptprogramm und Systemhelfer mit Sicherung, Startprüfung und Rückfall.

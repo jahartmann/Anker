@@ -399,28 +399,69 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 	return errors.New("Unbekannter Befehl.\n" + Help)
 }
 
-const Help = `Anker — Hostkonfigurationen sichern und wiederherstellen
+const Help = `Anker – Konfigurationen über SSH sichern und wiederherstellen
 
-anker status | doctor | tui
-anker host list | probe HOST | remove HOST
-anker host trust ADRESSE --fingerprint SHA256:... [--port 22] (root, Servereinrichtung)
-anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
-anker backup run HOST | list | files BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
-anker diff ALT NEU
-anker export BACKUP ./sicherung.tar
-anker restore list
-anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf
-anker restore plan --backup ID --target HOST --scenario migration --ports eno1=ens3 --console --source-offline
-anker restore apply PLAN --confirm PLAN
-anker restore export PLAN ./plan.tar
-anker jobs
-anker job show ID | cancel ID | retry ID | remove ID
-anker settings show | save DATEI.json
-anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
-anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME
-anker update status | check | install
-anker tls status | renew | auto on/off [--days 30] | certificate DATEI.crt
-anker storage status | state | plan VOLUME | grow VOLUME --plan ID --confirm MOUNT
-anker reindex
+Start und Hilfe
+  sudo anker              Geführte Verwaltung im Terminal (auch: anker tui)
+  anker -help             Diese Kurzanleitung; auch -h, --help oder help
+  man anker               Handbuch; /WORT sucht, n sucht weiter, q beendet
+  anker version           Installierte Version anzeigen
+  Ohne Terminal zeigt anker die Hilfe. Verwaltungsbefehle benötigen den Dienst.
 
-Globale Optionen vor dem Befehl: --data /srv/anker --socket /srv/anker/anker.sock`
+Installation und Einrichtung (Linux mit systemd)
+  sudo ./scripts/install-server.sh       Aus Checkout bauen oder Paket installieren
+  sudo anker setup                      Zugang, SSH-Schlüssel und HTTPS einrichten
+  Nach git pull denselben Installer erneut ausführen. Er prüft den neuen Start
+  und fällt bei Fehlern zurück. --no-setup lässt den Einrichtungsdialog aus.
+  Web: eingerichtete HTTPS-Adresse öffnen; lokal zunächst 127.0.0.1:8087.
+
+Terminal bedienen
+  Tab oder 1–5 wechseln Hosts, Sicherungen, Wiederherstellung, Aufträge,
+  Einstellungen. Pfeile wählen, Enter öffnet, Esc geht zurück, q beendet.
+  Aktionen und Formulare zeigen ihre Tasten an; Änderungen vorher prüfen.
+  Hosts: h prüft SSH-Fingerprints. System → Speicher: g plant Erweiterungen.
+
+Hosts und Sicherungen
+  anker status | doctor
+  anker host list | probe HOST | remove HOST
+  anker host trust ADRESSE --fingerprint SHA256:... [--port 22]
+  anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
+  anker backup run HOST | list | files BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
+  anker diff ALT NEU
+  anker export BACKUP ./sicherung.tar
+  Vor Hostanbindung den Helfer installieren und SSH-Fingerprint unabhängig prüfen.
+
+Wiederherstellung und Aufträge
+  anker restore list
+  anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf
+  anker restore plan --backup ID --target HOST --scenario migration --ports eno1=ens3 --console --source-offline
+  anker restore apply PLAN --confirm PLAN
+  anker restore export PLAN ./plan.tar
+  anker jobs
+  anker job show ID | cancel ID | retry ID | remove ID
+  Ziel, Dateien und Plan prüfen; Migration braucht Konsole und isolierte Quelle.
+  Wiederherstellungen werden nicht automatisch wiederholt.
+
+Einstellungen, Benutzer, Zertifikat und Speicher
+  anker settings show | save DATEI.json
+  anker user list | add NAME ROLE | password NAME (ANKER_USER_PASSWORD setzen)
+  anker user disable NAME | enable NAME | role NAME ROLE | sessions NAME | revoke NAME | remove NAME
+  anker tls status | renew | auto on/off [--days 30] | certificate DATEI.crt
+  anker storage status | state | plan VOLUME | grow VOLUME --plan ID --confirm MOUNT
+  anker reindex
+  Zeitplan und Aufbewahrung im Interface einstellen. Speichererweiterung erst
+  nach neuem Plan und Mountbestätigung; Laufwerke werden nicht formatiert.
+
+Updates
+  Web: Einstellungen → System → Updates; Quelle einrichten, prüfen, bestätigen.
+  sudo anker update status | check | install
+  Releases brauchen eine gültige Signatur und passende Prüfsummen. Eigene Quellen
+  brauchen einen unabhängig geprüften Schlüssel. Aktive Aufträge sperren Updates.
+
+Globale Optionen stehen vor dem Befehl:
+  --data /srv/anker  --socket /srv/anker/anker.sock
+  --listen 127.0.0.1:8087  --tls-cert DATEI  --tls-key DATEI
+  --admin NAME (init)  --allow-http (HTTP außerhalb Loopback ausdrücklich erlauben)
+  anker init | serve | demo   Manuelle Initialisierung, Dienst oder lokale Demo
+  Betrieb und Rückfall: docs/OPERATIONS.md, docs/RECOVERY.md, docs/UPDATES.md
+  Lokale Verwaltung über den geschützten Unix-Socket als root/Dienstbenutzer.`

@@ -40,3 +40,33 @@ func TestFortyHostsScrollIntoView(t *testing.T) {
 		t.Fatal("mouse offset ignored")
 	}
 }
+
+func TestAddHostOpensGuidedFormAndSurvivesRefresh(t *testing.T) {
+	m := New(nil)
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = next.(Model)
+	if cmd != nil || !strings.Contains(m.View(), "Host hinzufügen") || !strings.Contains(m.View(), "SSH-Port") {
+		t.Fatal("add must open a guided host form")
+	}
+	next, _ = m.Update(loaded{data: map[string]any{"hosts": []any{map[string]any{"id": "new", "name": "server"}}}})
+	if !strings.Contains(next.(Model).View(), "Host hinzufügen") {
+		t.Fatal("refresh dismissed form")
+	}
+}
+
+func TestBackupRequiresExplicitConfirmation(t *testing.T) {
+	m := New(nil)
+	m.data = map[string]any{"hosts": []any{map[string]any{"id": "host1", "name": "server", "address": "10.0.0.1"}}}
+	m.buildRows()
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if cmd != nil || !strings.Contains(next.(Model).View(), "Sicherung starten") || !strings.Contains(next.(Model).View(), "Abbrechen") {
+		t.Fatal("backup must first show confirmation")
+	}
+}
+
+func TestUntrustedTerminalControlsCannotEscapeText(t *testing.T) {
+	got := clean("ok\x1b[2J\x9b31m\u202eevil\x7f")
+	if strings.ContainsAny(got, "\x1b\x9b\u202e\x7f") {
+		t.Fatalf("unsafe controls: %q", got)
+	}
+}

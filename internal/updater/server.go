@@ -19,7 +19,7 @@ import (
 
 // The config and all parent directories are controlled by root; HTTP requests cannot override it.
 func protectedRead(p string, max int64) ([]byte, error) {
-	fd, err := unix.Open(p, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	fd, err := unix.Open(p, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func LoadConfig() (Config, string, error) {
 	if err = json.Unmarshal(b, &c); err != nil {
 		return c, "", err
 	}
-	if !repoPattern.MatchString(c.Repository) {
-		return c, "", errors.New("GitHub-Repository muss owner/repo sein")
+	if err = validateConfig(c); err != nil {
+		return c, "", err
 	}
 	token := ""
 	if c.TokenFile != "" {
@@ -91,6 +91,10 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		json.NewEncoder(w).Encode(map[string]string{"error": message})
 	}
+	if r.URL.Path == "/configuration" || r.URL.Path == "/configure" {
+		s.configurationHandler(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/tls") {
 		s.tlsHandler(w, r)
 		return
@@ -112,7 +116,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.snapshot().Configured {
-		fail(503, "Signierte Updates noch nicht eingerichtet; sudo anker setup --updates verwenden")
+		fail(503, "Signierte Updates noch nicht eingerichtet; Updatequelle in den Web-Einstellungen einrichten")
 		return
 	}
 	var in struct {
@@ -322,7 +326,7 @@ func Serve(ctx context.Context, current string) error {
 	}
 	if b, err := os.ReadFile(filepath.Join(StateDir, "status.json")); err == nil {
 		var old State
-		if json.Unmarshal(b, &old) == nil {
+		if json.Unmarshal(b, &old) == nil && old.Repository == c.Repository {
 			s.state.CheckedAt = old.CheckedAt
 			s.state.UpdatedAt = old.UpdatedAt
 			s.state.Message = old.Message
@@ -339,7 +343,7 @@ func Serve(ctx context.Context, current string) error {
 	}
 	if !configured {
 		s.state.Status = "unconfigured"
-		s.state.Message = "Signierte Updates noch nicht eingerichtet; sudo anker setup --updates verwenden."
+		s.state.Message = "Signierte Updates noch nicht eingerichtet; Updatequelle in den Web-Einstellungen einrichten."
 	}
 	if err = s.save(); err != nil {
 		return err

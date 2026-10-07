@@ -1649,3 +1649,37 @@ textarea {
     gap: 20px 32px;
   }
 }
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.update-source-form {
+  display: grid;
+  gap: 16px;
+}
+.update-source-form > label:not(.check),
+.update-source-selection {
+  display: grid;
+  gap: 8px;
+}
+.update-source-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+.update-source-facts {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+.update-source-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.update-source-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}

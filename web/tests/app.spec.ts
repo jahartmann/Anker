@@ -1689,3 +1689,128 @@ test("password settings and eight-character account changes use the saved policy
     await page.request.put("/api/settings", { headers, data: original });
   }
 });
+
+test("official update source can be configured after fingerprint confirmation", async ({
+  page,
+}) => {
+  let configured = false;
+  const key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  const fingerprint =
+    "SHA256:66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925";
+  const configuration = () => ({
+    repository: "jahartmann/Anker",
+    public_key: key,
+    fingerprint,
+    configured,
+    official: true,
+    has_token: false,
+    official_repository: "jahartmann/Anker",
+    official_public_key: key,
+    official_fingerprint: fingerprint,
+  });
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({
+      json: {
+        configured,
+        repository: configured ? "jahartmann/Anker" : "",
+        current: "v0.2.0",
+        status: configured ? "idle" : "unconfigured",
+      },
+    }),
+  );
+  await page.route("**/api/updates/configuration", (route) =>
+    route.fulfill({ json: configuration() }),
+  );
+  await page.route("**/api/updates/configure", (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      repository: "jahartmann/Anker",
+      public_key: key,
+      confirmed: true,
+    });
+    configured = true;
+    return route.fulfill({ json: configuration() });
+  });
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Updatequelle einrichten", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(fingerprint);
+  await expect(
+    dialog.getByRole("button", { name: "Quelle speichern", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByLabel("Ich vertraue dieser Quelle und diesem Signierschlüssel")
+    .check();
+  await dialog
+    .getByRole("button", { name: "Quelle speichern", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Nach Updates suchen" }),
+  ).toBeEnabled();
+  await expect(page.getByText("ist verfügbar", { exact: false })).toHaveCount(
+    0,
+  );
+});
+
+test("custom update source needs a valid key and renewed trust confirmation", async ({
+  page,
+}) => {
+  const key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  const configuration = {
+    repository: "jahartmann/Anker",
+    public_key: key,
+    fingerprint: "SHA256:official",
+    configured: false,
+    official: true,
+    has_token: false,
+    official_repository: "jahartmann/Anker",
+    official_public_key: key,
+    official_fingerprint: "SHA256:official",
+  };
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({
+      json: { configured: false, current: "v0.2.0", status: "unconfigured" },
+    }),
+  );
+  await page.route("**/api/updates/configuration", (route) =>
+    route.fulfill({ json: configuration }),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Updatequelle einrichten", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("combobox", { name: "Updatequelle", exact: true })
+    .selectOption("custom");
+  await dialog.getByLabel("GitHub-Repository").fill("example/custom");
+  await dialog.getByLabel("Öffentlicher Signierschlüssel").fill("invalid");
+  await expect(
+    dialog.getByRole("button", { name: "Quelle speichern", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByLabel("Öffentlicher Signierschlüssel").fill(key);
+  await expect(dialog).toContainText("SHA256:66687aad");
+  await dialog
+    .getByLabel("Ich vertraue dieser Quelle und diesem Signierschlüssel")
+    .check();
+  await expect(
+    dialog.getByRole("button", { name: "Quelle speichern", exact: true }),
+  ).toBeEnabled();
+  await dialog.getByLabel("GitHub-Repository").fill("another/custom");
+  await expect(
+    dialog.getByLabel("Ich vertraue dieser Quelle und diesem Signierschlüssel"),
+  ).not.toBeChecked();
+  await expect(
+    dialog.getByRole("button", { name: "Quelle speichern", exact: true }),
+  ).toBeDisabled();
+});

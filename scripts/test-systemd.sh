@@ -25,6 +25,9 @@ printf '%s\n' 'interrupted initial binary' >/usr/local/bin/anker
 ./scripts/install-server.sh --no-setup
 # Repeated installation before any administrator/catalog exists must work too.
 ./scripts/install-server.sh "$ANKER_TEST_BINARY" --no-setup
+man -w anker >/dev/null
+/usr/local/bin/anker -help >/dev/null
+python3 scripts/test-tui-pty.py --binary /usr/local/bin/anker
 [ ! -e /srv/anker/catalog.db ] || { echo 'Katalog vor Einrichtung unerwartet angelegt.' >&2; exit 1; }
 [ ! -e /etc/anker/install-pending ] || { echo 'Installationsmarker nicht abgeschlossen.' >&2; exit 1; }
 # Reproduce a dedicated ext filesystem mounted directly at the data root.
@@ -38,6 +41,7 @@ path=pathlib.Path('/etc/anker/release-public.key');path.write_bytes(key);path.ch
 os.chown(path,0,__import__('grp').getgrnam('anker').gr_gid)
 PY
 python3 scripts/test-setup-pty.py
+python3 scripts/test-update-configuration.py
 python3 - <<'PY'
 import pathlib,stat
 directory=pathlib.Path('/srv/anker/lost+found');info=directory.stat()

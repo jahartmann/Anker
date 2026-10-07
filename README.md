@@ -25,9 +25,9 @@ git pull --ff-only
 
 Dieser Weg gilt für den normalen Clone auf `main`. Der Installer aktualisiert die Dateien aus deinem Checkout; er lädt keine Git-Änderungen im Hintergrund. Falls der Checkout früher auf einen einzelnen Commit gesetzt wurde, einmal `git switch main` ausführen. Für Installation ohne anschließenden interaktiven Assistenten `--no-setup` verwenden. Fehlende Werkzeuge installiert der Installer über APT; auf anderen Linux-Systemen müssen sie zuvor vorhanden sein. Unterstützt werden amd64 und arm64. Der erste Build benötigt Internetzugriff und vorübergehend zusätzlichen Platz für Compiler und Module.
 
-Ein produktiver signierter Release ist noch nicht veröffentlicht. Der Quellcodeweg arbeitet mit dem von dir gewählten Checkout. Sobald signierte Releases verfügbar sind, erfolgt die Aktualisierung über die Oberfläche oder `anker update`, ohne Compiler und Git auf dem Server.
+Der Quellcodeweg arbeitet mit dem von dir gewählten Checkout. Signierte Versionen stehen unter [Releases](https://github.com/jahartmann/Anker/releases). Für spätere Updates reicht die Weboberfläche; Compiler und Git werden dafür auf dem Server nicht gebraucht.
 
-Sobald ein signierter Release bereitsteht, geht es ohne Compiler auf dem Server:
+Eine Erstinstallation aus einem signierten Release benötigt keinen Compiler:
 
 ```sh
 sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
@@ -60,7 +60,7 @@ sudo anker setup
 
 Bei erneuter Einrichtung fragt Anker nach „Fortsetzen“ oder „Neu konfigurieren“. Mit Enter werden die vorhandenen Verbindungseinstellungen übernommen, einschließlich Port und TLS-Zertifikat. „Neu konfigurieren“ öffnet die Fragen zur Verbindung erneut. Beide Optionen behalten Benutzer, Sicherungen und private SSH-Schlüssel; das Administratorpasswort wird nicht erneut abgefragt. Fehlen noch Verbindungseinstellungen oder ist das Zertifikat ungültig, führt Anker durch die fehlenden Angaben.
 
-Vor dem Speichern kann der Assistent ohne Änderungen abgebrochen werden. Beim Speichern sichert Anker die bisherigen Konfigurationsdateien. Bei einem Fehler stellt er diesen Stand wieder her; nach einem Prozessabbruch oder Stromausfall erkennt der nächste Aufruf von `sudo anker setup` die unterbrochene Einrichtung und stellt ihn vor den Fragen wieder her. Bereits angelegte Benutzer und SSH-Schlüssel werden weiterverwendet. Neu erzeugte, verworfene TLS- und Token-Dateien werden entfernt. Nach einem Abbruch beim Speichern den Assistenten erneut aufrufen; dieser Wiederanlauf ersetzt keinen automatischen Rollback beim Booten. Für eine andere Updatequelle oder einen privaten GitHub-Zugang ausdrücklich `sudo anker setup --updates` verwenden.
+Vor dem Speichern kann der Assistent ohne Änderungen abgebrochen werden. Beim Speichern sichert Anker die bisherigen Konfigurationsdateien. Bei einem Fehler stellt er diesen Stand wieder her; nach einem Prozessabbruch oder Stromausfall erkennt der nächste Aufruf von `sudo anker setup` die unterbrochene Einrichtung und stellt ihn vor den Fragen wieder her. Bereits angelegte Benutzer und SSH-Schlüssel werden weiterverwendet. Neu erzeugte, verworfene TLS- und Token-Dateien werden entfernt. Nach einem Abbruch beim Speichern den Assistenten erneut aufrufen; dieser Wiederanlauf ersetzt keinen automatischen Rollback beim Booten. Öffentliche Updatequellen lassen sich in der Weboberfläche ändern. Einen privaten GitHub-Zugang ausdrücklich mit `sudo anker setup --updates` einrichten.
 
 `--no-setup` am Installer installiert nur die Dateien. Für einen regulären ersten Start danach `sudo anker setup` ausführen. `anker init` ist der kleinere Weg zur reinen Benutzeranlage; er ersetzt keine vollständige Einrichtung und überschreibt keine vorhandenen Zugänge. Für Automatisierung akzeptiert `init` die Umgebungsvariable `ANKER_INITIAL_PASSWORD`, kein Passwortargument.
 
@@ -202,7 +202,7 @@ sudo anker job remove AUFTRAG
 | Server installieren | Ein Installer wählt die Architektur und öffnet den Assistenten. Benutzer, Ordner, Rechte und Dienste werden eingerichtet. |
 | Zugang anlegen | Ein eigener Administrator; kein Standardpasswort. Vorhandene Zugänge werden bei Wiederholung erkannt. |
 | Webzugriff | HTTPS mit erzeugtem Zertifikat oder vorhandener CA; alternativ SSH-Tunnel ohne TLS-Einrichtung. Adresse und erstes Vertrauen kann Anker nicht sicher erraten. |
-| Updates | Bereits geprüfter Schlüssel und Repository werden übernommen. Keine wiederholten Fragen; öffentliche Downloads brauchen keinen Token. |
+| Updates | Der Anker-Schlüssel wird mitgeliefert. Quelle bei Bedarf direkt im Web bestätigen; öffentliche Downloads brauchen keinen Token. |
 | Hostzugang | Helferinstallation und eingeschränkter Schlüsseleintrag in einem Aufruf. Standardpfade sind im Interface und in der CLI hinterlegt. |
 | Hostidentität | Ein unabhängig geprüfter Fingerprint; Eintrag und Dateirechte übernimmt `host trust`. |
 | Betrieb | Gemeinsamer Zeitplan, Aufbewahrung und 30-Tage-Anmeldung sind vorbelegt. Benachrichtigungen und Restorezugänge nur bei Bedarf einrichten. |
@@ -245,9 +245,22 @@ Hosts verwalten, Sicherungen prüfen, vergleichen, schützen, archivieren oder h
 
 Dateien liegen mit `0600`, Ordner mit `0700` vor. Originalrechte und weitere Metadaten stehen im Manifest und im vollständigen TAR-Export. Ein Exportarchiv nicht ungeprüft in `/` entpacken. Archivierung komprimiert ältere Dateiordner; Manifeste und Anleitungen bleiben lesbar.
 
-Im Terminal `sudo anker tui` öffnen. Tab oder 1–5 wechseln die Bereiche, Pfeile/Enter öffnen Einträge, `b` startet eine Sicherung, `v` prüft einen Stand, `/` öffnet den Befehlseingang und `q` beendet. `anker help` zeigt die Befehle.
+Über SSH als root einfach `anker` öffnen; `anker tui` bleibt ebenfalls verfügbar. Tab oder 1–5 wechseln die Bereiche, Pfeile und Enter öffnen Einträge. Die unten angezeigten Aktionen lassen sich per Taste oder Maus wählen. Hostanlage, Zeitplan, Benutzer und Exporte haben Eingabeformulare. Sicherung, Änderungen und Wiederherstellung werden vor dem Ausführen bestätigt; bei einem Restore muss zusätzlich die vollständige Plan-ID eingegeben werden. Esc geht zurück, `q` beendet die Oberfläche. Bei umgeleiteter Ausgabe zeigt `anker` die Hilfe statt einer Terminaloberfläche.
 
-Updates: „Einstellungen → System“ oder `sudo anker update check`, danach `sudo anker update install`. Signatur und SHA-256 werden vor der Installation geprüft. Laufende Sicherungen und Wiederherstellungen blockieren das Update. Bei fehlgeschlagenem Start stellt der Updater die vorherige Version und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
+Das kurze Handbuch ist auch ohne laufenden Dienst erreichbar:
+
+```sh
+anker -help
+man anker
+```
+
+Der Installer richtet die Manpage automatisch ein. In den Formularen wechselt Tab das Feld; Enter geht weiter, Ctrl+S prüft die Angaben. Passwörter werden verdeckt eingegeben. Lokale Exporte bleiben auf dem Rechner, auf dem die Terminaloberfläche läuft; bei SSH also auf dem Anker-Server.
+
+Unter Hosts öffnet `h` die SSH-Schlüsselprüfung. Den Fingerprint vorher auf der Proxmox-Konsole prüfen; Anker speichert nur einen passenden Schlüssel in `/etc/anker/known_hosts`. Unter System → Speicher führt `g` durch Laufwerksauswahl und Erweiterungsplan. Eine unterstützte Erweiterung startet erst nach Eingabe des vollständigen Mountpoints; in LXC und bei manuellen Plänen bleiben die Hinweise zur Erweiterung auf dem Host sichtbar.
+
+Updates unter **Einstellungen → System → Updates** einrichten, prüfen und installieren. Fehlt die Quelle, „Updatequelle einrichten“ wählen, die mitgelieferte Anker-Quelle bestätigen und anschließend nach Updates suchen. Dafür ist kein Terminalbefehl nötig. Eine eigene Quelle kann mit ihrem unabhängig geprüften öffentlichen Ed25519-Schlüssel angegeben werden. Nur Administratoren dürfen die Quelle ändern; der Dialog zeigt den Fingerprint vor dem Speichern. Der Schlüssel wird nicht aus einem ungeprüften Release nachgeladen.
+
+Alternativ `sudo anker update check`, danach `sudo anker update install`. Signatur und SHA-256 werden vor der Installation geprüft. Laufende Sicherungen und Wiederherstellungen blockieren das Update. Bei fehlgeschlagenem Start stellt der Updater die vorherige Version und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
 
 ## Wiederherstellung und Grenzen
 

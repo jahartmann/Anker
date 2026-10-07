@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, bytes, date } from "../api";
 import { Dialog, LoadError } from "../components/shared";
 type UpdateState = {
+  busy?: boolean;
   configured: boolean;
   repository: string;
   current: string;
@@ -12,13 +13,235 @@ type UpdateState = {
   target?: string;
   available?: { version: string; url: string; artifact: { size: number } };
 };
+type UpdateConfiguration = {
+  repository: string;
+  public_key: string;
+  fingerprint: string;
+  configured: boolean;
+  official: boolean;
+  has_token: boolean;
+  official_repository: string;
+  official_public_key: string;
+  official_fingerprint: string;
+  demo?: boolean;
+};
+
+function UpdateSourceDialog({
+  configuration,
+  onSaved,
+  onClose,
+}: {
+  configuration: UpdateConfiguration;
+  onSaved: (value: UpdateConfiguration) => void;
+  onClose: () => void;
+}) {
+  const sourceID = useId();
+  const [preset, setPreset] = useState(
+      configuration.official ? "official" : "custom",
+    ),
+    [repository, setRepository] = useState(
+      configuration.official ? "" : configuration.repository,
+    ),
+    [publicKey, setPublicKey] = useState(
+      configuration.official ? "" : configuration.public_key,
+    ),
+    [fingerprint, setFingerprint] = useState(""),
+    [trusted, setTrusted] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const selectedRepository =
+    preset === "official"
+      ? configuration.official_repository
+      : repository.trim();
+  const selectedKey =
+    preset === "official"
+      ? configuration.official_public_key
+      : publicKey.trim();
+  const selectedFingerprint =
+    preset === "official" ? configuration.official_fingerprint : fingerprint;
+  const validRepository =
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(selectedRepository) &&
+    !selectedRepository.includes("..") &&
+    selectedRepository.length <= 200;
+  useEffect(() => {
+    let active = true;
+    setFingerprint("");
+    async function compute() {
+      try {
+        const decoded = atob(publicKey.trim());
+        if (decoded.length !== 32 || btoa(decoded) !== publicKey.trim()) return;
+        const raw = Uint8Array.from(decoded, (char) => char.charCodeAt(0));
+        const hash = await crypto.subtle.digest("SHA-256", raw);
+        if (active)
+          setFingerprint(
+            "SHA256:" +
+              Array.from(new Uint8Array(hash), (byte) =>
+                byte.toString(16).padStart(2, "0"),
+              ).join(""),
+          );
+      } catch {
+        /* Invalid keys cannot be trusted or submitted. */
+      }
+    }
+    compute();
+    return () => {
+      active = false;
+    };
+  }, [publicKey]);
+  async function save() {
+    if (!trusted || !validRepository || !selectedFingerprint) return;
+    setBusy(true);
+    setError("");
+    try {
+      onSaved(
+        await api<UpdateConfiguration>("updates/configure", "POST", {
+          repository: selectedRepository,
+          public_key: selectedKey,
+          confirmed: true,
+        }),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title="Updatequelle einrichten" busy={busy} onClose={onClose}>
+      <p className="dialog-intro">
+        Anker installiert nur Releases mit einer gültigen Signatur dieser
+        Quelle.
+      </p>
+      <div className="update-source-form">
+        <div className="update-source-selection">
+          <label htmlFor={sourceID}>Updatequelle</label>
+          <select
+            id={sourceID}
+            value={preset}
+            disabled={busy}
+            onChange={(e) => {
+              setPreset(e.target.value);
+              setTrusted(false);
+              setError("");
+            }}
+          >
+            <option value="official">Offizielle Anker-Releases</option>
+            <option value="custom">Eigenes GitHub-Repository</option>
+          </select>
+        </div>
+        {preset === "custom" && (
+          <>
+            <label>
+              GitHub-Repository
+              <input
+                value={repository}
+                disabled={busy}
+                placeholder="owner/repo"
+                autoComplete="off"
+                onChange={(e) => {
+                  setRepository(e.target.value);
+                  setTrusted(false);
+                }}
+              />
+            </label>
+            <label>
+              Öffentlicher Signierschlüssel
+              <textarea
+                className="mono"
+                value={publicKey}
+                disabled={busy}
+                rows={3}
+                placeholder="Ed25519, 32 Bytes als Base64"
+                onChange={(e) => {
+                  setPublicKey(e.target.value);
+                  setTrusted(false);
+                  setFingerprint("");
+                }}
+              />
+            </label>
+            <p className="muted">
+              Repository und öffentlichen Schlüssel aus einer vertrauenswürdigen
+              Quelle übernehmen und den Fingerprint vergleichen.
+            </p>
+          </>
+        )}
+        <dl className="update-source-facts">
+          <div>
+            <dt>Repository</dt>
+            <dd>{selectedRepository || "Noch nicht angegeben"}</dd>
+          </div>
+          <div>
+            <dt>Signierschlüssel-Fingerprint</dt>
+            <dd className="mono">
+              {selectedFingerprint || "Gültigen öffentlichen Schlüssel angeben"}
+            </dd>
+          </div>
+        </dl>
+        {configuration.has_token && (
+          <p className="muted">
+            Bei einem Repositorywechsel wird der gespeicherte Repositoryzugang
+            entfernt.
+          </p>
+        )}
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={trusted}
+            disabled={busy || !validRepository || !selectedFingerprint}
+            onChange={(e) => setTrusted(e.target.checked)}
+          />
+          Ich vertraue dieser Quelle und diesem Signierschlüssel
+        </label>
+      </div>
+      {error && (
+        <p className="notice warning" role="alert">
+          {error}
+        </p>
+      )}
+      <footer className="dialog-footer">
+        <button className="secondary" disabled={busy} onClick={onClose}>
+          Abbrechen
+        </button>
+        <button
+          disabled={
+            busy || !trusted || !validRepository || !selectedFingerprint
+          }
+          onClick={save}
+        >
+          {busy ? "Speichert …" : "Quelle speichern"}
+        </button>
+      </footer>
+    </Dialog>
+  );
+}
+
 export default function Updates() {
   const [state, setState] = useState<UpdateState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [confirm, setConfirm] = useState(false),
     [reload, setReload] = useState(0);
+  const [configuration, setConfiguration] =
+      useState<UpdateConfiguration | null>(null),
+    [configurationError, setConfigurationError] = useState(""),
+    [configure, setConfigure] = useState(false);
   const installing = state?.status === "installing";
+  useEffect(() => {
+    let active = true;
+    api<UpdateConfiguration>("updates/configuration")
+      .then((value) => {
+        if (active) {
+          setConfiguration(value);
+          setConfigurationError("");
+        }
+      })
+      .catch((e) => {
+        if (active) setConfigurationError((e as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reload]);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -81,14 +304,33 @@ export default function Updates() {
             bleiben erhalten.
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy || installing || !state?.configured}
-          onClick={check}
-        >
-          {busy && !confirm ? "Prüft …" : "Nach Updates suchen"}
-        </button>
+        <div className="update-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={
+              busy ||
+              installing ||
+              state?.busy ||
+              !state ||
+              !configuration ||
+              configuration.demo
+            }
+            onClick={() => setConfigure(true)}
+          >
+            {state?.configured
+              ? "Updatequelle ändern"
+              : "Updatequelle einrichten"}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || installing || state?.busy || !state?.configured}
+            onClick={check}
+          >
+            {busy && !confirm ? "Prüft …" : "Nach Updates suchen"}
+          </button>
+        </div>
       </div>
       {!state ? (
         error ? (
@@ -128,9 +370,9 @@ export default function Updates() {
             <div className="update-note">
               <p>{state.message}</p>
               <p className="muted">
-                Auf dem Linux-Server <code>sudo anker setup --updates</code>{" "}
-                ausführen und den geprüften öffentlichen Signierschlüssel
-                angeben. Die Schritte stehen in der Update-Anleitung.
+                {configuration?.demo
+                  ? "Die Updatequelle lässt sich auf dem eigenen Server direkt hier einrichten."
+                  : "Offizielle Anker-Releases auswählen, Signierschlüssel bestätigen und nach Updates suchen. Die Einrichtung benötigt keinen Dienstneustart."}
               </p>
             </div>
           ) : (
@@ -198,6 +440,38 @@ export default function Updates() {
             </p>
           )}
         </>
+      )}
+      {configurationError && (
+        <LoadError
+          message={configurationError}
+          retry={() => setReload((n) => n + 1)}
+        />
+      )}
+      {configure && configuration && (
+        <UpdateSourceDialog
+          configuration={configuration}
+          onClose={() => setConfigure(false)}
+          onSaved={(value) => {
+            setConfiguration(value);
+            setConfigure(false);
+            setError("");
+            setState((previous) =>
+              previous
+                ? {
+                    ...previous,
+                    configured: true,
+                    repository: value.repository,
+                    available: undefined,
+                    checked_at: undefined,
+                    status: "idle",
+                    message:
+                      "Updatequelle eingerichtet. Jetzt nach signierten Releases suchen.",
+                  }
+                : previous,
+            );
+            setReload((n) => n + 1);
+          }}
+        />
       )}
       {confirm && state?.available && (
         <Dialog

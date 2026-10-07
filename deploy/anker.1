@@ -1,0 +1,427 @@
+.TH ANKER 1 "2026-10-07" "Anker" "Administratorhandbuch"
+.SH NAME
+anker \- Hostkonfigurationen über SSH sichern und
+wiederherstellen
+.SH AUFRUF
+.B sudo anker
+.br
+.B anker
+.RI [ globale-optionen ] " befehl " [ argumente ]
+.br
+.B anker \-help
+.br
+.B man anker
+.SH BESCHREIBUNG
+Anker erfasst Konfigurationen von Proxmox-Hosts über
+eingeschränkte
+SSH-Zugänge. Sicherungen, Prüfsummen und
+Wiederherstellungspläne liegen
+auf dem zentralen Anker-Server. VM-Datenträger und große
+Anwendungsdaten
+gehören in ein eigenes Sicherungsverfahren.
+.PP
+Weboberfläche, Terminalverwaltung und CLI verwenden
+denselben Dienst.
+Die lokale Verwaltung greift auf den geschützten
+Unix-Socket zu und
+wird auf dem Server als root oder Dienstbenutzer
+ausgeführt.
+Der Socket darf nicht über das Netz freigegeben werden.
+.SH START UND HILFE
+Ohne Befehl öffnet Anker bei Terminaleingabe und
+Terminalausgabe die
+geführte Verwaltung. Bei umgeleiteter Ein- oder Ausgabe
+erscheint die Hilfe.
+.B anker tui
+öffnet die Terminalverwaltung ausdrücklich.
+.PP
+.BR \-h , " \-help" , " \-\-help" " und " help
+zeigen die Kurzanleitung mit Erfolgscode, auch ohne
+laufenden Dienst.
+.B anker version
+zeigt die Programmversion.
+.PP
+Im Handbuch mit /WORT suchen, mit n zur nächsten
+Fundstelle und mit q
+zur Shell zurückkehren. Pfeiltasten beziehungsweise
+Bild-auf/Bild-ab
+blättern; die verfügbaren Tasten hängen vom eingestellten
+Pager ab.
+.SH INSTALLATION UND QUELLCODE-UPDATE
+Auf einem Linux-Server mit laufendem systemd einen
+geprüften Checkout
+oder ein unabhängig geprüftes Release-Paket verwenden:
+.PP
+.nf
+  sudo ./scripts/install-server.sh
+.fi
+.PP
+Im Checkout baut der Installer Anker mit Go. Die
+Weboberfläche ist
+bereits eingebettet; Node.js ist auf dem Server nicht
+erforderlich.
+Fehlende Systemwerkzeuge und man-db werden unter
+Debian/Ubuntu über APT
+installiert. Im Release-Paket wird die enthaltene
+Binärdatei verwendet.
+Danach öffnet sich die Einrichtung für
+Administratorzugang, SSH-Schlüssel
+und Webadresse. Mit
+.B \-\-no-setup
+entfällt der abschließende Dialog.
+.PP
+Nach einer geprüften Quellcode-Aktualisierung, etwa mit
+git pull,
+denselben Installer erneut ausführen. Vorhandene
+Installationen werden
+über den lokalen Updateweg mit Programm-/Katalogsicherung
+und Startprüfung
+aktualisiert. Bei fehlgeschlagenem Start erfolgt ein
+Rückfall. Aktive
+Aufträge verhindern den Programmaustausch. Benutzer,
+Schlüssel,
+Zertifikate und Sicherungen bleiben erhalten.
+.PP
+Die Einrichtung lässt sich mit
+.B sudo anker setup
+wiederholen. Die Manpage wird unter
+.I /usr/local/share/man/man1/anker.1
+installiert und bei erneutem Installeraufruf erneuert.
+.SH TERMINAL UND WEB
+Tab oder die Tasten 1 bis 5 wechseln zwischen Hosts,
+Sicherungen,
+Wiederherstellung, Aufträgen und Einstellungen.
+Pfeiltasten wählen
+einen Eintrag, Enter öffnet ihn, Esc schließt die aktuelle
+Ansicht
+oder Eingabe. q beendet die Verwaltung. Aktionen und
+Formulare zeigen
+ihre verfügbaren Tasten an. Vor Änderungen die
+Zusammenfassung prüfen.
+.PP
+Unter Hosts öffnet h die geführte SSH-Fingerprintprüfung.
+Den Fingerprint vorher unabhängig auf der Hostkonsole prüfen.
+Unter Einstellungen, Speicher plant g eine Erweiterung.
+Eine unterstützte Erweiterung erfordert die Eingabe des
+vollständigen Mountpoints. LXC und manuelle Pläne zeigen
+die erforderlichen Schritte auf dem Host an.
+.PP
+Die Webadresse wird bei der Einrichtung festgelegt.
+Standardmäßig
+lauscht der Dienst lokal auf 127.0.0.1:8087. Für LAN/VPN
+HTTPS einrichten
+oder einen SSH-Tunnel verwenden. Ein selbst erzeugtes
+Zertifikat braucht
+eine unabhängige Prüfung seines Fingerprints.
+.SH HOSTS ANBINDEN
+Auf dem Zielhost den festen Sicherungshelfer und
+ausschließlich den
+öffentlichen Sicherungsschlüssel installieren:
+.PP
+.nf
+  sudo ./scripts/install-host.sh /pfad/backup.pub
+.fi
+.PP
+Der öffentliche Schlüssel des Servers liegt unter
+.IR /etc/anker/keys/backup.pub .
+Private Schlüssel bleiben auf dem Anker-Server. Den
+SSH-Hostfingerprint
+über einen unabhängigen Zugang am Ziel prüfen, dann auf
+dem Server:
+.PP
+.nf
+  sudo anker host trust ADRESSE \-\-fingerprint SHA256:...
+  sudo anker host add \-\-name NAME \-\-address ADRESSE
+  sudo anker host probe HOST
+  sudo anker host list
+.fi
+.PP
+Bei anderem SSH-Port ergänzt host trust die Option
+\-\-port PORT.
+Host add unterstützt unter anderem \-\-port, \-\-user,
+\-\-key,
+\-\-known-hosts, \-\-restore-key, \-\-restore-user und
+\-\-schedule HH:MM.
+Die Standardzugänge verwenden die Servereinrichtung unter
+/etc/anker.
+Host-ID und Adresse sind verschiedene Angaben; HOST in
+weiteren
+Befehlen bezeichnet die gespeicherte ID.
+.PP
+In der Hostverwaltung lässt sich der automatische Zeitplan
+pausieren.
+Eine manuelle Sicherung bleibt möglich. Vor Entfernen mit
+.B anker host remove HOST
+aktive Aufträge beenden. SSH-Hostprüfung nicht abschalten.
+.SH SICHERUNGEN
+.nf
+  anker backup run HOST
+  anker backup list
+  anker backup files BACKUP
+  anker backup verify BACKUP
+  anker backup pin BACKUP
+  anker backup archive BACKUP
+  anker diff ALT NEU
+  anker export BACKUP ./sicherung.tar
+.fi
+.PP
+BACKUP, ALT und NEU sind Sicherungs-IDs. Prüfen
+kontrolliert die
+Prüfsummen; Schutz verhindert automatische Löschung.
+Archivieren benötigt
+freien Arbeitsraum und prüft das Ergebnis vor dem
+Entfernen lesbarer
+Dateien. Exporte können Zugangsdaten und andere Secrets
+enthalten.
+.PP
+Der Dienst plant täglich je aktiviertem Host und prüft den
+Zeitplan
+jede Minute. Es ist keine Crontab nötig. Hostzeiten
+überschreiben den
+gemeinsamen Zeitplan. Ein fester Versatz unter einer
+Stunde verteilt
+die Last. Verpasste frühere Tage werden nicht nachgeholt.
+.SH WIEDERHERSTELLUNG
+Zuerst Sicherung, Zielhost und Dateiauswahl prüfen und
+einen Plan erstellen:
+.PP
+.nf
+  anker restore plan \-\-backup BACKUP \-\-target HOST \e
+    \-\-scenario files \-\-files etc/test.conf
+  anker restore list
+  anker restore export PLAN ./plan.tar
+  anker restore apply PLAN \-\-confirm PLAN
+.fi
+.PP
+Für eine Migration sind eine geprüfte
+Netzwerkschnittstellenzuordnung,
+Konsolenzugang und eine isolierte Quelle erforderlich.
+Beispiel:
+.PP
+.nf
+  anker restore plan \-\-backup BACKUP \-\-target HOST \e
+    \-\-scenario migration \-\-ports eno1=ens3 \e
+    \-\-console \-\-source-offline
+.fi
+.PP
+Die Zusicherungen müssen tatsächlich erfüllt sein.
+Automatische Übernahme
+benötigt einen separaten eingeschränkten
+Wiederherstellungszugang;
+der Sicherungsschlüssel bleibt lesend. Den Zielhost und
+den fertigen Plan
+vor Bestätigung erneut prüfen. Wiederherstellungen werden
+nicht automatisch
+wiederholt. Bei Abbruch Zielzustand und
+Rollbackverzeichnis prüfen.
+.SH AUFTRÄGE UND BETRIEB
+.nf
+  anker status
+  anker doctor
+  anker jobs
+  anker job show ID
+  anker job cancel ID
+  anker job retry ID
+  anker job remove ID
+.fi
+.PP
+Abbruch ist eine Anforderung; erst der Endzustand
+bestätigt das Ende.
+Fehlgeschlagene Sicherungen und Hostprüfungen können
+wiederholt werden.
+Für Wiederherstellungen einen neuen geprüften Plan
+erstellen.
+Nur abgeschlossene Historieneinträge sind entfernbar;
+Sicherungen und
+Zeitplanmarker bleiben dabei erhalten.
+.SH EINSTELLUNGEN UND BENUTZER
+Zeitplan, Zeitzone, Parallelität, Wiederholungen,
+Aufbewahrung und
+Benachrichtigungen in den Einstellungen ändern. CLI:
+.PP
+.nf
+  anker settings show
+  anker settings save DATEI.json
+  anker user list
+  anker user add NAME ROLE
+  anker user password NAME
+  anker user disable ID
+  anker user enable ID
+  anker user role ID ROLE
+  anker user sessions ID
+  anker user revoke ID
+  anker user remove ID
+.fi
+.PP
+Für add und password das Passwort über ANKER_USER_PASSWORD
+übergeben,
+nicht als Befehlsargument. Bestehende Benutzeraktionen
+verwenden die ID
+von user list. Rollen sind admin, restore und reader. Der
+eigene und
+der letzte aktive Administrator sind gegen Aussperren
+geschützt.
+Websitzungen lassen sich anzeigen und widerrufen.
+.SH TLS-ZERTIFIKAT
+.nf
+  sudo anker tls status
+  sudo anker tls renew
+  sudo anker tls auto on \-\-days 30
+  sudo anker tls auto off
+  sudo anker tls certificate ./anker.crt
+.fi
+.PP
+Die Automatik erneuert von Anker verwaltete selbst
+erzeugte Zertifikate;
+extern ausgestellte Zertifikate über den vorgesehenen
+CA-Weg erneuern.
+Der Vorlauf liegt zwischen 7 und 90 Tagen. Das neue
+Zertifikat wird ohne
+Webdienstneustart übernommen. Fingerprint und
+Browservertrauen erneut
+prüfen. Die Zertifikatsverwaltung benötigt keine
+konfigurierte Releasequelle.
+.SH SPEICHER
+.nf
+  sudo anker storage status
+  sudo anker storage state
+  sudo anker storage plan VOLUME
+  sudo anker storage grow VOLUME \-\-plan ID \-\-confirm MOUNT
+.fi
+.PP
+VOLUME aus dem Speicherstatus wählen. Vor Erweiterung den
+aktuellen Plan
+lesen und den Mountpoint exakt bestätigen. Anker
+vergrößert nur eindeutig
+geprüfte ext4-/XFS-Dateisysteme auf bereits zugewiesenem
+Geräteplatz.
+Es formatiert keine Laufwerke und verändert keine
+Partitionstabellen,
+PV/LV-Zuordnung oder virtuelle Datenträger. Container
+zeigen eine
+Anleitung für ihren Host.
+.PP
+Nach Unterbrechung den Zustand und tatsächlichen Speicher
+prüfen,
+danach einen neuen Plan anfordern. Kein automatischer
+Wiederholungsversuch.
+Speichererweiterung, Updates und Einrichtung sind
+gegeneinander gesperrt.
+Das Operationsjournal nicht als vermeintliche Reparatur
+löschen.
+.SH SIGNIERTE WEBUPDATES
+Als Administrator in Einstellungen, System, Updates die
+Releasequelle
+einrichten. Für die offizielle Quelle ist der öffentliche
+Schlüssel in
+der vertrauten Anwendung enthalten. Für eine eigene Quelle
+den öffentlichen
+Ed25519-Schlüssel unabhängig prüfen und ausdrücklich
+bestätigen.
+Ein Schlüssel aus demselben ungeprüften Download beweist
+keine Identität.
+.PP
+Nach Updates suchen, Version und Hinweise prüfen, dann die
+Installation
+bestätigen. CLI:
+.PP
+.nf
+  sudo anker update check
+  sudo anker update install
+  sudo anker update status
+.fi
+.PP
+Der root-eigene Updater prüft Signatur, Plattform,
+Dateigröße und SHA-256.
+Aktive Sicherungen, Wiederherstellungen und Wartung
+blockieren Updates.
+Er sichert Programm und Katalog einschließlich WAL, prüft
+den gestarteten
+Dienst und fällt bei Fehlern auf die vorherige Version und
+den Katalog
+zurück. SSH-/TLS-Schlüssel, Benutzer und Sicherungen
+bleiben erhalten.
+.PP
+Für private GitHub-Releases kann ein root-eigener
+Lesetoken nötig sein;
+dessen Einrichtung erfolgt über die Servereinrichtung.
+Token nicht in
+Webformulare oder Befehlsargumente kopieren. Demo kann
+keine Systemquelle,
+Zertifikate oder Speicher ändern.
+.SH FEHLER UND RÜCKFALL
+.nf
+  sudo anker doctor
+  sudo anker update status
+  sudo journalctl \-u anker \-u anker-updater \-n 100 \-\-no-pager
+.fi
+.PP
+Bei einem offenen Updatejournal verarbeitet ein
+Updaterneustart den
+Rückfall. Scheitert auch dessen Start, zuerst
+Dienstkonfiguration, Speicher
+und Katalog prüfen. Wartungsmarker und Journale nicht
+unbesehen löschen.
+Bei /etc/anker/install-pending denselben geprüften
+Installer erneut ausführen.
+.PP
+.B anker reindex
+liest vorhandene geprüfte Sicherungsmanifeste wieder in
+den Katalog ein.
+Es ersetzt keine Sicherung des Anker-Servers. Katalog,
+Betriebsmarker,
+Schlüssel, Zertifikate und Sicherungsordner in das
+vorhandene betriebliche
+Sicherungskonzept aufnehmen.
+.SH GLOBALE OPTIONEN
+Optionen vor dem Befehl angeben:
+.TP
+.B \-\-data VERZEICHNIS
+Datenverzeichnis; Standard /srv/anker, alternativ
+ANKER_DATA.
+.TP
+.B \-\-socket DATEI
+Dienstsocket; Standard DATENVERZEICHNIS/anker.sock.
+.TP
+.B \-\-listen ADRESSE:PORT
+Weblistener für serve/demo; Standard 127.0.0.1:8087,
+alternativ ANKER_LISTEN.
+.TP
+.BR \-\-tls-cert " DATEI, " \-\-tls-key " DATEI"
+Zertifikat und privater Schlüssel gemeinsam angeben;
+alternativ
+ANKER_TLS_CERT und ANKER_TLS_KEY.
+.TP
+.B \-\-allow-http
+HTTP außerhalb Loopback ausdrücklich erlauben. Für LAN/VPN
+TLS bevorzugen.
+.TP
+.B \-\-admin NAME
+Name des ersten Administrators bei init; Standard admin.
+.SH WEITERE BEFEHLE
+.B anker init
+initialisiert einen leeren Produktionskatalog; das
+Passwort wird verdeckt
+abgefragt oder über ANKER_INITIAL_PASSWORD gelesen.
+.B anker serve
+startet den Dienst manuell.
+.B anker demo
+startet die lokale Demo unter ./var/demo auf Loopback.
+Demo und Produktionsdaten dürfen nicht gemischt werden.
+.SH DATEIEN
+.TP
+.I /srv/anker
+Katalog, Betriebsmarker, Sicherungen und
+Wiederherstellungspläne.
+.TP
+.I /etc/anker
+Dienstkonfiguration, SSH-/TLS-Dateien und Updatequelle.
+.TP
+.I /var/lib/anker-updater
+Updatejournal, Rückfallkopien und
+Speicheroperationsjournal.
+.SH WEITERLESEN
+README.md und docs/OPERATIONS.md, docs/RECOVERY.md,
+docs/UPDATES.md
+im Checkout oder Release-Paket beschreiben Einrichtung,
+Grenzen und Recovery.
