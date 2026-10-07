@@ -999,15 +999,13 @@ test("existing hosts can reinstall their connection without persisting bootstrap
   page,
 }) => {
   const hosts = await (await page.request.get("/api/hosts")).json();
-  await page.route("**/api/status", async (route) => {
-    const state = await (await route.fetch()).json();
-    state.hosts[0].inventory.details = {
-      packages: "package-version\n".repeat(10000),
-    };
-    state.hosts[0].last_probe = "2026-10-07T10:00:00Z";
-    state.hosts[0].probe_error = "Old probe failed";
-    await route.fulfill({ json: state });
-  });
+  const state = await (await page.request.get("/api/status")).json();
+  state.hosts[0].inventory.details = {
+    packages: "package-version\n".repeat(10000),
+  };
+  state.hosts[0].last_probe = "2026-10-07T10:00:00Z";
+  state.hosts[0].probe_error = "Old probe failed";
+  await page.route("**/api/status", (route) => route.fulfill({ json: state }));
   await page.reload();
   let payload: any;
   await page.route("**/api/hosts/connection/inspect", (route) =>
@@ -1055,6 +1053,7 @@ test("existing hosts can reinstall their connection without persisting bootstrap
   expect(payload.host).not.toHaveProperty("last_probe");
   expect(payload.host).not.toHaveProperty("probe_error");
   expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(65536);
+  await page.unrouteAll({ behavior: "wait" });
 });
 test("settings save and mobile navigation", async ({ page }) => {
   await page
