@@ -14,7 +14,10 @@ type hotAction struct{ key, label string }
 func (m Model) listActions() []hotAction {
 	switch m.tab {
 	case 0:
-		return []hotAction{{"a", "Hinzufügen"}, {"e", "Bearbeiten"}, {"p", "Pause"}, {"h", "Schlüssel"}, {"t", "Prüfen"}, {"b", "Sichern"}}
+		if m.width <= 90 {
+			return []hotAction{{"a", "Hinzufügen"}, {"m", "Manuell"}, {"e", "Edit"}, {"v", "SSH"}, {"p", "Pause"}, {"h", "Key"}, {"t", "Test"}, {"b", "Sichern"}}
+		}
+		return []hotAction{{"a", "Hinzufügen"}, {"m", "Manuell"}, {"e", "Bearbeiten"}, {"v", "Anbinden"}, {"p", "Pause"}, {"h", "Schlüssel"}, {"t", "Prüfen"}, {"b", "Sichern"}}
 	case 1:
 		return []hotAction{{"v", "Prüfen"}, {"x", "Export"}, {"r", "Wiederherstellen"}, {"f", "Dateien"}}
 	case 2:
@@ -119,6 +122,10 @@ func (m *Model) listKey(key string) teaCmd {
 	switch m.tab {
 	case 0:
 		if key == "a" {
+			m.openForm("hostConnect", nil)
+			return nil
+		}
+		if key == "m" {
 			m.openForm("host", nil)
 			return nil
 		}
@@ -126,6 +133,8 @@ func (m *Model) listKey(key string) teaCmd {
 			return nil
 		}
 		switch key {
+		case "v":
+			m.openForm("hostConnect", v)
 		case "e":
 			m.openForm("host", v)
 		case "b":

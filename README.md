@@ -136,48 +136,39 @@ Vor Umzug, bei Laufwerksausfall und bei SFTP-Bindmounts die [Betriebsanleitung](
 
 ## Proxmox-Hosts anbinden
 
-Auf jedem Host werden der Helfer und ein eingeschränkter SSH-Zugang eingerichtet. Dafür das Projekt- oder Release-Paket und **nur den öffentlichen** Sicherungsschlüssel auf den Host übertragen. Der öffentliche Schlüssel liegt auf dem Anker-Server unter `/etc/anker/keys/backup.pub`.
-
-Auf dem Proxmox-Host:
+In der Weboberfläche **Hosts → Host hinzufügen** öffnen. Adresse, SSH-Benutzer und dessen Passwort eingeben; `root` ist vorbelegt. Anker zeigt zuerst den Ed25519-Fingerprint des SSH-Servers. Auf der Proxmox-Konsole mit folgendem Befehl vergleichen und im Formular bestätigen:
 
 ```sh
-sudo ./scripts/install-host.sh --backup-key /pfad/backup.pub
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256
 ```
 
-Das Skript installiert Helfer, Benutzer, sudo-Regel und den eingeschränkten Schlüsseleintrag gemeinsam. Manuelles Bearbeiten von `authorized_keys` entfällt. Wiederholung erzeugt keine doppelten Schlüssel; vorhandene Profile und andere Schlüssel bleiben erhalten. Der Zugang kann nur den festen Sicherungshelfer ausführen, keine freie Shell.
+Danach installiert Anker den Hosthelfer, richtet die Benutzer `anker` und `anker-restore` ein und hinterlegt die beiden öffentlichen Schlüssel. Die privaten Schlüssel bleiben auf dem Anker-Server. Erst wenn beide Zugänge ohne Passwort funktionieren und das Proxmox-Inventar lesbar ist, wird der Host gespeichert. Der Hostname wird automatisch übernommen; eigener Anzeigename, Gruppe, Cluster und SSH-Port sind optional. Anschließend **Jetzt sichern** wählen. Der tägliche Zeitplan ist bei neuen Hosts bereits eingeschaltet.
 
-Das Skript zeigt den **Ed25519-SSH-Hostfingerprint**. Diesen über die Proxmox-Konsole oder eine schon vertrauenswürdige Administrationsverbindung ablesen. Auf dem Anker-Server:
+Das Passwort wird einmal zur SSH-Anmeldung und gegebenenfalls für `sudo` verwendet. Es wird weder im Katalog noch in Aufträgen oder Protokollen gespeichert. Ein anderer SSH-Benutzer als root braucht sudo-Rechte für die Installation; Anker unterstützt denselben Passwortzugang oder passwortloses sudo. Passwort- und übliche PAM-Passwortanmeldung sind unterstützt; interaktive MFA benötigt die manuelle Einrichtung. Falls sudo auf dem Host fehlt, versucht Anker es über dessen vorhandene APT-Quellen zu installieren.
 
-```sh
-sudo anker host trust HOSTADRESSE --fingerprint SHA256:FINGERPRINT
-```
+Für vorhandene Hosts **Verbindung einrichten** verwenden. Bestehende Hostprofile und fremde SSH-Schlüssel bleiben erhalten. Nach einem Fehler Zugang prüfen und erneut versuchen; der Installer kann wiederholt werden. Ein bereits bekannter, geänderter Hostschlüssel wird blockiert. Erst nach unabhängiger Prüfung der Änderung den Eintrag ausdrücklich mit `anker host trust` aktualisieren. Den neuen Schlüssel niemals nur aufgrund einer Fehlermeldung übernehmen.
 
-Bei einem anderen SSH-Port zusätzlich `--port PORT` angeben. Anker fragt den Schlüssel ab, vergleicht ihn mit dem angegebenen Fingerprint und schreibt ihn erst bei Übereinstimmung nach `/etc/anker/known_hosts`. Ein ungeprüftes `ssh-keyscan` oder abgeschaltete Hostprüfung gehört nicht zum Einrichtungsweg. Bereits vorhandene vertrauenswürdige Hosteinträge können weiterhin verwendet werden. [OpenSSH-Hostprüfung](https://man.openbsd.org/ssh_config#StrictHostKeyChecking).
+Im Terminal `sudo anker` öffnen: unter Hosts startet `a` die automatische Anbindung, `v` richtet den ausgewählten Host erneut ein. Die Fingerprintbestätigung erfolgt vor dem Übermitteln des Passworts. `m` öffnet die manuelle Anlage.
 
-Danach in der Weboberfläche „Host hinzufügen“ öffnen: Hostname und Adresse reichen für den Standardzugang. Schlüsselpfad, Benutzer, Port und bekannte Hostschlüssel sind bereits gesetzt. „Verbindung prüfen“, anschließend „Jetzt sichern“. Bei Fehlern den Auftrag und die Pflichtlücken ansehen. Gruppe, eigener Zeitplan und zusätzliche Pfade sind optional.
+### Manuell anbinden
 
-Alternativ im Terminal:
-
-```sh
-sudo anker host add --name HOSTNAME --address HOSTADRESSE
-sudo anker host list
-sudo anker host probe HOST-ID
-sudo anker backup run HOST-ID
-```
-
-Für abweichende SSH-Zugänge die erweiterten Hosteinstellungen beziehungsweise `--key` und `--known-hosts` verwenden.
-
-### Optional: Einzeldateien zurückspielen
-
-Für Planung, Download und manuelle Wiederherstellung ist kein privilegierter Restorezugang nötig. Nur für die automatische Einzeldateiübernahme zusätzlich `/etc/anker/keys/restore.pub` auf den Zielhost übertragen:
+Für bestehende Schlüsselverwaltung oder Hosts ohne SSH-Passwortanmeldung bleibt **Manuell einrichten** verfügbar. Nur die öffentlichen Dateien `/etc/anker/keys/backup.pub` und `/etc/anker/keys/restore.pub` zusammen mit dem Projekt- oder Release-Paket auf den Zielhost übertragen und dort ausführen:
 
 ```sh
 sudo ./scripts/install-host.sh --backup-key /pfad/backup.pub --restore-key /pfad/restore.pub
 ```
 
-`--restore-key` richtet den separaten Benutzer `anker-restore` mit dem festen Wiederherstellungshelfer ein. Die beiden Schlüssel müssen verschieden sein. In den erweiterten Hosteinstellungen den Wiederherstellungsschlüssel `/etc/anker/keys/restore` hinterlegen; der Benutzer ist bereits vorbelegt. Der normale Sicherungsschlüssel bleibt auf Lesezugriff beschränkt.
+Den unabhängig geprüften SSH-Fingerprint und Host anschließend auf dem Anker-Server hinterlegen:
 
-Passwortlose Synchronisation verwendet **SSH-Schlüssel**. SSH-Zertifikate oder eine zusätzliche SSH-CA sind dafür nicht erforderlich. TLS-Zertifikate sichern ausschließlich den Webzugriff.
+```sh
+sudo anker host trust HOSTADRESSE --fingerprint SHA256:FINGERPRINT
+sudo anker host add --name HOSTNAME --address HOSTADRESSE --restore-key /etc/anker/keys/restore
+sudo anker host probe HOST-ID
+```
+
+Bei einem anderen SSH-Port beiden Einrichtungsbefehlen `--port PORT` hinzufügen. Standardzugänge verwenden `anker`, `anker-restore` und `/etc/anker/known_hosts`. Abweichende Schlüsselpfade können im manuellen Formular oder mit `--key`, `--known-hosts`, `--restore-key` und `--restore-user` angegeben werden. `host probe` startet einen Auftrag; dessen Ergebnis in **Aufträge** ansehen. Für Planung, Downloads und manuelle Wiederherstellung reicht der Sicherungszugang; automatische Übernahme verwendet immer den getrennten Restorezugang.
+
+Passwortlose Synchronisation verwendet **SSH-Schlüssel**. SSH-Zertifikate oder eine zusätzliche SSH-CA sind dafür nicht erforderlich. TLS-Zertifikate sichern den Webzugriff.
 
 Das Hostprofil `/etc/anker-host.json` sichert standardmäßig `/etc` und `/usr/local`. Zusätzliche Konfiguration beispielsweise unter `/opt` ausdrücklich im Profil und als Pflichtpfad in Anker ergänzen. Das Profil muss root gehören und darf nicht von anderen beschreibbar sein. VM-Datenträger und große Anwendungsdaten nicht in das Configprofil aufnehmen.
 
@@ -203,8 +194,8 @@ sudo anker job remove AUFTRAG
 | Zugang anlegen | Ein eigener Administrator; kein Standardpasswort. Vorhandene Zugänge werden bei Wiederholung erkannt. |
 | Webzugriff | HTTPS mit erzeugtem Zertifikat oder vorhandener CA; alternativ SSH-Tunnel ohne TLS-Einrichtung. Adresse und erstes Vertrauen kann Anker nicht sicher erraten. |
 | Updates | Der Anker-Schlüssel wird mitgeliefert. Quelle bei Bedarf direkt im Web bestätigen; öffentliche Downloads brauchen keinen Token. |
-| Hostzugang | Helferinstallation und eingeschränkter Schlüsseleintrag in einem Aufruf. Standardpfade sind im Interface und in der CLI hinterlegt. |
-| Hostidentität | Ein unabhängig geprüfter Fingerprint; Eintrag und Dateirechte übernimmt `host trust`. |
+| Hostzugang | Adresse und einmaligen SSH-Zugang eingeben; Anker installiert Helfer und beide eingeschränkten Schlüsselzugänge und prüft sie. |
+| Hostidentität | Fingerprint im Formular unabhängig vergleichen und bestätigen; bekannte Schlüsselwechsel werden blockiert. |
 | Betrieb | Gemeinsamer Zeitplan, Aufbewahrung und 30-Tage-Anmeldung sind vorbelegt. Benachrichtigungen und Restorezugänge nur bei Bedarf einrichten. |
 
 ## Anmeldung und Benutzer

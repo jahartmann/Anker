@@ -44,8 +44,21 @@ func boolValue(v map[string]any, key string, fallback bool) string {
 	return yesNo(b)
 }
 func (m *Model) openForm(kind string, v map[string]any) {
-	f := &form{kind: kind, original: clone(v)}
+	m.clearEnrollmentSecret()
+	m.formGeneration++
+	f := &form{kind: kind, original: clone(v), generation: m.formGeneration}
 	switch kind {
+	case "hostConnect":
+		f.title = "Host automatisch anbinden"
+		f.fields = []field{
+			textField("Adresse", str(v, "address"), "IP-Adresse oder DNS-Name", true),
+			textField("SSH-Benutzer", "root", "Einmaliger Zugang mit root- oder sudo-Rechten", true),
+			{label: "SSH-Passwort", secret: true, required: true, hint: "Nur zur Einrichtung; wird nicht gespeichert"},
+			textField("SSH-Port", intValue(v, "ssh_port", 22), "1–65535", true),
+			textField("Name", str(v, "name"), "Optional; leer übernimmt den geprüften Hostnamen", false),
+			textField("Gruppe", str(v, "group"), "Optional", false),
+			textField("Cluster", str(v, "cluster_id"), "Optional", false),
+		}
 	case "host":
 		restoreKey, restoreUser := str(v, "restore_key_path"), str(v, "restore_ssh_user")
 		if str(v, "id") == "" {
@@ -253,6 +266,8 @@ func (m *Model) submitForm() tea.Cmd {
 	n := func(i int) (int, error) { return strconv.Atoi(value(i)) }
 	a := action{method: "POST", input: map[string]any{}}
 	switch f.kind {
+	case "hostConnect":
+		return m.inspectEnrollment()
 	case "host":
 		port, err := n(5)
 		if err != nil || port < 1 || port > 65535 {

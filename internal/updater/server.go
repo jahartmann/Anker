@@ -68,6 +68,7 @@ type Server struct {
 	busy           bool
 	tlsManager     *TLSManager
 	storageManager *StorageManager
+	hostManager    hostConnectionManager
 }
 
 func (s *Server) save() error {
@@ -101,6 +102,10 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/storage/") {
 		s.storageHandler(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/hosts/") {
+		s.hostConnectionHandler(w, r)
 		return
 	}
 	if r.URL.Path == "/status" && r.Method == "GET" {

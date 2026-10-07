@@ -210,22 +210,24 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
-	backupLocks   map[string]*sync.RWMutex
-	planLocks     map[string]*sync.RWMutex
-	hostMu        sync.Mutex
-	diskUsage     func() (DiskUsage, error)
-	Root          string
-	Store         *Store
-	Collector     Collector
-	mu            sync.Mutex
-	locks         map[string]bool
-	cancels       map[string]context.CancelFunc
-	Demo          bool
-	schedulerBusy bool
-	maintenance   bool
-	jobMu         sync.Mutex
-	notifyMu      sync.Mutex
-	storageMu     sync.Mutex
+	backupLocks      map[string]*sync.RWMutex
+	planLocks        map[string]*sync.RWMutex
+	hostMu           sync.Mutex
+	diskUsage        func() (DiskUsage, error)
+	Root             string
+	Store            *Store
+	Collector        Collector
+	mu               sync.Mutex
+	locks            map[string]bool
+	cancels          map[string]context.CancelFunc
+	Demo             bool
+	schedulerBusy    bool
+	maintenance      bool
+	jobMu            sync.Mutex
+	connectingHostID string
+	hostConnector    hostConnector
+	notifyMu         sync.Mutex
+	storageMu        sync.Mutex
 }
 
 func ID() string {

@@ -45,11 +45,11 @@ func TestAddHostOpensGuidedFormAndSurvivesRefresh(t *testing.T) {
 	m := New(nil)
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = next.(Model)
-	if cmd != nil || !strings.Contains(m.View(), "Host hinzufügen") || !strings.Contains(m.View(), "SSH-Port") {
+	if cmd != nil || !strings.Contains(m.View(), "Host automatisch anbinden") || !strings.Contains(m.View(), "SSH-Port") {
 		t.Fatal("add must open a guided host form")
 	}
 	next, _ = m.Update(loaded{data: map[string]any{"hosts": []any{map[string]any{"id": "new", "name": "server"}}}})
-	if !strings.Contains(next.(Model).View(), "Host hinzufügen") {
+	if !strings.Contains(next.(Model).View(), "Host automatisch anbinden") {
 		t.Fatal("refresh dismissed form")
 	}
 }

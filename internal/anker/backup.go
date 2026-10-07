@@ -65,6 +65,9 @@ func (s *Service) SaveHost(h Host) error {
 	// A schedule change and its queue admission must have a single order.
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
+	if s.connectingHostID != "" {
+		return fail(409, "Hostanbindung läuft; Änderungen anschließend speichern")
+	}
 	// Operator forms may be older than the last completed probe/backup.
 	if current, err := s.Host(h.ID); err == nil {
 		h.Inventory, h.LastProbe, h.ProbeError = current.Inventory, current.LastProbe, current.ProbeError
@@ -83,6 +86,9 @@ func (s *Service) DeleteHost(id string) error {
 	defer s.hostMu.Unlock()
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
+	if s.connectingHostID != "" {
+		return fail(409, "Hostanbindung läuft; Änderungen anschließend speichern")
+	}
 	if _, err := s.Host(id); err != nil {
 		return err
 	}
@@ -118,11 +124,18 @@ func (s *Service) updateHostInventory(expected Host, inv *Inventory, probeError 
 	return s.saveHost(h)
 }
 func (s *Service) saveHost(h Host) error {
+	h, err := prepareHost(h)
+	if err != nil {
+		return err
+	}
+	return s.Store.Put("hosts", h.ID, h)
+}
+func prepareHost(h Host) (Host, error) {
 	if h.ID == "" {
 		h.ID = ID()
 	}
 	if !validID(h.ID) || !safeHost.MatchString(h.Name) || (!safeHost.MatchString(h.Address) && net.ParseIP(h.Address) == nil) {
-		return errors.New("Host-ID, Hostname oder Adresse ungültig")
+		return h, errors.New("Host-ID, Hostname oder Adresse ungültig")
 	}
 	if h.SSHUser == "" {
 		h.SSHUser = "anker"
@@ -134,33 +147,33 @@ func (s *Service) saveHost(h Host) error {
 		h.KnownHostsPath = "/etc/anker/known_hosts"
 	}
 	if !safeHost.MatchString(h.SSHUser) || strings.Contains(h.SSHUser, ":") {
-		return errors.New("SSH-Benutzer ungültig")
+		return h, errors.New("SSH-Benutzer ungültig")
 	}
 	if h.RestoreKeyPath != "" {
 		if h.RestoreSSHUser == "" {
 			h.RestoreSSHUser = "anker-restore"
 		}
 		if h.RestoreKeyPath == h.KeyPath || h.RestoreSSHUser == h.SSHUser || !filepath.IsAbs(h.RestoreKeyPath) || !safeHost.MatchString(h.RestoreSSHUser) || strings.Contains(h.RestoreSSHUser, ":") {
-			return errors.New("separater gültiger Wiederherstellungszugang erforderlich")
+			return h, errors.New("separater gültiger Wiederherstellungszugang erforderlich")
 		}
 	}
 	if h.SSHPort == 0 {
 		h.SSHPort = 22
 	}
 	if h.SSHPort < 1 || h.SSHPort > 65535 {
-		return errors.New("SSH-Port ungültig")
+		return h, errors.New("SSH-Port ungültig")
 	}
 	if h.Schedule != "" {
 		if _, err := time.Parse("15:04", h.Schedule); err != nil {
-			return errors.New("Zeitplan muss HH:MM sein")
+			return h, errors.New("Zeitplan muss HH:MM sein")
 		}
 	}
 	for _, p := range h.ExtraPaths {
 		if !strings.HasPrefix(p, "/") || strings.Contains(p, "..") || strings.ContainsAny(p, "\x00\n\r") {
-			return errors.New("Zusatzpfad ungültig")
+			return h, errors.New("Zusatzpfad ungültig")
 		}
 	}
-	return s.Store.Put("hosts", h.ID, h)
+	return h, nil
 }
 func (s *Service) Host(id string) (Host, error) {
 	var h Host

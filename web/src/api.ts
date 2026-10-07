@@ -28,6 +28,14 @@ export interface Inventory {
   }[];
   details?: Record<string, unknown>;
 }
+export interface HostIdentity {
+  address: string;
+  port: number;
+  fingerprint: string;
+  key_type: string;
+  known: boolean;
+  changed: boolean;
+}
 export interface Host {
   restore_key_path?: string;
   restore_ssh_user?: string;

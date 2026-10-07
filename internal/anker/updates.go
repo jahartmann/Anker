@@ -15,6 +15,9 @@ import (
 func (s *Service) PrepareUpdate() error {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
+	if s.connectingHostID != "" {
+		return errors.New("Hostanbindung zuerst abschließen")
+	}
 	if s.schedulerBusy {
 		return errors.New("Laufende Aufbewahrungsprüfung zuerst beenden")
 	}

@@ -419,7 +419,8 @@ Terminal bedienen
   Tab oder 1–5 wechseln Hosts, Sicherungen, Wiederherstellung, Aufträge,
   Einstellungen. Pfeile wählen, Enter öffnet, Esc geht zurück, q beendet.
   Aktionen und Formulare zeigen ihre Tasten an; Änderungen vorher prüfen.
-  Hosts: h prüft SSH-Fingerprints. System → Speicher: g plant Erweiterungen.
+  Hosts: a bindet automatisch an, m legt manuell an, v verbindet erneut.
+  h prüft SSH-Fingerprints. System → Speicher: g plant Erweiterungen.
 
 Hosts und Sicherungen
   anker status | doctor
@@ -429,7 +430,8 @@ Hosts und Sicherungen
   anker backup run HOST | list | files BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
   anker diff ALT NEU
   anker export BACKUP ./sicherung.tar
-  Vor Hostanbindung den Helfer installieren und SSH-Fingerprint unabhängig prüfen.
+  Im Web/Terminal Adresse, SSH-Benutzer und einmaliges Passwort eingeben.
+  Fingerprint unabhängig prüfen; Helfer und beide Schlüssel werden eingerichtet.
 
 Wiederherstellung und Aufträge
   anker restore list

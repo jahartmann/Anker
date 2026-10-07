@@ -89,6 +89,9 @@ test("production schedule settings and paused host CRUD persist through the inte
     .getByRole("button", { name: "Host hinzufügen", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Manuell einrichten", exact: true })
+    .click();
   await dialog.getByLabel("Hostname", { exact: true }).fill("pve-schedule-ui");
   await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.190");
   await dialog

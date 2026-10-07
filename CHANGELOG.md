@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.2.1
+
+- Hosts direkt im Web oder Terminal mit Adresse, SSH-Benutzer und einmaligem Passwort anbinden. Nach Fingerprintbestätigung installiert Anker den Helfer und getrennte Sicherungs-/Wiederherstellungszugänge; gespeichert wird erst nach erfolgreichen Schlüsselprüfungen.
+- Bestehende Profile und fremde autorisierte Schlüssel bei erneuter Einrichtung erhalten. Passwort bleibt flüchtig; bekannte Schlüsselwechsel, konkurrierende Hostaufträge und Updates werden abgefangen. Manuelle Einrichtung bleibt verfügbar.
+- Terminal: `a` bindet automatisch an, `m` legt manuell an und `v` richtet den ausgewählten Host erneut ein. README und Handbuch erklären beide Wege.
+
 ## 0.2.0
 
 - Updatequelle direkt im Web einrichten: mitgelieferte Anker-Quelle, Fingerprint und bestätigter Wechsel; bestehende Signatur-, Start- und Rückfallprüfung bleiben erhalten.

@@ -45,6 +45,7 @@ type form struct {
 	fields      []field
 	focus       int
 	original    map[string]any
+	generation  int
 }
 type Model struct {
 	client                                    *client.Client
@@ -55,6 +56,7 @@ type Model struct {
 	detailOffset                              int
 	loading, busy                             bool
 	revision                                  int
+	formGeneration                            int
 	form                                      *form
 	pending                                   *action
 	confirmYes                                bool
@@ -250,6 +252,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.buildRows()
 		}
 	case commandResult:
+		if m.enrollmentResult(v) {
+			if v.err == nil && strings.HasPrefix(v.purpose, "hostEnroll:") && m.form == nil && m.client != nil {
+				m.loading = true
+				return m, m.load()
+			}
+			return m, nil
+		}
 		m.busy = false
 		m.notice = ""
 		if v.err != nil {
@@ -290,7 +299,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.acceptConfirmation()
 					}
 					if !m.confirmYes {
-						m.pending = nil
+						m.cancelConfirmation()
 					}
 				}
 			} else if m.form != nil {
@@ -429,10 +438,10 @@ func (m *Model) confirmKey(k tea.KeyMsg) tea.Cmd {
 	}
 	switch k.String() {
 	case "esc":
-		m.pending = nil
+		m.cancelConfirmation()
 	case "n":
 		if m.pending.challenge == "" {
-			m.pending = nil
+			m.cancelConfirmation()
 		} else {
 			m.confirmation += "n"
 			m.confirmYes = true
@@ -464,7 +473,7 @@ func (m *Model) confirmKey(k tea.KeyMsg) tea.Cmd {
 }
 func (m *Model) acceptConfirmation() tea.Cmd {
 	if !m.confirmYes {
-		m.pending = nil
+		m.cancelConfirmation()
 		return nil
 	}
 	if m.pending.challenge != "" && m.confirmation != m.pending.challenge {
@@ -476,6 +485,17 @@ func (m *Model) acceptConfirmation() tea.Cmd {
 		return nil
 	}
 	a := *m.pending
+	if strings.HasPrefix(a.purpose, "hostEnroll:") {
+		if m.form == nil || a.purpose != enrollmentPurpose("hostEnroll", m.form) || m.form.fields[2].value == "" {
+			m.cancelConfirmation()
+			m.err = "SSH-Zugang erneut eingeben und Identität neu prüfen."
+			return nil
+		}
+		input := clone(object(a.input))
+		input["password"] = m.form.fields[2].value
+		a.input = input
+		m.clearEnrollmentSecret()
+	}
 	m.pending = nil
 	m.confirmation = ""
 	return m.request(a)

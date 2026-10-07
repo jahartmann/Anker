@@ -99,7 +99,9 @@ Formulare zeigen
 ihre verfügbaren Tasten an. Vor Änderungen die
 Zusammenfassung prüfen.
 .PP
-Unter Hosts öffnet h die geführte SSH-Fingerprintprüfung.
+Unter Hosts startet a die automatische SSH-Anbindung,
+m die manuelle Anlage und v die erneute Anbindung des
+ausgewählten Hosts. h öffnet die SSH-Fingerprintprüfung.
 Den Fingerprint vorher unabhängig auf der Hostkonsole prüfen.
 Unter Einstellungen, Speicher plant g eine Erweiterung.
 Eine unterstützte Erweiterung erfordert die Eingabe des
@@ -114,20 +116,38 @@ oder einen SSH-Tunnel verwenden. Ein selbst erzeugtes
 Zertifikat braucht
 eine unabhängige Prüfung seines Fingerprints.
 .SH HOSTS ANBINDEN
-Auf dem Zielhost den festen Sicherungshelfer und
-ausschließlich den
-öffentlichen Sicherungsschlüssel installieren:
+In Web oder Terminal Adresse, SSH-Benutzer und dessen
+Passwort eingeben. root ist vorbelegt; andere Benutzer
+brauchen sudo-Rechte mit demselben Passwort oder ohne
+Passwort. Anker fragt zunächst ohne Anmeldung den
+Ed25519-Hostschlüssel ab. Auf der Proxmox-Konsole prüfen:
 .PP
 .nf
-  sudo ./scripts/install-host.sh /pfad/backup.pub
+  ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256
 .fi
 .PP
-Der öffentliche Schlüssel des Servers liegt unter
-.IR /etc/anker/keys/backup.pub .
-Private Schlüssel bleiben auf dem Anker-Server. Den
-SSH-Hostfingerprint
-über einen unabhängigen Zugang am Ziel prüfen, dann auf
-dem Server:
+Nach der ausdrücklichen Bestätigung installiert Anker den
+Hosthelfer und die öffentlichen Sicherungs- und
+Wiederherstellungsschlüssel. Der Host wird erst nach
+erfolgreicher Prüfung beider eingeschränkten Zugänge
+gespeichert. Das einmalige Passwort wird nicht gespeichert;
+private Schlüssel bleiben auf dem Anker-Server. Bestehende
+Profile und fremde autorisierte Schlüssel bleiben erhalten.
+Ein fehlgeschlagener Ablauf kann erneut gestartet werden.
+Bekannte Schlüsselwechsel blockieren die Verbindung;
+vor der bewussten Aktualisierung die Ursache unabhängig prüfen.
+.PP
+Die manuelle Methode bleibt für eigene Schlüsselverwaltung
+oder interaktive MFA verfügbar. Auf dem Zielhost:
+.PP
+.nf
+  sudo ./scripts/install-host.sh \-\-backup-key /pfad/backup.pub
+.fi
+.PP
+Optional \-\-restore-key /pfad/restore.pub ergänzen. Die
+öffentlichen Dateien liegen auf dem Anker-Server unter
+/etc/anker/keys. Den unabhängigen Fingerprint danach
+auf dem Anker-Server hinterlegen:
 .PP
 .nf
   sudo anker host trust ADRESSE \-\-fingerprint SHA256:...

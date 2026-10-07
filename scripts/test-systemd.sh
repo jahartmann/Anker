@@ -42,6 +42,7 @@ os.chown(path,0,__import__('grp').getgrnam('anker').gr_gid)
 PY
 python3 scripts/test-setup-pty.py
 python3 scripts/test-update-configuration.py
+python3 scripts/test-host-enrollment.py
 python3 - <<'PY'
 import pathlib,stat
 directory=pathlib.Path('/srv/anker/lost+found');info=directory.stat()

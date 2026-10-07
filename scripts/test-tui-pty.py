@@ -101,7 +101,31 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
         fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         os.kill(child, signal.SIGWINCH)
         wait_for('Hinzufügen')
+        # Automatic onboarding masks bootstrap credentials and stops in demo.
         send(b'a')
+        wait_for('Host automatisch anbinden')
+        send(b'192.0.2.42')
+        send(b'\t')
+        send(b'\t')
+        bootstrap_password = b'unique-pty-bootstrap-password-2026'
+        send(bootstrap_password)
+        pump(3.2)  # A periodic status refresh must preserve the draft.
+        fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+        os.kill(child, signal.SIGWINCH)
+        pump(0.5)
+        assert '192.0.2.42' in visible(recent), 'Resize discarded the connection draft'
+        assert bootstrap_password not in transcript, 'Bootstrap password appeared in terminal output'
+        send(b'\x13')
+        wait_for('in der Demo ausgeschaltet')
+        assert bootstrap_password not in transcript, 'Bootstrap password appeared in demo error'
+        send(b'\x1b')
+        pump(0.4)
+        fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+        os.kill(child, signal.SIGWINCH)
+        pump(0.4)
+
+        # Select the preserved manual method explicitly for demo host creation.
+        send(b'm')
         wait_for('Host hinzufügen')
         send(b'pty-guided-host')
         send(b'\t')
@@ -115,7 +139,7 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
 
         # Start a second form and resize while editing; input must survive.
         send(b'a')
-        wait_for('Host hinzufügen')
+        wait_for('Host automatisch anbinden')
         send(b'preserved-resize')
         fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
         os.kill(child, signal.SIGWINCH)
@@ -159,7 +183,7 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
                 child = None
                 break
         assert child is None, 'TUI did not exit on q'
-        print('Guided TUI PTY passed: default TTY start, host approval, resize, mouse, hidden passwords, clean exit.')
+        print('Guided TUI PTY passed: default TTY start, manual host approval, demo onboarding guard, resize, mouse, hidden passwords, clean exit.')
     finally:
         if child:
             try:

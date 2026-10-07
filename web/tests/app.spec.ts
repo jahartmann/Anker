@@ -711,6 +711,9 @@ test("logout network failure stays visible without losing the session", async ({
 });
 test("host form validates and creates real record", async ({ page }) => {
   await page.getByRole("button", { name: "Host hinzufügen" }).click();
+  await page
+    .getByRole("button", { name: "Manuell einrichten", exact: true })
+    .click();
   await page.getByLabel("Hostname", { exact: true }).fill("pve-browser-test");
   await page.getByLabel("Adresse", { exact: true }).fill("192.0.2.90");
   await page.getByRole("button", { name: "Host speichern" }).click();
@@ -724,6 +727,334 @@ test("host form validates and creates real record", async ({ page }) => {
     key_path: "/etc/anker/keys/backup",
     known_hosts_path: "/etc/anker/known_hosts",
   });
+});
+test("automatic host connection inspects without credentials and requires identity confirmation", async ({
+  page,
+}) => {
+  const inspected: unknown[] = [],
+    enrolled: any[] = [];
+  await page.route("**/api/hosts/connection/inspect", (route) => {
+    inspected.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        address: "192.0.2.91",
+        port: 22,
+        fingerprint: "SHA256:trusted-fingerprint",
+        key_type: "ssh-ed25519",
+        known: false,
+        changed: false,
+      },
+    });
+  });
+  await page.route("**/api/hosts/connection/enroll", (route) => {
+    enrolled.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: { ...enrolled.at(-1).host, name: "pve-auto" },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Host hinzufügen", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.91");
+  await expect(dialog.getByLabel("SSH-Benutzer", { exact: true })).toHaveValue(
+    "root",
+  );
+  await dialog
+    .getByLabel("SSH-Passwort", { exact: true })
+    .fill("one-time-secret");
+  await expect(
+    dialog.getByLabel("SSH-Passwort", { exact: true }),
+  ).toHaveAttribute("type", "password");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await expect(
+    dialog.getByText("SHA256:trusted-fingerprint", { exact: true }),
+  ).toBeVisible();
+  expect(inspected).toEqual([{ address: "192.0.2.91", port: 22 }]);
+  expect(enrolled).toEqual([]);
+  await expect(
+    dialog.getByText("192.0.2.91:22", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByText(/Noch nicht bekannt/)).toBeVisible();
+  await expect(dialog.getByText(/Proxmox-Konsole/)).toBeVisible();
+  const connect = dialog.getByRole("button", {
+    name: "Host anbinden",
+    exact: true,
+  });
+  await expect(connect).toBeDisabled();
+  await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
+  await connect.click();
+  await expect(dialog).toHaveCount(0);
+  expect(enrolled).toHaveLength(1);
+  expect(enrolled[0]).toMatchObject({
+    username: "root",
+    password: "one-time-secret",
+    fingerprint: "SHA256:trusted-fingerprint",
+    confirmed: true,
+    host: {
+      name: "",
+      address: "192.0.2.91",
+      ssh_port: 22,
+      ssh_user: "anker",
+      restore_ssh_user: "anker-restore",
+      key_path: "/etc/anker/keys/backup",
+      restore_key_path: "/etc/anker/keys/restore",
+      known_hosts_path: "/etc/anker/known_hosts",
+    },
+  });
+  expect(enrolled[0].host).not.toHaveProperty("password");
+  expect(enrolled[0].host).not.toHaveProperty("username");
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(
+    "one-time-secret",
+  );
+  await page
+    .getByRole("button", { name: "Host hinzufügen", exact: true })
+    .click();
+  await expect(page.getByLabel("SSH-Passwort", { exact: true })).toHaveValue(
+    "",
+  );
+});
+
+test("automatic host connection blocks changed identity and invalidates confirmation on edits", async ({
+  page,
+}) => {
+  let enrollments = 0;
+  await page.route("**/api/hosts/connection/inspect", (route) => {
+    const { address, port } = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        address,
+        port,
+        fingerprint: "SHA256:changed-fingerprint",
+        key_type: "ssh-ed25519",
+        known: true,
+        changed: address === "192.0.2.92",
+      },
+    });
+  });
+  await page.route("**/api/hosts/connection/enroll", (route) => {
+    enrollments++;
+    return route.fulfill({ json: {} });
+  });
+  await page
+    .getByRole("button", { name: "Host hinzufügen", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.92");
+  await dialog.getByLabel("SSH-Passwort", { exact: true }).fill("secret");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Hostschlüssel hat sich geändert",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Host anbinden", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByLabel("Fingerprint geprüft und bestätigt"),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Angaben ändern", exact: true })
+    .click();
+  await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.93");
+  await expect(
+    dialog.getByText("SHA256:changed-fingerprint", { exact: true }),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await expect(dialog.getByText(/Bekannter Hostschlüssel/)).toBeVisible();
+  await expect(
+    dialog.getByLabel("Fingerprint geprüft und bestätigt"),
+  ).not.toBeChecked();
+  expect(enrollments).toBe(0);
+});
+
+test("automatic host connection keeps useful input, clears failed password and permits retry", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/api/hosts/connection/inspect", (route) =>
+    route.fulfill({
+      json: {
+        address: "192.0.2.94",
+        port: 22,
+        fingerprint: "SHA256:retry",
+        key_type: "ssh-ed25519",
+        known: false,
+        changed: false,
+      },
+    }),
+  );
+  await page.route("**/api/hosts/connection/enroll", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({
+          status: 502,
+          json: { error: "SSH-Anmeldung fehlgeschlagen: sensitive-password" },
+        })
+      : route.fulfill({ json: route.request().postDataJSON().host });
+  });
+  await page
+    .getByRole("button", { name: "Host hinzufügen", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.94");
+  await dialog.getByLabel("SSH-Benutzer", { exact: true }).fill("operator");
+  await dialog
+    .getByLabel("SSH-Passwort", { exact: true })
+    .fill("sensitive-password");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
+  await dialog
+    .getByRole("button", { name: "Host anbinden", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "SSH-Anmeldung fehlgeschlagen",
+  );
+  await expect(dialog).not.toContainText("sensitive-password");
+  await expect(dialog.getByLabel("Adresse", { exact: true })).toHaveValue(
+    "192.0.2.94",
+  );
+  await expect(dialog.getByLabel("SSH-Benutzer", { exact: true })).toHaveValue(
+    "operator",
+  );
+  await expect(dialog.getByLabel("SSH-Passwort", { exact: true })).toHaveValue(
+    "",
+  );
+  await dialog
+    .getByLabel("SSH-Passwort", { exact: true })
+    .fill("retry-password");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
+  await dialog
+    .getByRole("button", { name: "Host anbinden", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  expect(attempts).toBe(2);
+});
+
+test("automatic host connection prevents closing and duplicate requests while busy", async ({
+  page,
+}) => {
+  let finish: (() => void) | undefined,
+    attempts = 0;
+  await page.route("**/api/hosts/connection/inspect", (route) =>
+    route.fulfill({
+      json: {
+        address: "192.0.2.95",
+        port: 22,
+        fingerprint: "SHA256:busy",
+        key_type: "ssh-ed25519",
+        known: false,
+        changed: false,
+      },
+    }),
+  );
+  await page.route("**/api/hosts/connection/enroll", async (route) => {
+    attempts++;
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await route.fulfill({ json: route.request().postDataJSON().host });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole("button", { name: "Host hinzufügen", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.95");
+  await dialog.getByLabel("SSH-Passwort", { exact: true }).fill("secret");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
+  await dialog
+    .getByRole("button", { name: "Host anbinden", exact: true })
+    .click();
+  await expect(dialog).toHaveAttribute("aria-busy", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "Dialog schließen", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  expect(attempts).toBe(1);
+  finish!();
+  await expect(dialog).toHaveCount(0);
+});
+
+test("existing hosts can reinstall their connection without persisting bootstrap credentials", async ({
+  page,
+}) => {
+  const hosts = await (await page.request.get("/api/hosts")).json();
+  await page.route("**/api/status", async (route) => {
+    const state = await (await route.fetch()).json();
+    state.hosts[0].inventory.details = {
+      packages: "package-version\n".repeat(10000),
+    };
+    state.hosts[0].last_probe = "2026-10-07T10:00:00Z";
+    state.hosts[0].probe_error = "Old probe failed";
+    await route.fulfill({ json: state });
+  });
+  await page.reload();
+  let payload: any;
+  await page.route("**/api/hosts/connection/inspect", (route) =>
+    route.fulfill({
+      json: {
+        address: hosts[0].address,
+        port: hosts[0].ssh_port,
+        fingerprint: "SHA256:existing",
+        key_type: "ssh-ed25519",
+        known: true,
+        changed: false,
+      },
+    }),
+  );
+  await page.route("**/api/hosts/connection/enroll", (route) => {
+    payload = route.request().postDataJSON();
+    return route.fulfill({ json: payload.host });
+  });
+  await page.getByRole("button", { name: hosts[0].name, exact: true }).click();
+  await page
+    .getByRole("button", { name: "Verbindung einrichten", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Adresse", { exact: true })).toHaveValue(
+    hosts[0].address,
+  );
+  await dialog.getByLabel("SSH-Benutzer", { exact: true }).fill("setup-admin");
+  await dialog.getByLabel("SSH-Passwort", { exact: true }).fill("temporary");
+  await dialog
+    .getByRole("button", { name: "Identität prüfen", exact: true })
+    .click();
+  await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
+  await dialog
+    .getByRole("button", { name: "Host anbinden", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  expect(payload.host).toMatchObject({
+    id: hosts[0].id,
+    name: hosts[0].name,
+    ssh_user: "anker",
+    restore_ssh_user: "anker-restore",
+  });
+  expect(payload.username).toBe("setup-admin");
+  expect(payload.host).not.toHaveProperty("inventory");
+  expect(payload.host).not.toHaveProperty("last_probe");
+  expect(payload.host).not.toHaveProperty("probe_error");
+  expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(65536);
 });
 test("settings save and mobile navigation", async ({ page }) => {
   await page

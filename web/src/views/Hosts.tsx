@@ -1,21 +1,387 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, ChevronDown, Search, ChevronRight } from "lucide-react";
 import { api, bytes, date, hostState } from "../api";
-import type { Host, Status } from "../api";
+import type { Host, HostIdentity, Status } from "../api";
 import { Dialog, Empty, Field, Heading } from "../components/shared";
 import type { Notify } from "../components/shared";
 import { BackupTable } from "./Backups";
 export function HostForm({
   host,
+  automatic = !host,
   onClose,
   onSaved,
   notify,
 }: {
   host?: Host;
+  automatic?: boolean;
   onClose: () => void;
   onSaved: () => void;
   notify: Notify;
+}) {
+  const [method, setMethod] = useState(automatic ? "automatic" : "manual");
+  const props = { host, onClose, onSaved, notify };
+  return method === "automatic" ? (
+    <HostConnection {...props} onManual={() => setMethod("manual")} />
+  ) : (
+    <ManualHostForm {...props} onAutomatic={() => setMethod("automatic")} />
+  );
+}
+
+function HostConnection({
+  host,
+  onClose,
+  onSaved,
+  notify,
+  onManual,
+}: {
+  host?: Host;
+  onClose: () => void;
+  onSaved: () => void;
+  notify: Notify;
+  onManual: () => void;
+}) {
+  const [value, setValue] = useState<Host>(() => ({
+    id: "",
+    name: "",
+    address: "",
+    group: "",
+    cluster_id: "",
+    enabled: true,
+    schedule: "",
+    extra_paths: [],
+    ...host,
+    ssh_user: "anker",
+    restore_ssh_user: "anker-restore",
+    ssh_port: host?.ssh_port || 22,
+    key_path: "/etc/anker/keys/backup",
+    restore_key_path: "/etc/anker/keys/restore",
+    known_hosts_path: "/etc/anker/known_hosts",
+  }));
+  const [username, setUsername] = useState("root");
+  const [password, setPassword] = useState("");
+  const [identity, setIdentity] = useState<HostIdentity | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [busy, setBusy] = useState<"inspect" | "enroll" | null>(null);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+  const invalidate = () => {
+    setIdentity(null);
+    setConfirmed(false);
+  };
+  const set = (key: keyof Host, v: unknown) => {
+    invalidate();
+    setValue((old) => ({ ...old, [key]: v }));
+  };
+  const close = () => {
+    if (pending.current) return;
+    setPassword("");
+    onClose();
+  };
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (pending.current || (identity && (!confirmed || identity.changed)))
+      return;
+    pending.current = true;
+    setBusy(identity ? "enroll" : "inspect");
+    setError("");
+    try {
+      if (!identity) {
+        const result = await api<HostIdentity>(
+          "hosts/connection/inspect",
+          "POST",
+          {
+            address: value.address.trim(),
+            port: value.ssh_port,
+          },
+        );
+        setIdentity(result);
+        setConfirmed(false);
+      } else {
+        await api<Host>("hosts/connection/enroll", "POST", {
+          host: {
+            id: value.id,
+            name: value.name,
+            address: identity.address,
+            group: value.group,
+            cluster_id: value.cluster_id,
+            ssh_user: value.ssh_user,
+            ssh_port: identity.port,
+            key_path: value.key_path,
+            restore_ssh_user: value.restore_ssh_user,
+            restore_key_path: value.restore_key_path,
+            known_hosts_path: value.known_hosts_path,
+            enabled: value.enabled,
+            schedule: value.schedule,
+            extra_paths: value.extra_paths,
+          },
+          username: username.trim(),
+          password,
+          fingerprint: identity.fingerprint,
+          confirmed: true,
+        });
+        setPassword("");
+        notify("Host angebunden");
+        onSaved();
+        onClose();
+      }
+    } catch (e) {
+      const message = (e as Error).message;
+      setError(password ? message.split(password).join("[entfernt]") : message);
+      if (identity) {
+        setPassword("");
+        invalidate();
+      }
+    } finally {
+      pending.current = false;
+      setBusy(null);
+    }
+  }
+  return (
+    <Dialog
+      title={host ? "Verbindung einrichten" : "Host hinzufügen"}
+      onClose={close}
+      busy={!!busy}
+    >
+      <form onSubmit={submit}>
+        <p className="dialog-intro">
+          Anker richtet die SSH-Schlüssel und Hosthelfer automatisch ein. Das
+          Passwort wird einmalig zur Einrichtung verwendet und nicht
+          gespeichert.
+        </p>
+        {identity ? (
+          <section className="host-identity" aria-label="SSH-Identität">
+            <h3>Hostidentität bestätigen</h3>
+            <dl>
+              <dt>Adresse</dt>
+              <dd className="mono">
+                {identity.address}:{identity.port}
+              </dd>
+              <dt>Schlüsseltyp</dt>
+              <dd className="mono">{identity.key_type}</dd>
+              <dt>Fingerprint</dt>
+              <dd className="mono">{identity.fingerprint}</dd>
+            </dl>
+            {identity.changed ? (
+              <p className="notice warning" role="alert">
+                Der Hostschlüssel hat sich geändert. Die Anbindung ist gesperrt.
+                Identität am Host prüfen und die Änderung über die vorhandene
+                Hostschlüsselprüfung ausdrücklich übernehmen.
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  {identity.known
+                    ? "Bekannter Hostschlüssel stimmt überein."
+                    : "Noch nicht bekannt. Die Identität wurde noch nicht verifiziert."}
+                </p>
+                <p className="notice">
+                  Vergleiche den Fingerprint über einen vertrauenswürdigen
+                  Zugang, zum Beispiel die Proxmox-Konsole. Erst nach deiner
+                  Bestätigung wird das Passwort an diesen Host gesendet.
+                </p>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={confirmed}
+                    disabled={!!busy}
+                    onChange={(e) => setConfirmed(e.target.checked)}
+                  />
+                  Fingerprint geprüft und bestätigt
+                </label>
+              </>
+            )}
+            <button
+              type="button"
+              className="text-button"
+              disabled={!!busy}
+              onClick={invalidate}
+            >
+              Angaben ändern
+            </button>
+          </section>
+        ) : (
+          <>
+            <Field label="Adresse">
+              <input
+                required
+                autoComplete="off"
+                disabled={!!busy}
+                value={value.address}
+                onChange={(e) => set("address", e.target.value)}
+                placeholder="IP-Adresse oder DNS-Name"
+              />
+            </Field>
+            <div className="form-grid">
+              <Field
+                label="SSH-Benutzer"
+                hint="root oder ein Benutzer mit sudo-Rechten."
+              >
+                <input
+                  required
+                  autoComplete="off"
+                  disabled={!!busy}
+                  value={username}
+                  onChange={(e) => {
+                    invalidate();
+                    setUsername(e.target.value);
+                  }}
+                />
+              </Field>
+              <Field label="SSH-Passwort">
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  disabled={!!busy}
+                  value={password}
+                  onChange={(e) => {
+                    invalidate();
+                    setPassword(e.target.value);
+                  }}
+                />
+              </Field>
+            </div>
+            <button
+              type="button"
+              className="disclosure"
+              aria-expanded={advanced}
+              disabled={!!busy}
+              onClick={() => setAdvanced(!advanced)}
+            >
+              <ChevronDown size={14} className={advanced ? "rotated" : ""} />
+              Weitere Angaben
+            </button>
+            {advanced && (
+              <div className="advanced">
+                <div className="form-grid">
+                  <Field
+                    label="Hostname"
+                    hint="Optional; wird vom Host übernommen."
+                  >
+                    <input
+                      disabled={!!busy}
+                      value={value.name}
+                      onChange={(e) => set("name", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="SSH-Port">
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={65535}
+                      disabled={!!busy}
+                      value={value.ssh_port}
+                      onChange={(e) => set("ssh_port", +e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Gruppe">
+                    <input
+                      disabled={!!busy}
+                      value={value.group}
+                      onChange={(e) => set("group", e.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="Cluster"
+                    hint="Für Standalone-Hosts leer lassen."
+                  >
+                    <input
+                      disabled={!!busy}
+                      value={value.cluster_id}
+                      onChange={(e) => set("cluster_id", e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <Field
+                  label="Startzeit"
+                  hint="Leer übernimmt den gemeinsamen Zeitplan."
+                >
+                  <input
+                    type="time"
+                    disabled={!!busy}
+                    value={value.schedule}
+                    onChange={(e) => set("schedule", e.target.value)}
+                  />
+                </Field>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    disabled={!!busy}
+                    checked={value.enabled}
+                    onChange={(e) => set("enabled", e.target.checked)}
+                  />
+                  Automatisch sichern
+                </label>
+              </div>
+            )}
+            <button
+              type="button"
+              className="text-button host-method"
+              disabled={!!busy}
+              onClick={() => {
+                setPassword("");
+                onManual();
+              }}
+            >
+              Manuell einrichten
+            </button>
+          </>
+        )}
+        {error && (
+          <p className="notice warning" role="alert">
+            {error}
+          </p>
+        )}
+        {busy && (
+          <p className="muted" role="status">
+            {busy === "inspect"
+              ? "SSH-Identität wird ohne Passwort geprüft …"
+              : "Schlüssel und Hosthelfer werden eingerichtet und beide Zugänge geprüft. Das kann einen Moment dauern …"}
+          </p>
+        )}
+        <footer className="dialog-footer">
+          <button
+            type="button"
+            className="secondary"
+            disabled={!!busy}
+            onClick={close}
+          >
+            Abbrechen
+          </button>
+          <button
+            disabled={
+              !!busy || (!!identity && (identity.changed || !confirmed))
+            }
+          >
+            {busy
+              ? busy === "inspect"
+                ? "Prüft …"
+                : "Bindet an …"
+              : identity
+                ? "Host anbinden"
+                : "Identität prüfen"}
+          </button>
+        </footer>
+      </form>
+    </Dialog>
+  );
+}
+
+function ManualHostForm({
+  host,
+  onClose,
+  onSaved,
+  notify,
+  onAutomatic,
+}: {
+  host?: Host;
+  onClose: () => void;
+  onSaved: () => void;
+  notify: Notify;
+  onAutomatic: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [advanced, setAdvanced] = useState(!!host);
@@ -62,6 +428,14 @@ export function HostForm({
           Anker verbindet sich über SSH. Der verifizierte Hostschlüssel und das
           Sicherungsprofil bestimmen den Zugriff.
         </p>
+        <button
+          type="button"
+          className="text-button host-method"
+          disabled={busy}
+          onClick={onAutomatic}
+        >
+          Automatisch einrichten
+        </button>
         <div className="form-grid">
           <Field label="Hostname">
             <input
@@ -227,6 +601,7 @@ export default function Hosts({
   const [selected, setSelected] = useState("");
   const [tab, setTab] = useState("Übersicht");
   const [form, setForm] = useState<Host | "new" | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeName, setRemoveName] = useState("");
   const host = status.hosts.find((h) => h.id === selected);
@@ -264,6 +639,17 @@ export default function Hosts({
             action={
               canOperate && (
                 <>
+                  {canEdit && (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setReconnecting(true);
+                        setForm(host);
+                      }}
+                    >
+                      Verbindung einrichten
+                    </button>
+                  )}
                   <button
                     className="secondary"
                     onClick={() =>
@@ -444,7 +830,13 @@ export default function Hosts({
               </dl>
               {canEdit && (
                 <div className="inline-form">
-                  <button className="secondary" onClick={() => setForm(host)}>
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setReconnecting(false);
+                      setForm(host);
+                    }}
+                  >
                     Host bearbeiten
                   </button>
                   <button
@@ -468,7 +860,14 @@ export default function Hosts({
             description="Konfigurationen sichern und wiederherstellen."
             action={
               canEdit && (
-                <button onClick={() => setForm("new")}>Host hinzufügen</button>
+                <button
+                  onClick={() => {
+                    setReconnecting(false);
+                    setForm("new");
+                  }}
+                >
+                  Host hinzufügen
+                </button>
               )
             }
           />
@@ -610,6 +1009,7 @@ export default function Hosts({
       {form && (
         <HostForm
           host={form === "new" ? undefined : form}
+          automatic={form === "new" || reconnecting}
           onClose={() => setForm(null)}
           onSaved={refresh}
           notify={notify}

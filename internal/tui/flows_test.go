@@ -83,7 +83,7 @@ func connected(t *testing.T) (Model, *anker.Service) {
 // This fails if the form drops existing SSH properties or writes before approval.
 func TestGuidedHostCreateEditPauseAgainstService(t *testing.T) {
 	m, svc := connected(t)
-	m, _ = key(m, "a")
+	m, _ = key(m, "m")
 	m, _ = key(m, "edge-host")
 	m, _ = key(m, "tab")
 	m, _ = key(m, "192.0.2.42")
