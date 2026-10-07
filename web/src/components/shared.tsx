@@ -15,11 +15,68 @@ export type Notify = (message: string, error?: boolean) => void;
 export function State({ value, label }: { value: string; label?: string }) {
   const tone = ["successful", "demo_applied"].includes(value)
     ? "success"
-    : ["failed", "interrupted", "blocked", "damaged"].includes(value)
+    : ["failed", "interrupted", "blocked", "damaged", "partial"].includes(value)
       ? "warning"
-      : "muted";
+      : ["running", "applying"].includes(value)
+        ? "active"
+        : value === "queued"
+          ? "queued"
+          : "muted";
   return (
     <span className={"state " + tone}>{label || labels[value] || value}</span>
+  );
+}
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  label = "Einträge",
+  previousLabel = "Vorherige Seite",
+  nextLabel = "Nächste Seite",
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  label?: string;
+  previousLabel?: string;
+  nextLabel?: string;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.max(1, Math.min(page, pages));
+  return (
+    <nav className="pagination" aria-label={label + " · Seiten"}>
+      <span className="pagination-range">
+        {total ? (current - 1) * pageSize + 1 : 0}–
+        {Math.min(current * pageSize, total)} von {total} {label}
+      </span>
+      {pages > 1 && (
+        <div className="pagination-controls">
+          <button
+            type="button"
+            className="secondary"
+            aria-label={previousLabel}
+            disabled={current === 1}
+            onClick={() => onPageChange(current - 1)}
+          >
+            Zurück
+          </button>
+          <span className="pagination-page">
+            {current} / {pages}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            aria-label={nextLabel}
+            disabled={current === pages}
+            onClick={() => onPageChange(current + 1)}
+          >
+            Weiter
+          </button>
+        </div>
+      )}
+    </nav>
   );
 }
 export function Heading({

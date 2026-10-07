@@ -10,12 +10,14 @@ import {
   labels,
 } from "./api";
 import type { Status, User } from "./api";
-import { Dialog, Empty, Field, Heading } from "./components/shared";
+import { Dialog, Empty, Field, Heading, State } from "./components/shared";
+import ActiveJobs from "./components/ActiveJobs";
 import Jobs from "./views/Jobs";
 import Hosts from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
 import Restore from "./views/Restore";
 import Settings from "./views/Settings";
+import { useUpdateReload } from "./useUpdateReload";
 const pages = [
   "Übersicht",
   "Hosts",
@@ -89,6 +91,7 @@ export default function App() {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingPage, setPendingPage] = useState("");
   const [file, setFile] = useState("");
+  const [selectedJob, setSelectedJob] = useState("");
   const [restoreRequest, setRestoreRequest] = useState<{
     id: string;
     file?: string;
@@ -102,6 +105,7 @@ export default function App() {
     (message: string, error = false) => setToast({ message, error }),
     [],
   );
+  const updating = useUpdateReload(user?.role === "admin", notify);
   const refreshSequence = useRef(0);
   const acceptedSequence = useRef(0);
   const refresh = useCallback(async () => {
@@ -202,6 +206,10 @@ export default function App() {
     canManage: user.role === "admin",
     canDownload: user.secrets,
     openBackup: setFile,
+    openJob: (id: string) => {
+      setSelectedJob(id);
+      navigate("Aufträge");
+    },
     onRestore: restore,
   };
   const overdue = status.hosts.filter(
@@ -289,6 +297,15 @@ export default function App() {
         </div>
         <main key={page}>
           <div className="content">
+            {updating && (
+              <p className="update-progress" role="status">
+                <State value="running" label="Update" />
+                <span>
+                  {updating.target} wird installiert. Die Seite lädt nach
+                  erfolgreicher Startprüfung automatisch neu.
+                </span>
+              </p>
+            )}
             {status.scheduler_health?.error && user.role === "admin" && (
               <p className="notice warning" role="alert">
                 Zeitplan konnte nicht vollständig ausgeführt werden:{" "}
@@ -332,7 +349,11 @@ export default function App() {
               />
             )}{" "}
             {page === "Einstellungen" && user.role === "admin" && (
-              <Settings notify={notify} onDirtyChange={setSettingsDirty} />
+              <Settings
+                notify={notify}
+                onDirtyChange={setSettingsDirty}
+                updating={!!updating}
+              />
             )}{" "}
             {page === "Übersicht" && (
               <>
@@ -389,7 +410,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {overdue.map((h) => (
+                          {overdue.slice(0, 8).map((h) => (
                             <tr key={h.id}>
                               <td>{h.name}</td>
                               <td className="warning">
@@ -417,11 +438,26 @@ export default function App() {
                       Die Aufbewahrung läuft nach dem hinterlegten Zeitplan.
                     </Empty>
                   )}
+                  {overdue.length > 8 && (
+                    <button
+                      className="text-button"
+                      onClick={() => navigate("Hosts")}
+                    >
+                      Alle {overdue.length} Hosts mit Handlungsbedarf in der
+                      Hostansicht prüfen
+                    </button>
+                  )}
                 </section>
+                <ActiveJobs status={status} openJob={common.openJob} />
                 <section className="detail-section">
-                  <h3>Letzte Aufträge</h3>
+                  <h3>Letzte abgeschlossene Aufträge</h3>
                   <Jobs
-                    status={status}
+                    status={{
+                      ...status,
+                      jobs: status.jobs.filter(
+                        (j) => !["queued", "running"].includes(j.state),
+                      ),
+                    }}
                     notify={notify}
                     refresh={refresh}
                     canEdit={user.role !== "reader"}
@@ -449,7 +485,11 @@ export default function App() {
                       "."
                     : ""}
                 </p>
-                <Jobs {...common} />
+                <Jobs
+                  {...common}
+                  initialJob={selectedJob}
+                  onJobClose={() => setSelectedJob("")}
+                />
               </>
             )}
           </div>

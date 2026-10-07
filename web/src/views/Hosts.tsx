@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, ChevronDown, Search, ChevronRight } from "lucide-react";
-import { api, bytes, date, hostState } from "../api";
+import { api, date, hostState } from "../api";
 import type { Host, HostIdentity, Status } from "../api";
-import { Dialog, Empty, Field, Heading } from "../components/shared";
+import { Dialog, Empty, Field, Heading, State } from "../components/shared";
 import type { Notify } from "../components/shared";
 import { BackupTable } from "./Backups";
+import Inventory from "../components/Inventory";
+import ActiveJobs from "../components/ActiveJobs";
 export function HostForm({
   host,
   automatic = !host,
@@ -585,6 +587,7 @@ export default function Hosts({
   canDownload = false,
   canOperate = canEdit,
   openBackup,
+  openJob,
   onRestore,
 }: {
   status: Status;
@@ -594,6 +597,7 @@ export default function Hosts({
   canDownload?: boolean;
   canOperate?: boolean;
   openBackup: (id: string) => void;
+  openJob?: (id: string) => void;
   onRestore: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -651,6 +655,11 @@ export default function Hosts({
                     </button>
                   )}
                   <button
+                    disabled={status.jobs.some(
+                      (j) =>
+                        j.host_id === host.id &&
+                        ["queued", "running"].includes(j.state),
+                    )}
                     className="secondary"
                     onClick={() =>
                       action(
@@ -662,6 +671,11 @@ export default function Hosts({
                     Verbindung prüfen
                   </button>
                   <button
+                    disabled={status.jobs.some(
+                      (j) =>
+                        j.host_id === host.id &&
+                        ["queued", "running"].includes(j.state),
+                    )}
                     onClick={() =>
                       action(
                         "hosts/" + host.id + "/backup",
@@ -688,6 +702,13 @@ export default function Hosts({
               ),
             )}
           </div>
+          <ActiveJobs
+            status={{
+              hosts: [host],
+              jobs: status.jobs.filter((j) => j.host_id === host.id),
+            }}
+            openJob={openJob}
+          />
           {tab === "Übersicht" && (
             <div className="detail-section">
               <dl className="properties">
@@ -741,6 +762,7 @@ export default function Hosts({
           )}
           {tab === "Sicherungen" && (
             <BackupTable
+              filterKey={host.id}
               backups={status.backups.filter((b) => b.host_id === host.id)}
               notify={notify}
               refresh={refresh}
@@ -752,62 +774,11 @@ export default function Hosts({
           )}{" "}
           {tab === "Inventar" &&
             (host.inventory ? (
-              <div className="detail-section">
-                <dl className="properties">
-                  <dt>Proxmox</dt>
-                  <dd>{host.inventory.pve_version}</dd>
-                  <dt>Debian</dt>
-                  <dd>{host.inventory.debian}</dd>
-                  <dt>Kernel</dt>
-                  <dd className="mono">{host.inventory.kernel}</dd>
-                  <dt>Bootmodus</dt>
-                  <dd>{host.inventory.boot_mode}</dd>
-                </dl>
-                <h3>Netzwerk</h3>
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Schnittstelle</th>
-                        <th>MAC-Adresse</th>
-                        <th>PCI-Pfad</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {host.inventory.interfaces.map((p) => (
-                        <tr key={p.name}>
-                          <td className="mono">{p.name}</td>
-                          <td className="mono muted">{p.mac}</td>
-                          <td className="mono muted">{p.pci || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <h3>Datenträger</h3>
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Gerät</th>
-                        <th>Kennung</th>
-                        <th>Größe</th>
-                        <th>Mount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {host.inventory.disks.map((d, i) => (
-                        <tr key={i}>
-                          <td className="mono">{d.name}</td>
-                          <td className="mono">{d.id}</td>
-                          <td>{bytes(d.size)}</td>
-                          <td>{d.mount || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <Inventory
+                key={host.id}
+                inventory={host.inventory}
+                collectedAt={host.last_probe}
+              />
             ) : (
               <Empty title="Noch kein Inventar">
                 Mit „Verbindung prüfen“ liest Anker den aktuellen Hostzustand.
@@ -930,6 +901,37 @@ export default function Hosts({
                           <span className={"state " + state.tone}>
                             {state.text}
                           </span>
+                          {status.jobs.some(
+                            (j) =>
+                              j.host_id === h.id &&
+                              j.kind === "backup" &&
+                              ["queued", "running"].includes(j.state),
+                          ) && (
+                            <div className="secondary-line">
+                              <State
+                                value={
+                                  status.jobs.some(
+                                    (j) =>
+                                      j.host_id === h.id &&
+                                      j.kind === "backup" &&
+                                      j.state === "running",
+                                  )
+                                    ? "running"
+                                    : "queued"
+                                }
+                                label={
+                                  status.jobs.some(
+                                    (j) =>
+                                      j.host_id === h.id &&
+                                      j.kind === "backup" &&
+                                      j.state === "running",
+                                  )
+                                    ? "Sicherung läuft"
+                                    : "Sicherung wartet"
+                                }
+                              />
+                            </div>
+                          )}
                         </td>
                         <td className="right">
                           <button

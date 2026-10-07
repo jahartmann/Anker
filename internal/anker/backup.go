@@ -302,6 +302,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 		}
 		b.Size += e.Size
 	}
+	c.Warnings = reconcileDependencyWarnings(stage, c)
 	for _, required := range h.ExtraPaths {
 		rel := strings.TrimPrefix(required, "/")
 		if !seen[rel] {

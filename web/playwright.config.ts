@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-const runID = Date.now();
+const runID = (process.env.ANKER_BROWSER_RUN_ID ||= String(Date.now()));
 const productionRoot = "/tmp/anker-production-browser-" + runID;
 export default defineConfig({
   testDir: "tests",
@@ -11,7 +11,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
   },
   projects: [
-    { name: "demo", testMatch: "app.spec.ts" },
+    { name: "demo", testMatch: ["app.spec.ts", "usability-*.spec.ts"] },
     {
       name: "production",
       testMatch: "production.spec.ts",

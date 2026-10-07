@@ -11,9 +11,11 @@ import Storage from "./Storage";
 export default function Settings({
   notify,
   onDirtyChange,
+  updating = false,
 }: {
   notify: Notify;
   onDirtyChange: (dirty: boolean) => void;
+  updating?: boolean;
 }) {
   const [value, setValue] = useState<Values | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,6 +28,7 @@ export default function Settings({
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [reload, setReload] = useState(0);
+  const [archiveAfter, setArchiveAfter] = useState(90);
   const dirty = !!value && JSON.stringify(value) !== saved;
   const [certificateDirty, setCertificateDirty] = useState(false);
   useEffect(() => {
@@ -48,6 +51,7 @@ export default function Settings({
         if (active) {
           setValue(v);
           setSaved(JSON.stringify(v));
+          if (v.archive_days > 0) setArchiveAfter(v.archive_days);
         }
       })
       .catch((e) => {
@@ -120,7 +124,7 @@ export default function Settings({
       {tab === "Speicher" && <Storage notify={notify} />}
       {["Sicherung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
-          <fieldset className="form-fields" disabled={busy}>
+          <fieldset className="form-fields" disabled={busy || updating}>
             {tab === "Sicherung" ? (
               <>
                 <section>
@@ -170,32 +174,126 @@ export default function Settings({
                     Ein neues Parallelitätslimit gilt für wartende Aufträge.
                     Laufende Aufträge werden dafür nicht abgebrochen.
                   </p>
+                  <div className="freshness-setting">
+                    <Field
+                      label="Überfällig nach Stunden"
+                      hint="Ohne aktuelle erfolgreiche Sicherung erscheint ein Hinweis am Host. Diese Grenze löscht keine Daten."
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={value.stale_hours}
+                        onChange={(e) => set("stale_hours", +e.target.value)}
+                      />
+                    </Field>
+                  </div>
                 </section>
                 <section>
                   <h3>Aufbewahrung</h3>
                   <p className="muted">
-                    Geschützte Stände, unvollständige Sicherungen und
-                    referenzierte Pläne bleiben erhalten.
+                    Die Regeln gelten für jeden Host einzeln. Anker behält
+                    jeweils den neuesten erfolgreichen Stand pro Tag, Woche und
+                    Monat. Gezählt werden Zeiträume, in denen eine Sicherung
+                    vorhanden ist.
                   </p>
-                  <div className="form-grid">
+                  <div className="retention-rules">
                     {(
                       [
-                        ["daily", "Tagesstände"],
-                        ["weekly", "Wochenstände"],
-                        ["monthly", "Monatsstände"],
-                        ["archive_days", "Archivierung nach Tagen"],
-                        ["stale_hours", "Überfällig nach Stunden"],
+                        [
+                          "daily",
+                          "Tagesstände",
+                          "Ein Stand je Sicherungstag – für Änderungen der letzten Tage.",
+                        ],
+                        [
+                          "weekly",
+                          "Wochenstände",
+                          "Ein Stand je Kalenderwoche – für den Blick weiter zurück.",
+                        ],
+                        [
+                          "monthly",
+                          "Monatsstände",
+                          "Ein Stand je Kalendermonat – für die langfristige Historie.",
+                        ],
                       ] as const
-                    ).map(([k, l]) => (
-                      <Field key={k} label={l}>
+                    ).map(([k, l, hint]) => (
+                      <Field key={k} label={l} hint={hint}>
                         <input
                           type="number"
                           min={1}
+                          required
                           value={value[k]}
                           onChange={(e) => set(k, +e.target.value)}
                         />
                       </Field>
                     ))}
+                  </div>
+                  <div
+                    className="retention-summary"
+                    role="status"
+                    aria-label="Aufbewahrungsübersicht"
+                  >
+                    <span className="count-badge">Je Host</span>
+                    <span>{value.daily} Tage</span>
+                    <span>{value.weekly} Wochen</span>
+                    <span>{value.monthly} Monate</span>
+                  </div>
+                  <p className="field-hint">
+                    Ein Stand kann mehrere Regeln erfüllen; die Zahlen werden
+                    nicht addiert. Stände außerhalb dieser Regeln werden bei der
+                    täglichen Wartung gelöscht.
+                  </p>
+                  <div className="retention-protection">
+                    <span className="count-badge success">
+                      Bleiben erhalten
+                    </span>
+                    <p>
+                      Der letzte erfolgreiche Stand, geschützte Stände,
+                      unvollständige oder beschädigte Sicherungen und Stände aus
+                      Wiederherstellungsplänen.
+                    </p>
+                  </div>
+                  <div className="archive-policy">
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={value.archive_days > 0}
+                        onChange={(e) =>
+                          set(
+                            "archive_days",
+                            e.target.checked ? archiveAfter : 0,
+                          )
+                        }
+                      />
+                      Ältere Stände automatisch archivieren
+                    </label>
+                    <p className="field-hint">
+                      Archivierung spart Platz: Die Dateien werden komprimiert,
+                      der Stand bleibt im Web lesbar und herunterladbar. Sie
+                      verlängert die Aufbewahrung nicht.
+                    </p>
+                    <Field
+                      label="Archivierung nach Tagen"
+                      hint="Geschützte und in Plänen verwendete Stände bleiben als lesbare Ordner erhalten."
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        required={value.archive_days > 0}
+                        disabled={value.archive_days === 0}
+                        value={value.archive_days || archiveAfter}
+                        onChange={(e) => {
+                          setArchiveAfter(+e.target.value);
+                          set("archive_days", +e.target.value);
+                        }}
+                      />
+                    </Field>
+                    {value.archive_days === 0 && (
+                      <p className="field-hint">
+                        Automatische Archivierung ist ausgeschaltet. Die
+                        Aufbewahrungsregeln gelten weiterhin.
+                      </p>
+                    )}
                   </div>
                 </section>
               </>
@@ -302,7 +400,7 @@ export default function Settings({
         </form>
       )}
       {tab === "Zugriff" && (
-        <>
+        <div inert={updating}>
           <form className="settings-form access-policy" onSubmit={save}>
             <section>
               <h3>Anmeldung</h3>
@@ -320,7 +418,7 @@ export default function Settings({
                   max={365}
                   required
                   value={value.session_days}
-                  disabled={busy}
+                  disabled={busy || updating}
                   onChange={(e) => set("session_days", +e.target.value)}
                 />
               </Field>
@@ -334,7 +432,7 @@ export default function Settings({
                   max={128}
                   required
                   value={value.password_min_length ?? 8}
-                  disabled={busy}
+                  disabled={busy || updating}
                   onChange={(e) => set("password_min_length", +e.target.value)}
                 />
               </Field>
@@ -361,11 +459,13 @@ export default function Settings({
               (JSON.parse(saved) as Values).password_min_length || 8
             }
           />
-        </>
+        </div>
       )}
       <section className="detail-section" hidden={tab !== "System"}>
-        <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
-        <Updates />
+        <div inert={updating}>
+          <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
+        </div>
+        <Updates canInstall={!dirty && !certificateDirty} />
         <h3>Systemprüfung</h3>
         <pre className="system-output">
           {doctor ? JSON.stringify(doctor, null, 2) : "Wird geladen …"}

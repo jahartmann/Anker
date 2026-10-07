@@ -59,6 +59,77 @@ class CompletenessTests(unittest.TestCase):
    warnings=helper.dependency_warnings(out,[{'path':'etc/pve/qemu-server/100.conf','type':'file','size':40}])
    self.assertTrue(any('/var/lib/vz/snippets/hook.sh' in w for w in warnings))
 
+ def collect_config(self,root,path,content,paths=None):
+  config=root/path;config.parent.mkdir(parents=True,exist_ok=True);config.write_text(content)
+  dbpath=root/'var/lib/pve-cluster/config.db';dbpath.parent.mkdir(parents=True,exist_ok=True)
+  with sqlite3.connect(dbpath) as db:
+   db.execute('CREATE TABLE tree(inode INTEGER PRIMARY KEY,parent INTEGER,mtime INTEGER,type INTEGER,name TEXT,data BLOB)')
+  out=root/'out';out.mkdir()
+  warnings=helper.collect(root,out,paths or ['/etc'],test_mode=True)['warnings']
+  return [warning for warning in warnings if warning.startswith(('Referenced ','Unresolved '))]
+
+ def test_proxmox_rng_device_is_not_a_missing_file_dependency(self):
+  for path in ('etc/pve/qemu-server/9901.conf','etc/pve/nodes/zp01/qemu-server/9901.conf'):
+   for device in ('/dev/urandom','/dev/random','/dev/hwrng'):
+    for options in ('',',max_bytes=1024,period=1000'):
+     with self.subTest(path=path,device=device,options=options),tempfile.TemporaryDirectory() as d:
+      out=pathlib.Path(d);config=out/'files'/path;config.parent.mkdir(parents=True);config.write_text('rng0: source='+device+options+'\n')
+      self.assertEqual(helper.dependency_warnings(out,[{'path':path,'type':'file','size':config.stat().st_size}]),[])
+
+ def test_rng_exception_preserves_other_file_dependencies(self):
+  cases=(('etc/app.conf','source=/dev/urandom\n','/dev/urandom'),
+         ('etc/pve/nodes/zp01/qemu-server/9901.conf','rng0: source=/opt/secrets/random.seed\n','/opt/secrets/random.seed'),
+         ('etc/pve/nodes/zp01/qemu-server/9901.conf','keyfile=/dev/urandom\n','/dev/urandom'),
+         ('etc/pve/nodes/zp01/qemu-server/9901.conf','rng0: source=/dev/urandom,keyfile=/opt/secrets/key\n','/opt/secrets/key'),
+         ('etc/pve/nodes/zp01/qemu-server/9901.conf','rng0: source=/dev/urandom\ncredentials=/opt/secrets/auth\ninclude /opt/config\n','/opt/secrets/auth'))
+  for path,content,missing in cases:
+   with self.subTest(path=path,content=content),tempfile.TemporaryDirectory() as d:
+    out=pathlib.Path(d);config=out/'files'/path;config.parent.mkdir(parents=True);config.write_text(content)
+    warnings=helper.dependency_warnings(out,[{'path':path,'type':'file','size':len(content)}])
+    self.assertTrue(any(missing in warning for warning in warnings))
+
+ def test_absent_vim_source_guarded_by_filereadable_is_optional(self):
+  for quote in ('"',"'"):
+   with self.subTest(quote=quote),tempfile.TemporaryDirectory() as d:
+    content='if filereadable('+quote+'/etc/vim/vimrc.local'+quote+')\n  source /etc/vim/vimrc.local\nendif\n'
+    self.assertEqual(self.collect_config(pathlib.Path(d),'etc/vim/vimrc',content),[])
+
+ def test_existing_optional_vim_source_not_captured_still_warns(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);target=root/'etc/vim/vimrc.local';target.parent.mkdir(parents=True);target.write_text('set number\n')
+   warnings=self.collect_config(root,'etc/vim/vimrc','if filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local\nendif\n',paths=['/etc/vim/vimrc'])
+   self.assertTrue(any('/etc/vim/vimrc.local' in warning for warning in warnings))
+
+ def test_vim_guard_does_not_suppress_required_sources(self):
+  cases=('source /etc/vim/vimrc.local\n',
+         'if filereadable("/etc/vim/other")\n source /etc/vim/vimrc.local\nendif\n',
+         'if !filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local\nendif\n',
+         'if filereadable("/etc/vim/vimrc.local")\nendif\nsource /etc/vim/vimrc.local\n',
+         'if filereadable("/etc/vim/vimrc.local")\nelse\n source /etc/vim/vimrc.local\nendif\n',
+         'if filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local | endif | source /etc/vim/vimrc.local\n',
+         'if filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local\nendif\ninclude /opt/config\n')
+  for content in cases:
+   with self.subTest(content=content),tempfile.TemporaryDirectory() as d:
+    warnings=self.collect_config(pathlib.Path(d),'etc/vim/vimrc',content)
+    self.assertTrue(warnings)
+
+ def test_broken_symlink_optional_vim_source_still_warns(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);target=root/'etc/vim/vimrc.local';target.parent.mkdir(parents=True);target.symlink_to('missing')
+   warnings=self.collect_config(root,'etc/vim/vimrc','if filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local\nendif\n',paths=['/etc/vim/vimrc'])
+   self.assertTrue(any('/etc/vim/vimrc.local' in warning for warning in warnings))
+
+ def test_optional_vim_source_with_failed_metadata_lookup_still_warns(self):
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);real_lstat=pathlib.Path.lstat
+   def lstat(path,*args,**kwargs):
+    if path==root/'etc/vim/vimrc.local':raise PermissionError('metadata denied')
+    return real_lstat(path,*args,**kwargs)
+   with patch.object(pathlib.Path,'lstat',lstat):
+    warnings=self.collect_config(root,'etc/vim/vimrc','if filereadable("/etc/vim/vimrc.local")\n source /etc/vim/vimrc.local\nendif\n')
+   self.assertTrue(any('/etc/vim/vimrc.local' in warning for warning in warnings))
+
 class DurableRestoreTests(unittest.TestCase):
  def test_rollback_is_synced_before_first_target_replace(self):
   from unittest.mock import patch

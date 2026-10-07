@@ -186,6 +186,16 @@ sudo anker job retry AUFTRAG
 sudo anker job remove AUFTRAG
 ```
 
+## Sicherungen und Inventar im Web
+
+Unter **Sicherungen** nach Host, Status, Schutz oder Archiv filtern; die Suche findet Hostnamen und Sicherungs-IDs. Die Liste zeigt 25 oder 50 Stände pro Seite. Laufende Sicherungen stehen separat mit Host, Start und Laufzeit. **Aufträge** trennt aktive Arbeit vom Verlauf und lässt sich zusätzlich nach Auftragstyp durchsuchen.
+
+**Dateien** öffnet die Ordner des gewählten Stands. Über die Pfadleiste zurückgehen oder mit **Pfad suchen** über alle Unterordner suchen. Die Treffer haben ebenfalls feste Seiten. Eine Datei auswählen, um sie anzusehen, herunterzuladen oder zur Wiederherstellung zu übernehmen. Verknüpfungen zeigen ihr Ziel; geschützte Inhalte benötigen weiterhin eine ausdrückliche Freigabe. Hinweise zur Erfassung sind aufklappbar.
+
+Im **Inventar** stehen System und Cluster zuerst. Netzwerk und Datenträger haben getrennte Suchen und Seiten; Kennungen und weitere erfasste Daten lassen sich bei Bedarf öffnen.
+
+Unter **Einstellungen → Sicherung → Aufbewahrung** gelten die Tages-, Wochen- und Monatsregeln einzeln je Host: jeweils der neueste erfolgreiche Stand eines Zeitraums bleibt. Ein Stand kann mehrere Regeln erfüllen; die Zahlen werden nicht addiert. Der letzte erfolgreiche Stand, geschützte/unvollständige/beschädigte Stände und Quellen von Wiederherstellungsplänen bleiben erhalten. Automatische Archivierung lässt sich ausschalten; komprimierte Stände unterliegen weiterhin der Aufbewahrung. **Überfällig nach Stunden** steuert nur den Hosthinweis und löscht nichts.
+
 ## Einrichtung im Überblick
 
 | Schritt | Vereinfachung oder Grund für die manuelle Angabe |
@@ -252,6 +262,8 @@ Unter Hosts öffnet `h` die SSH-Schlüsselprüfung. Den Fingerprint vorher auf d
 Updates unter **Einstellungen → System → Updates** einrichten, prüfen und installieren. Fehlt die Quelle, „Updatequelle einrichten“ wählen, die mitgelieferte Anker-Quelle bestätigen und anschließend nach Updates suchen. Dafür ist kein Terminalbefehl nötig. Eine eigene Quelle kann mit ihrem unabhängig geprüften öffentlichen Ed25519-Schlüssel angegeben werden. Nur Administratoren dürfen die Quelle ändern; der Dialog zeigt den Fingerprint vor dem Speichern. Der Schlüssel wird nicht aus einem ungeprüften Release nachgeladen.
 
 Alternativ `sudo anker update check`, danach `sudo anker update install`. Signatur und SHA-256 werden vor der Installation geprüft. Laufende Sicherungen und Wiederherstellungen blockieren das Update. Bei fehlgeschlagenem Start stellt der Updater die vorherige Version und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
+
+Nach einem im Web gestarteten Update lädt die Seite automatisch neu, sobald die neue Version die Startprüfung bestanden hat. Das funktioniert auch bei einem Seitenwechsel und kurzer Nichterreichbarkeit des Dienstes. Bei einem fehlgeschlagenen Update bleibt die Seite bestehen und zeigt den Rückfall. Ungespeicherte Einstellungen vor dem Update speichern. Beim ersten Update von einer älteren Oberfläche auf 0.2.3 die Seite einmal selbst neu laden; die Automatik gilt ab der neuen Oberfläche.
 
 ## Wiederherstellung und Grenzen
 

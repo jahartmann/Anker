@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api, bytes, date } from "../api";
 import { Dialog, LoadError } from "../components/shared";
+import { beginUpdateReload, cancelUpdateReload } from "../useUpdateReload";
 type UpdateState = {
   busy?: boolean;
   configured: boolean;
@@ -215,7 +216,11 @@ function UpdateSourceDialog({
   );
 }
 
-export default function Updates() {
+export default function Updates({
+  canInstall = true,
+}: {
+  canInstall?: boolean;
+}) {
   const [state, setState] = useState<UpdateState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -251,7 +256,10 @@ export default function Updates() {
         if (active) {
           setState(v);
           setError("");
-          if (v.status === "installing") timer = setTimeout(load, 2000);
+          if (v.status === "installing") {
+            if (v.target) beginUpdateReload(v.target);
+            timer = setTimeout(load, 2000);
+          }
         }
       } catch (e) {
         if (active) {
@@ -281,15 +289,23 @@ export default function Updates() {
     if (!state?.available) return;
     setBusy(true);
     setError("");
+    beginUpdateReload(state.available.version);
     try {
       const next = await api<UpdateState>("updates/install", "POST", {
         version: state.available.version,
       });
       setState(next);
+      beginUpdateReload(next.target || state.available.version);
       setConfirm(false);
       setReload((n) => n + 1);
     } catch (e) {
       setError((e as Error).message);
+      const message = (e as Error).message;
+      if (
+        !message.startsWith("Anker ist nicht erreichbar") &&
+        !message.startsWith("Ungültige Serverantwort")
+      )
+        cancelUpdateReload();
     } finally {
       setBusy(false);
     }
@@ -383,7 +399,8 @@ export default function Updates() {
                   <p>
                     Die Oberfläche kann beim Neustart kurz nicht erreichbar
                     sein. Anker prüft den Start und fällt bei einem Fehler auf
-                    die vorherige Version zurück.
+                    die vorherige Version zurück. Nach erfolgreichem Start wird
+                    diese Seite automatisch neu geladen.
                   </p>
                 </div>
               ) : state.available ? (
@@ -403,6 +420,7 @@ export default function Updates() {
                     </p>
                   </div>
                   <button
+                    disabled={!canInstall}
                     onClick={() => {
                       setError("");
                       setConfirm(true);
@@ -414,6 +432,11 @@ export default function Updates() {
               ) : state.checked_at && state.status !== "check_failed" ? (
                 <p className="muted">Keine neuere stabile Version verfügbar.</p>
               ) : null}
+              {!canInstall && !installing && (
+                <p className="field-hint">
+                  Änderungen in den Einstellungen vor dem Update speichern.
+                </p>
+              )}
               {state.message && !installing && (
                 <p
                   className={

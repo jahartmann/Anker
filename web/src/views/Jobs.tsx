@@ -1,8 +1,16 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
 import type { Job, Status } from "../api";
-import { Dialog, Empty, LoadError, State } from "../components/shared";
+import {
+  Dialog,
+  Empty,
+  Field,
+  LoadError,
+  Pagination,
+  State,
+} from "../components/shared";
 import type { Notify } from "../components/shared";
+import ActiveJobs, { jobDuration } from "../components/ActiveJobs";
 
 const active = (j: Job) => ["queued", "running"].includes(j.state);
 const finished = (j: Job) =>
@@ -22,6 +30,8 @@ export default function Jobs({
   canManage,
   openBackup,
   limit,
+  initialJob,
+  onJobClose,
 }: {
   status: Status;
   notify: Notify;
@@ -30,8 +40,14 @@ export default function Jobs({
   canManage: boolean;
   openBackup: (id: string) => void;
   limit?: number;
+  initialJob?: string;
+  onJobClose?: () => void;
 }) {
-  const [visible, setVisible] = useState(50);
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
+  const [host, setHost] = useState("");
+  const [kind, setKind] = useState("");
+  const [state, setState] = useState("");
   const [detail, setDetail] = useState<Job | null>(null);
   const [detailID, setDetailID] = useState("");
   const detailSequence = useRef(0);
@@ -39,9 +55,59 @@ export default function Jobs({
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [cancelling, setCancelling] = useState<string[]>([]);
-  const jobs = [...status.jobs]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, limit || visible);
+  const hostNames = new Map(status.hosts.map((h) => [h.id, h.name]));
+  for (const job of status.jobs)
+    if (!hostNames.has(job.host_id)) hostNames.set(job.host_id, job.host_id);
+  const search = query.trim().toLocaleLowerCase("de");
+  const filtered = status.jobs.filter(
+    (j) =>
+      (!host || j.host_id === host) &&
+      (!kind || j.kind === kind) &&
+      (!state || j.state === state) &&
+      (!search ||
+        [
+          j.id,
+          hostNames.get(j.host_id),
+          j.host_id,
+          labels[j.kind] || j.kind,
+          labels[j.state] || j.state,
+          j.state === "successful" ? "Erfolgreich" : "",
+          j.state === "queued" ? "In Warteschlange" : "",
+          trigger(j),
+          j.error,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("de")
+          .includes(search)),
+  );
+  const history = [
+    ...(limit ? status.jobs : filtered.filter((j) => !active(j))),
+  ].sort(
+    (a, b) =>
+      b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+  );
+  const pageSize = limit || 15;
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(history.length / pageSize)),
+  );
+  const jobs = history.slice(
+    limit ? 0 : (currentPage - 1) * pageSize,
+    limit ? pageSize : currentPage * pageSize,
+  );
+  const hasFilters = Boolean(query || host || kind || state);
+  useEffect(() => setPage(currentPage), [currentPage]);
+  useEffect(() => {
+    if (initialJob) void load(initialJob);
+  }, [initialJob]);
+  function resetFilters() {
+    setQuery("");
+    setHost("");
+    setKind("");
+    setState("");
+    setPage(1);
+  }
   const currentDetail = detail?.id === detailID ? detail : null;
   const polled = status.jobs.find((j) => j.id === detailID);
   // Each job advances once from queued to running to its final state. Keep
@@ -60,6 +126,7 @@ export default function Jobs({
     ++detailSequence.current;
     setDetailID("");
     setDetail(null);
+    onJobClose?.();
   }
   async function load(id: string) {
     const sequence = ++detailSequence.current;
@@ -109,15 +176,115 @@ export default function Jobs({
   }
   return (
     <>
+      {!limit && status.jobs.length > 0 && (
+        <div className="collection-toolbar jobs-toolbar">
+          <Field label="Aufträge suchen">
+            <input
+              type="search"
+              value={query}
+              placeholder="Host, Auftrag oder Fehler …"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+            />
+          </Field>
+          <Field label="Host">
+            <select
+              value={host}
+              onChange={(e) => {
+                setHost(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Alle Hosts</option>
+              {[...hostNames]
+                .sort((a, b) => a[1].localeCompare(b[1], "de"))
+                .map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Auftragstyp">
+            <select
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Alle Typen</option>
+              {[
+                ...new Set([
+                  "backup",
+                  "probe",
+                  "restore",
+                  ...status.jobs.map((j) => j.kind),
+                ]),
+              ].map((value) => (
+                <option key={value} value={value}>
+                  {labels[value] || value}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Auftragsstatus">
+            <select
+              value={state}
+              onChange={(e) => {
+                setState(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Alle Status</option>
+              {[
+                ["running", "Laufende Aufträge"],
+                ["queued", "Aufträge in Warteschlange"],
+                ["successful", "Erfolgreiche Aufträge"],
+                ["failed", "Fehlgeschlagene Aufträge"],
+                ["cancelled", "Abgebrochene Aufträge"],
+                ["interrupted", "Unterbrochene Aufträge"],
+              ].map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      )}
+      {!limit && hasFilters && (
+        <button className="text-button collection-reset" onClick={resetFilters}>
+          Filter zurücksetzen
+        </button>
+      )}
+      {!limit && (
+        <ActiveJobs
+          key={[query, host, kind, state].join("\0")}
+          status={{ ...status, jobs: filtered }}
+          openJob={load}
+        />
+      )}
+      {!limit && history.length > 0 && (
+        <div className="section-heading jobs-history-heading">
+          <h3>Auftragsverlauf</h3>
+          <span className="collection-count">
+            {history.length} abgeschlossen
+          </span>
+        </div>
+      )}
       {jobs.length ? (
         <div>
           <div className="table-scroll">
-            <table>
+            <table className="jobs-table" aria-label="Auftragsverlauf">
               <thead>
                 <tr>
                   <th>Auftrag</th>
                   <th>Status</th>
                   <th>Erstellt</th>
+                  <th>Laufzeit</th>
                   <th>Ergebnis</th>
                   <th>
                     <span className="sr-only">Details</span>
@@ -144,9 +311,12 @@ export default function Jobs({
                       />
                     </td>
                     <td className="date">{date(j.created_at)}</td>
+                    <td className="date">{jobDuration(j) || "—"}</td>
                     <td>
                       {j.error ? (
-                        <span className="warning">{j.error}</span>
+                        <span className="warning job-error" title={j.error}>
+                          {j.error}
+                        </span>
                       ) : j.state === "successful" ? (
                         "Abgeschlossen"
                       ) : j.state === "running" ? (
@@ -169,20 +339,31 @@ export default function Jobs({
               </tbody>
             </table>
           </div>
-          {!limit && status.jobs.length > visible && (
-            <button
-              className="text-button"
-              onClick={() => setVisible((v) => v + 50)}
-            >
-              Weitere Aufträge anzeigen ({status.jobs.length - visible})
-            </button>
+          {!limit && (
+            <Pagination
+              page={currentPage}
+              pageSize={pageSize}
+              total={history.length}
+              onPageChange={setPage}
+              label="Aufträge"
+              previousLabel="Vorherige Auftragsseite"
+              nextLabel="Nächste Auftragsseite"
+            />
           )}
         </div>
-      ) : (
+      ) : !status.jobs.length ? (
         <Empty title="Noch keine Aufträge">
           Gestartete Vorgänge erscheinen hier mit ihrem Ergebnis.
         </Empty>
-      )}
+      ) : !limit && !filtered.length ? (
+        <Empty title="Keine passenden Aufträge">
+          Suche oder Filter anpassen, um weitere Aufträge zu sehen.
+        </Empty>
+      ) : !limit ? (
+        <p className="collection-count">
+          Keine abgeschlossenen Aufträge für diese Auswahl.
+        </p>
+      ) : null}
       {detailID && (
         <Dialog title="Auftragsdetails" onClose={closeDetail} busy={busy}>
           {!currentDetail ? (
@@ -240,6 +421,10 @@ export default function Jobs({
                   <div>
                     <dt>Versuche</dt>
                     <dd>{selected.attempts}</dd>
+                  </div>
+                  <div>
+                    <dt>Laufzeit</dt>
+                    <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
                   </div>
                 </dl>
                 {selected.error && (

@@ -1,3 +1,4 @@
+import { demoCookies as loginDemo } from "./demo-auth";
 import { test, expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -5,12 +6,7 @@ let demoCookies: Awaited<
   ReturnType<APIRequestContext["storageState"]>
 >["cookies"];
 test.beforeAll(async ({ request }) => {
-  const response = await request.post("/api/login", {
-    headers: { "X-Anker-Request": "1" },
-    data: { name: "demo", password: "anker-demo-2026" },
-  });
-  expect(response.ok()).toBeTruthy();
-  demoCookies = (await request.storageState()).cookies;
+  demoCookies = await loginDemo(request);
 });
 test.beforeEach(async ({ page }) => {
   await page.context().addCookies(demoCookies);
@@ -403,6 +399,7 @@ test("host search and backup files work", async ({ page }) => {
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
     .click();
+  await page.getByPlaceholder("Pfad suchen").fill("etc/network/interfaces");
   await page.getByRole("button", { name: /^etc\/network\/interfaces/ }).click();
   await expect(
     page.getByText("bridge-ports eno1", { exact: false }),
@@ -418,6 +415,7 @@ test("selected file carries into a fresh restore request", async ({ page }) => {
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
     .click();
+  await page.getByPlaceholder("Pfad suchen").fill("etc/sysctl.d/99-anker.conf");
   await page
     .getByRole("button", { name: /^etc\/sysctl.d\/99-anker.conf/ })
     .click();
@@ -460,6 +458,7 @@ test("file list failures can be retried without closing the dialog", async ({
   );
   fail = false;
   await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
+  await page.getByPlaceholder("Pfad suchen").fill("etc/hostname");
   await expect(
     page.getByRole("button", { name: /^etc\/hostname/ }),
   ).toBeVisible();
@@ -489,6 +488,7 @@ test("preview failure retains selected file and supports retry", async ({
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
     .click();
+  await page.getByPlaceholder("Pfad suchen").fill("etc/hostname");
   await page.getByRole("button", { name: /^etc\/hostname/ }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
     "Datei momentan nicht lesbar",
@@ -1086,6 +1086,9 @@ test("secrets stay masked until explicitly revealed and export downloads", async
     .first()
     .click();
   await page
+    .getByPlaceholder("Pfad suchen")
+    .fill("etc/pve/priv/storage/demo.pw");
+  await page
     .getByRole("button", { name: /^etc\/pve\/priv\/storage\/demo.pw/ })
     .click();
   await expect(
@@ -1300,8 +1303,10 @@ test("late file responses never overwrite the newly selected file", async ({
   const late = page.waitForResponse((r) =>
     r.url().includes("file?path=etc%2Fnetwork%2Finterfaces"),
   );
+  await page.getByPlaceholder("Pfad suchen").fill("etc/network/interfaces");
   await page.getByRole("button", { name: /^etc\/network\/interfaces/ }).click();
   await started;
+  await page.getByPlaceholder("Pfad suchen").fill("etc/sysctl.d/99-anker.conf");
   await page
     .getByRole("button", { name: /^etc\/sysctl.d\/99-anker.conf/ })
     .click();
@@ -1374,11 +1379,14 @@ test("three months of backups are shown in manageable pages", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
-  await expect(page.getByRole("row")).toHaveCount(51);
+  await expect(page.getByRole("row")).toHaveCount(26);
   await page
-    .getByRole("button", { name: /Weitere Sicherungen anzeigen/ })
+    .getByRole("button", { name: "Nächste Seite", exact: true })
     .click();
-  await expect(page.getByRole("row")).toHaveCount(101);
+  await expect(page.getByRole("row")).toHaveCount(26);
+  await expect(
+    page.getByRole("navigation", { name: "Sicherungen · Seiten" }),
+  ).toContainText("26–50 von 3600");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
 });

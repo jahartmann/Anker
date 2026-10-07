@@ -166,10 +166,10 @@ def collect(root,out,paths,test_mode=False):
   snapshot_db(db,out/'recovery/config.db')
   entries.extend(decode_db(out/'recovery/config.db',out))
  except (sqlite3.Error,OSError,ValueError) as exc:warnings.append('config.db capture failed: '+str(exc))
- warnings.extend(dependency_warnings(out,entries))
+ warnings.extend(dependency_warnings(out,entries,root))
  return {'inventory':probe(root,test_mode),'entries':entries,'warnings':warnings}
 
-def dependency_warnings(out,entries):
+def dependency_warnings(out,entries,root=None):
  """Bounded discovery of Proxmox hooks and explicit config/secret file references."""
  known={e['path'] for e in entries};warnings=[];storage={}
  p=out/'files/etc/pve/storage.cfg'
@@ -189,9 +189,17 @@ def dependency_warnings(out,entries):
   try:data=p.read_text(errors='replace')
   except OSError:continue
   if '\x00' in data:continue
+  vm_config=re.fullmatch(r'etc/pve/(?:nodes/[^/]+/)?qemu-server/\d+\.conf',e['path']) is not None
+  vim_config=e['path'].startswith('etc/vim/');vim_guards=[]
   for line in data.splitlines():
    line=line.strip()
-   if not line or line.startswith(('#',';')):continue
+   if not line or line.startswith(('#',';')) or (vim_config and line.startswith('"')):continue
+   if vim_config:
+    if re.match(r'^if\s+',line):
+     guard=re.fullmatch(r'if\s+filereadable\(\s*(["\'])(/[^"\']+)\1\s*\)',line)
+     vim_guards.append(guard.group(2) if guard else None)
+    elif re.match(r'^(?:else|elseif)\b',line) and vim_guards:vim_guards[-1]=None
+    elif re.match(r'^endif\b',line) and vim_guards:vim_guards.pop()
    hook=re.match(r'^hookscript\s*:\s*(\S+)',line)
    if hook:
     ref=hook.group(1);parts=ref.split(':',1)
@@ -199,10 +207,18 @@ def dependency_warnings(out,entries):
      candidate=storage[parts[0]].rstrip('/')+'/'+parts[1]
      if candidate.lstrip('/') not in known:warnings.append('Referenced hookscript is not captured: '+candidate+' ('+e['path']+')')
     else:warnings.append('Unresolved hookscript dependency: '+ref+' ('+e['path']+')')
-   match=re.search(r'(?i)\b(?:keyfile|key_file|ssl_keyfile|privatekeyfile|certificatefile|certfile|ca_file|credentials|secret_file|include|source|script)\s*(?:[:=]\s*|\s+)["\']?(/[^\s"\';]+)',line)
+   match=re.search(r'(?i)\b(keyfile|key_file|ssl_keyfile|privatekeyfile|certificatefile|certfile|ca_file|credentials|secret_file|include|source|script)\s*(?:[:=]\s*|\s+)["\']?(/[^\s"\';]+)',line)
    if match:
-    candidate=match.group(1)
+    directive=match.group(1).lower();candidate=match.group(2)
     if '*' in candidate or '?' in candidate:continue
+    # RNG source selects a runtime device, not a restorable config file.
+    if vm_config and directive=='source' and re.fullmatch(r'rng0\s*:\s*source=/dev/(?:urandom|random|hwrng)(?:,(?:max_bytes|period)=\d+)*',line):continue
+    # Only absence proven on the source host makes a guarded Vim source optional.
+    # lstat preserves warnings for broken links and never reads device contents.
+    if vim_config and directive=='source' and re.match(r'^source\s+',line) and '|' not in line and candidate in vim_guards and root is not None:
+     try:(root/candidate.lstrip('/')).lstat()
+     except FileNotFoundError:continue
+     except OSError:pass
     if candidate.lstrip('/') not in known:warnings.append('Referenced config/secret is not captured: '+candidate+' ('+e['path']+')')
  return sorted(set(warnings))
 

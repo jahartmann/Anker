@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.2.3
+
+- Die Weboberfläche lädt nach einem bestätigten Update automatisch neu, auch nach einem Seitenwechsel oder vorübergehendem Verbindungsabbruch. Fehlgeschlagene Updates erzeugen keine Reload-Schleife.
+- Laufende und wartende Aufträge sind getrennt vom Verlauf sichtbar, mit Host, tatsächlicher Laufzeit und Versuch. Aufträge und Sicherungen haben Filter und feste Seiten statt wachsender Listen.
+- Sicherungsdateien über Ordner, Breadcrumbs und eine Suche über alle Pfade durchsuchen; 25 oder 50 Einträge pro Seite. Vorschau, geschützte Inhalte, Download und Wiederherstellung bleiben verfügbar.
+- Inventar mit kompakten Systemangaben, durchsuchbaren Netzwerk-/Datenträgertabellen und aufklappbaren Details. Zurückhaltende Statusfarben und einheitliche Listensteuerung.
+- Aufbewahrung erklärt die Tages-, Wochen- und Monatsregeln je Host. Archivierung und Überfälligkeitsgrenze sind getrennt; automatische Archivierung lässt sich ausschalten.
+- Neue Sicherungen erkennen die Proxmox-RNG-Quelle `/dev/urandom` und nachweislich fehlende optionale Vim-Includes korrekt. Die zentrale Prüfung berücksichtigt vorhandene Hosthelfer; echte fehlende Dateien bleiben Hinweise. Vorhandene Sicherungsmanifeste bleiben unverändert.
+
 ## 0.2.2
 
 - Hosts direkt im Web oder Terminal mit Adresse, SSH-Benutzer und einmaligem Passwort anbinden. Nach Fingerprintbestätigung installiert Anker den Helfer und getrennte Sicherungs-/Wiederherstellungszugänge; gespeichert wird erst nach erfolgreichen Schlüsselprüfungen.
