@@ -16,7 +16,27 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+// Apply directory permissions explicitly: setup can inherit the installer's
+// private umask, and an existing directory can retain a previous restrictive mode.
+func setupTLSDirectory(path string, gid int) error {
+	if err := os.MkdirAll(path, 0750); err != nil {
+		return err
+	}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	dir := os.NewFile(uintptr(fd), path)
+	defer dir.Close()
+	if err = dir.Chown(os.Geteuid(), gid); err != nil {
+		return err
+	}
+	return dir.Chmod(0750)
+}
 
 func setupTLSName(host string) error {
 	if ip := net.ParseIP(host); ip != nil {

@@ -597,13 +597,12 @@ func runSetup(configureUpdates bool) (result error) {
 			return err
 		}
 	}
+	if web.Cert != "" && filepath.Dir(web.Cert) == "/etc/anker/tls" {
+		if err = setupTLSDirectory(filepath.Dir(web.Cert), gid); err != nil {
+			return err
+		}
+	}
 	if web.Cert != "" && web.Cert != setupEnvValue(string(priorEnv), "ANKER_TLS_CERT") {
-		if err = os.MkdirAll(filepath.Dir(web.Cert), 0750); err != nil {
-			return err
-		}
-		if err = os.Chown(filepath.Dir(web.Cert), 0, gid); err != nil {
-			return err
-		}
 		if err = setupWrite(web.Cert, web.CertBytes, 0640, 0, gid); err != nil {
 			return err
 		}

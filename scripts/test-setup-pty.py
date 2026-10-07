@@ -22,7 +22,7 @@ def restart_updater():
  subprocess.run(['systemctl','reset-failed','anker-updater'],check=True)
  subprocess.run(['systemctl','restart','anker-updater'],check=True)
 
-def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,expect_error=False):
+def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,expect_error=False,installer=False):
  # This fixture deliberately performs many independent restarts in succession.
  if not first:subprocess.run(['systemctl','reset-failed','anker','anker-updater'],check=True)
  child,terminal=pty.fork()
@@ -32,6 +32,7 @@ def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,exp
    os.environ['NO_COLOR']='1';os.environ['ANKER_NO_ANIMATION']='1'
   else:
    os.environ.pop('NO_COLOR',None);os.environ.pop('ANKER_NO_ANIMATION',None)
+  if installer:os.execv('./scripts/install-server.sh',['./scripts/install-server.sh'])
   os.execv('/usr/local/bin/anker',['anker','setup'])
  steps=[]
  if first:steps+=[(b'Administratorname',b'\n'),(b'Administratorpasswort',b'init2026\n'),(b'Passwort wiederholen',b'init2026\n')]
@@ -67,12 +68,31 @@ def setup(first,mode="1",tls_choice="1",plain=False,reuse=False,cancel=False,exp
   except ChildProcessError:pass
   os.close(terminal)
 
-setup(True)
+def tls_paths():
+ env={line.split('=',1)[0]:shlex.split(line.split('=',1)[1])[0] for line in pathlib.Path('/etc/anker/service.env').read_text().splitlines() if '=' in line}
+ return pathlib.Path(env['ANKER_TLS_CERT']),pathlib.Path(env['ANKER_TLS_KEY'])
+
+# Exercise the user's actual installer -> setup path, including inherited umask.
+setup(True,'2',installer=True)
+first_cert,first_key=tls_paths()
+first_identity=(first_cert.read_bytes(),first_key.read_bytes())
+first_context=ssl.create_default_context(cafile=str(first_cert))
+first_request=urllib.request.Request('https://127.0.0.1:8087/api/login',data=json.dumps({'name':'admin','password':'init2026'}).encode(),headers={'Content-Type':'application/json','X-Anker-Request':'1'})
+with urllib.request.urlopen(first_request,context=first_context) as response:assert response.status==200
 keys={name:pathlib.Path('/etc/anker/keys/'+name).read_bytes() for name in ['backup','restore']}
+# Repair a directory left by the old installer while keeping its TLS identity.
+first_cert.parent.chmod(0o700)
 setup(False,plain=True,reuse=True)
+assert (first_cert.read_bytes(),first_key.read_bytes())==first_identity,'Permission repair replaced TLS identity'
+with urllib.request.urlopen(first_request,context=first_context) as response:assert response.status==200
+for path in (first_cert,first_key):
+ subprocess.run(['runuser','-u','anker','--','test','-r',str(path)],check=True)
+assert first_key.stat().st_mode&0o007==0,'Private TLS key became accessible to others'
+setup(False)
 for name,content in keys.items():
  assert pathlib.Path('/etc/anker/keys/'+name).read_bytes()==content,'Setup replaced an existing SSH key'
 print('Terminal setup and repeated setup passed; existing SSH keys preserved.')
+print('Installer-to-setup HTTPS and repair of root-only TLS directory passed; private key remains protected.')
 
 # Upgrade a legacy unit, including its disabled-without-update-source condition.
 unit=pathlib.Path('/etc/systemd/system/anker-updater.service')
@@ -90,10 +110,6 @@ try:
 finally:
  saved_update.rename(update_config);saved_key.rename(release_key)
  restart_updater()
-
-def tls_paths():
- env={line.split('=',1)[0]:shlex.split(line.split('=',1)[1])[0] for line in pathlib.Path('/etc/anker/service.env').read_text().splitlines() if '=' in line}
- return pathlib.Path(env['ANKER_TLS_CERT']),pathlib.Path(env['ANKER_TLS_KEY'])
 
 setup(False,'2','1')
 cert,key=tls_paths();original_cert=cert.read_bytes();original_key=key.read_bytes()

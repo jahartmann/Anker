@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- TLS-Ordnerrechte unabhängig von der Installer-umask setzen und bei erneuter Einrichtung reparieren. Der Webdienst kann seine Zertifikate lesen; private Schlüssel bleiben vor anderen Benutzern geschützt.
+
 - Installation direkt nach dem Clone: fehlende Werkzeuge automatisch installieren und Anker bauen. Dasselbe Skript erkennt bestehende Installationen und aktualisiert Hauptprogramm und Systemhelfer mit Sicherung, Startprüfung und Rückfall.
 
 - Wiederholte Terminaleinrichtung mit „Fortsetzen“ oder „Neu konfigurieren“. Vorhandene Ports, Zertifikate, Benutzer und SSH-Schlüssel bleiben erhalten; unterbrochene Konfigurationsänderungen werden beim nächsten Einrichtungsaufruf aus einem geschützten Journal zurückgenommen.

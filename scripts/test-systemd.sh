@@ -11,7 +11,7 @@ cleanup() {
   ANKER_TEST_EXIT=$?
   if [ "$ANKER_TEST_EXIT" -ne 0 ]; then
     systemctl show anker-updater --property=Result --property=StartLimitBurst --property=StartLimitIntervalUSec || true
-    journalctl -u anker-updater -n 60 --no-pager || true
+    journalctl -u anker -u anker-updater -n 80 --no-pager || true
   fi
   systemctl stop anker-updater anker || true
   exit "$ANKER_TEST_EXIT"
