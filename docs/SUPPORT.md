@@ -85,7 +85,7 @@ Zwölf zusätzliche Browserregressionen wurden zunächst gegen den alten Stand m
 | Abgebrochener Katalogaustausch mit SQLite-WAL | Wiederherstellung übernimmt auch im WAL festgeschriebene Änderungen; subprocessbasierter SQLite-Test. |
 | Web-Port belegt oder TLS-Dateien ungültig | Start meldet keine lokale Bereitschaft, bevor TCP-Bindung und Zertifikatprüfung erfolgreich waren. |
 
-Der neue Linux/systemd-Prüflauf ist gesondert vom lokalen Nachweis; ein echter Reboot-/Stromausfalltest bleibt offen. Anleitung und bekannte Grenzen stehen in [UPDATES.md](UPDATES.md). Der Quellcode ist öffentlich auf GitHub veröffentlicht. Signierte Produktivreleases und eine produktive Signieridentität sind noch nicht eingerichtet oder veröffentlicht.
+Der neue Linux/systemd-Prüflauf ist gesondert vom lokalen Nachweis; ein echter Reboot-/Stromausfalltest bleibt offen. Anleitung und bekannte Grenzen stehen in [UPDATES.md](UPDATES.md). Der Quellcode ist öffentlich auf GitHub veröffentlicht. Signierte Produktivreleases sind mit der im Projekt hinterlegten öffentlichen Signieridentität veröffentlicht; [Releases](https://github.com/jahartmann/Anker/releases).
 
 Linux/systemd-Nachweis vom 06.10.2026: [Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37441649633). Der geführte Installer einschließlich wiederholter Einrichtung, Programmwechsel mit erhaltener Anmeldung, fehlerhafter Kandidat, unterbrochene Journale mit und ohne Katalogsnapshot sowie echte Dienstneustarts wurden erfolgreich ausgeführt. Dies ist kein physischer Reboot-/Stromausfalltest und keine Proxmox-Hostabnahme.
 

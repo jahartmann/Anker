@@ -59,11 +59,16 @@ func (m Manager) check(f *os.File, dir, private bool) error {
 	if e := unix.Fstat(int(f.Fd()), &st); e != nil {
 		return e
 	}
+	return m.checkMetadata(uint32(st.Mode), int(st.Uid), int(st.Gid), dir, private)
+}
+
+func (m Manager) checkMetadata(mode uint32, uid, gid int, dir, private bool) error {
 	kind := uint32(unix.S_IFREG)
 	if dir {
 		kind = unix.S_IFDIR
 	}
-	if uint32(st.Mode)&unix.S_IFMT != kind || int(st.Uid) != m.OwnerUID || int(st.Gid) != m.GroupGID || st.Mode&0022 != 0 || (private && st.Mode&0007 != 0) {
+	ownerAllowed := uid == m.OwnerUID || (private && !dir && m.KeyOwnerUID > 0 && uid == m.KeyOwnerUID)
+	if mode&unix.S_IFMT != kind || !ownerAllowed || gid != m.GroupGID || mode&0022 != 0 || (private && mode&0007 != 0) {
 		return errors.New("SSH-Datei hat unsichere Eigentümer oder Rechte")
 	}
 	return nil

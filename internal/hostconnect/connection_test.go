@@ -635,3 +635,35 @@ func sudoFixtureExit() int {
 	}
 	return 0
 }
+
+func TestConfiguredServiceOwnerAppliesOnlyToProtectedPrivateRoleKeys(t *testing.T) {
+	m := Manager{OwnerUID: 0, GroupGID: 1001, KeyOwnerUID: 1001}
+	for _, tc := range []struct {
+		name                  string
+		uid, gid              uint32
+		mode                  uint32
+		dir, private, allowed bool
+	}{
+		{"service private key", 1001, 1001, unix.S_IFREG | 0600, false, true, true},
+		{"root private key", 0, 1001, unix.S_IFREG | 0640, false, true, true},
+		{"unrelated owner", 1002, 1001, unix.S_IFREG | 0600, false, true, false},
+		{"wrong group", 1001, 1002, unix.S_IFREG | 0600, false, true, false},
+		{"world readable key", 1001, 1001, unix.S_IFREG | 0644, false, true, false},
+		{"group writable key", 1001, 1001, unix.S_IFREG | 0660, false, true, false},
+		{"FIFO instead of key", 1001, 1001, unix.S_IFIFO | 0600, false, true, false},
+		{"service owned trust", 1001, 1001, unix.S_IFREG | 0640, false, false, false},
+		{"service owned key directory", 1001, 1001, unix.S_IFDIR | 0750, true, false, false},
+		{"root owned key directory", 0, 1001, unix.S_IFDIR | 0750, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := m.checkMetadata(tc.mode, int(tc.uid), int(tc.gid), tc.dir, tc.private)
+			if (e == nil) != tc.allowed {
+				t.Fatalf("owner policy allowed=%v want=%v: %v", e == nil, tc.allowed, e)
+			}
+		})
+	}
+	m.KeyOwnerUID = 0
+	if m.checkMetadata(unix.S_IFREG|0600, 1001, 1001, false, true) == nil {
+		t.Fatal("default configuration accepted service-owned keys")
+	}
+}

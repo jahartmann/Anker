@@ -104,7 +104,17 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 			reject(503, "Anker-Systemgruppe ungültig")
 			return
 		}
-		connector = hostconnect.Manager{Dir: manager.Dir, OwnerUID: int(manager.ownerUID), GroupGID: gid}
+		account, err := user.Lookup("anker")
+		if err != nil {
+			reject(503, "Anker-Systembenutzer fehlt; Einrichtung erneut ausführen")
+			return
+		}
+		uid, err := strconv.Atoi(account.Uid)
+		if err != nil {
+			reject(503, "Anker-Systembenutzer ungültig")
+			return
+		}
+		connector = hostconnect.Manager{Dir: manager.Dir, OwnerUID: int(manager.ownerUID), GroupGID: gid, KeyOwnerUID: uid}
 	}
 	timeout := 5 * time.Minute
 	if inspect {

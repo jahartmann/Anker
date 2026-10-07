@@ -6,6 +6,14 @@ Installation und Einrichtung starten ohne Beispieldaten. Der Linux-Dienst verwen
 
 Die Datei `.anker-mode` hält die Betriebsart fest. Sie gehört zusammen mit dem Katalog und den übrigen Anker-Dateien in die Sicherung des zentralen Servers. Nicht löschen oder umschreiben, um eine Demo in Produktion umzuwandeln. Anker verweigert gemischte Verzeichnisse und frühere unmarkierte Demoordner; dafür einen getrennten, leeren Ordner verwenden.
 
+## Hostzugang einrichten
+
+**Hosts → Host hinzufügen** beziehungsweise `a` im Terminal fragt Adresse, SSH-Benutzer und einmaliges Passwort ab. Den angezeigten Ed25519-Fingerprint unabhängig an der Proxmox-Konsole vergleichen und bestätigen. Erst danach meldet sich Anker an, installiert den eingebetteten Hosthelfer und hinterlegt getrennte öffentliche Schlüssel für `anker` und `anker-restore`. Zwei neue Verbindungen ohne Passwort prüfen beide eingeschränkten Zugänge. Anschließend werden Identität und Hostinventar gespeichert.
+
+Das SSH-Passwort wird nicht gespeichert. Die bestehenden privaten Schlüssel unter `/etc/anker/keys` gehören dem Dienstbenutzer und bleiben mit 0600 geschützt; Verzeichnisse und verwaltete `known_hosts` bleiben root-kontrolliert. Der Bootstrap-Benutzer braucht root-Rechte oder sudo mit demselben Passwort beziehungsweise ohne Passwort. Fehlt sudo, versucht Anker die Installation über die vorhandenen APT-Quellen. Für interaktive MFA oder eigene Schlüsselverwaltung die manuelle Methode verwenden.
+
+Bestehende Hosts mit **Verbindung einrichten** beziehungsweise `v` erneut anbinden. Der Installer erhält vorhandene Profile und andere Schlüssel. Nach einem Fehler den Zugang prüfen und wiederholen; ein teilweise eingerichteter, sicherer Zugang wird nicht entfernt. Geänderte bekannte Hostschlüssel zuerst unabhängig prüfen und ausdrücklich mit `anker host trust` übernehmen. Aktive Aufträge auf diesem Host verhindern eine erneute Anbindung; während der Anbindung sind neue Aufträge für ihn und Updates gesperrt.
+
 ## Zeitplan und Aufträge
 
 Anker startet pro aktiviertem Host einmal täglich. Ein eigener Hostzeitplan überschreibt den gemeinsamen Zeitplan. Ein deterministischer Versatz von weniger als einer Stunde verteilt die Last. Zeitzone und Tagesmarker verhindern doppelte Läufe beim Sommerzeitwechsel. Nach Start wird ein an diesem Tag bereits fälliger Lauf nachgeholt. Der Dienst muss laufen; dies ist kein externer Cronjob. Der Versatz endet spätestens um 23:59 desselben Tages, damit späte Zeitpläne nicht dauerhaft ausfallen. Beim Wiederanlauf werden unveröffentlichte temporäre Erfassungs-/Archivdateien im reservierten `staging`-Ordner entfernt; veröffentlichte Sicherungen bleiben erhalten. Bereits abgebrochene Aufträge starten keine Hostoperation mehr, und laufende Versuche werden vor ihrem Aufruf im Katalog sichtbar.

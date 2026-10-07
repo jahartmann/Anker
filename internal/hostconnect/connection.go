@@ -40,4 +40,7 @@ type Manager struct {
 	Dir      string
 	OwnerUID int
 	GroupGID int
+	// KeyOwnerUID optionally permits the configured service account to own role keys.
+	// Zero keeps the strict OwnerUID policy; requests cannot set this field.
+	KeyOwnerUID int
 }

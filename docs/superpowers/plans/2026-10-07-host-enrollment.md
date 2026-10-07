@@ -25,3 +25,5 @@ Bekannter Schlüssel wurde zwischen Prüfung und Anmeldung ausgetauscht; fehlend
 ## Lokale Prüfung und Review
 
 Go-Tests einschließlich Race-Prüfung, vet, Python-Suiten (10 Host- und 14 Installerfälle), reale Terminal-PTY-Prüfung und 55 integrierte Browserfälle geprüft. Die neue Root-/sudo-SSH-Integration läuft ausschließlich auf dem isolierten Linux-CI-Runner. Unabhängiger Review korrigiert sudo-Cache-PID-Wechsel, übergroße Wiederanbindungs-Payloads und den Inventar-Antwortpuffer; vorhandene Schlüssel werden semantisch statt nach Zeilenreihenfolge geprüft.
+
+Erster Linux-Prüflauf fand einen Eigentümerkonflikt: Die bestehende Servereinrichtung hält private SSH-Rollenschlüssel als `anker:anker` mit 0600, während der neue Connector zunächst ausschließlich root-eigene Dateien erwartete. Die Schlüssel werden weiterverwendet; nur die private Schlüsseldatei akzeptiert zusätzlich die intern ermittelte Dienst-UID. Verzeichnisse und Vertrauensdatei bleiben root-kontrolliert. Erneuter vollständiger Linux-Nachweis vor Veröffentlichung erforderlich.

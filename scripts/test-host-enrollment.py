@@ -85,6 +85,10 @@ ssh-keygen -A >/dev/null
     assert saved['ssh_user'] == 'anker' and saved['restore_ssh_user'] == 'anker-restore'
     assert saved['key_path'] == '/etc/anker/keys/backup' and saved['restore_key_path'] == '/etc/anker/keys/restore'
     assert saved['last_probe'] and not saved.get('probe_error'), 'Initial key-only probes missing'
+    import pwd
+    for name in ('backup', 'restore'):
+        info = pathlib.Path('/etc/anker/keys/' + name).stat()
+        assert info.st_uid == pwd.getpwnam('anker').pw_uid and info.st_mode & 0o777 == 0o600, 'Existing service SSH key ownership changed'
     assert json.loads(command(['docker', 'exec', container, 'cat', '/etc/anker-host.json']))['fixture_preserved'], 'Existing host profile changed'
     assert not command(['docker', 'exec', container, 'sh', '-c', 'find /tmp -maxdepth 1 -name "anker-enroll.*" -print']), 'Remote installation package left behind'
     # Existing unrelated authorized_keys and profile must survive a repeat using password-requiring sudo.
