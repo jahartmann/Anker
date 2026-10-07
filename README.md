@@ -269,9 +269,15 @@ Nach einem im Web gestarteten Update lädt die Seite automatisch neu, sobald die
 
 Gesamtrecovery, Hardwaremigration und Cluster-/Versionswechsel sind derzeit **manuell geführte Pläne**. Automatische Gesamtausführung bleibt gesperrt, bis die Proxmox-, Hardware- und Clusterfälle im Labor geprüft sind. Reboot, Storage, Quorum, HA und PBS-Erreichbarkeit separat bestätigen.
 
-Im Web lässt sich die Quelle nach Host filtern; Dateien und Pläne haben Suche und feste Seiten. Eine Dateiauswahl bleibt beim Suchen und Blättern erhalten. Wenn eine erste Zielprüfung neue Netzwerkports erkennt, führt „Zuordnungen anpassen“ zum bestehenden Entwurf zurück. Ein anderes Ziel erfordert neue Bestätigungen. Die Dateiansicht eines Plans zeigt Anpassungen an der Sicherung; sie ist kein vollständiger Inhaltsvergleich mit dem Zielhost.
+Im Web führt der Assistent über **Quelle und Dateien → Ziel prüfen → Zuordnungen → Plan prüfen**. Er zeigt nur verwendete physische Ports und referenzierte Speicher. Bridges, Bonds, VLANs und Aliase behalten ihre Abhängigkeiten; unbeteiligte Laufwerke werden nicht zugeordnet. Speicher, gewünschter Hostname und Adresse bleiben bewusst dokumentierte manuelle Entscheidungen. Dateien, Planschritte und Nachweise sind durchsuchbar und in Seiten aufgeteilt. Die Dateiansicht zeigt Anpassungen an der Sicherung, keinen vollständigen Inhaltsvergleich mit dem Zielhost.
 
-Im Terminal sind alle Wiederherstellungsszenarien auswählbar. Im Dateifeld wechselt `Ctrl+E` zwischen der Liste und direkter Eingabe relativer Pfade; mehrere Pfade mit Komma trennen. Vollständige Szenarien bleiben auf echten Hosts manuell geführt. Das Planpaket enthält vorbereitete Dateien und unter `original/original-files/` die Originale mit ihren gesicherten Metadaten.
+Eine automatische Dateiübernahme prüft Inhalte, Rechte und Benutzeridentitäten und führt ein dauerhaftes Hostjournal. Bei einem Schreibfehler werden eigene Änderungen kontrolliert zurückgesetzt; fremde Änderungen bleiben erhalten. Nach einem Verbindungsabbruch **Hostzustand abgleichen**, statt erneut anzuwenden. **Dateien zurücksetzen** verlangt eine separate Plan-ID-Bestätigung. Netzwerk- und Zugangskonfiguration bleiben manuell; Netzwerk wird nicht automatisch aktiviert.
+
+Nach dem Update auf 0.2.8 vorhandene Hosts einmal über **Verbindung neu einrichten** aktualisieren und neu sichern. Automatische Übernahmen verlangen den aktuellen Hosthelfer und erfasste Eigentümeridentitäten. Bestehende Sicherungen bleiben lesbar und exportierbar. [Ablauf und Fehlerbehandlung](docs/RECOVERY.md).
+
+Im Terminal sind alle Wiederherstellungsszenarien auswählbar. Im Dateifeld wechselt `Ctrl+E` zwischen der Liste und direkter Eingabe relativer Pfade; mehrere Pfade mit Komma trennen. Vollständige Szenarien bleiben auf echten Hosts manuell geführt. Mit `r` im geöffneten Plan den Hostzustand abgleichen, mit `b` die kontrollierte Rücksetzung separat bestätigen. Das Planpaket enthält vorbereitete Dateien und unter `original/original-files/` die Originale mit ihren gesicherten Metadaten.
+
+CLI: `anker restore inspect --backup ID --target HOST --files etc/test.conf`, `anker restore status PLAN` und `anker restore rollback PLAN --confirm PLAN`. `restore plan` unterstützt außerdem `--storage ID=manual`, `--hostname NAME` und `--address IP` für dokumentierte manuelle Entscheidungen.
 
 Der [Abgleich mit dem geplanten Umfang](docs/IMPLEMENTATION_STATUS.md) nennt die noch offenen Wiederherstellungsregeln, Clusterfunktionen und Unterschiede zwischen Web und Terminal.
 

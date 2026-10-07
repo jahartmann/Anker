@@ -199,6 +199,8 @@ func TestRestorePlanAndExplicitApplyAgainstService(t *testing.T) {
 	m, cmd := key(m, "r")
 	m = complete(t, m, cmd)
 	m.form.fields[3].value = "etc/sysctl.d/99-anker.conf"
+	m, cmd = key(m, "ctrl+s")
+	m = complete(t, m, cmd)
 	m, _ = key(m, "ctrl+s")
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
@@ -350,8 +352,10 @@ func TestMigrationInputsAndUpdateTrustConfirmation(t *testing.T) {
 	m.form.fields[4].value = "eno1=ens3"
 	m.form.fields[5].value = "ja"
 	m.form.fields[6].value = "ja"
+	m, cmd := key(m, "ctrl+s")
+	m = complete(t, m, cmd)
 	m, _ = key(m, "ctrl+s")
-	m, cmd := key(m, "y")
+	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
 	if captured["console_confirmed"] != true || captured["source_offline"] != true || object(object(captured["mapping"])["interfaces"])["eno1"] != "ens3" {
 		t.Fatalf("migration payload: %#v", captured)

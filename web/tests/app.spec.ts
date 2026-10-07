@@ -683,12 +683,16 @@ test("a running plan request cannot be dismissed or submitted twice", async ({
   await page
     .getByRole("checkbox", { name: "etc/sysctl.d/99-anker.conf", exact: true })
     .check();
+  await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dialog schließen", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  expect(await page.getByRole("dialog").evaluate((node) => node.contains(document.activeElement))).toBe(true);
   expect(calls).toBe(1);
   finish();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
@@ -1133,7 +1137,8 @@ test("file restore plans and executes only after exact confirmation", async ({
   await page.getByLabel("Sicherung", { exact: true }).selectOption(b.id);
   await page.getByLabel("Zielhost", { exact: true }).selectOption(b.host_id);
   await page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }).check();
-  await page.getByRole("button", { name: "Plan prüfen" }).click();
+  await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
@@ -1156,6 +1161,8 @@ test("file restore plans and executes only after exact confirmation", async ({
   );
   await page.getByLabel("Plan-ID zur Ausführung eingeben").fill(plan.id);
   await page.getByRole("button", { name: "In Demo anwenden" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Demo angewendet");
+  await page.getByRole("button", {name:"Dialog schließen",exact:true}).click();
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "Aufträge", exact: true })

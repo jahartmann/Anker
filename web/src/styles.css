@@ -2501,3 +2501,33 @@ input[type="checkbox"] {
     max-width: none;
   }
 }
+
+/* Recovery keeps decisions focused and evidence collapsible. */
+.recovery-section-title { margin: 24px 0 14px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.recovery-inspection-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0 8px; font-size: 13px; }
+.recovery-mapping { margin: 22px 0; }
+.recovery-mapping h3 { font-size: 14px; }
+.recovery-disclosure { margin: 16px 0; font-size: 12px; line-height: 1.7; }
+.recovery-disclosure summary { cursor: pointer; color: var(--muted); }
+.recovery-disclosure li { margin: 8px 0; overflow-wrap: anywhere; }
+.recovery-result .mono { overflow-wrap: anywhere; }
+.recovery-rollback { padding: 16px 0; border-top: 1px solid var(--line); }
+@media (max-width: 600px) { .recovery-inspection-meta { flex-wrap: wrap; } }
+
+/* Keep recovery context and its close control visible through long plans. */
+.dialog:has(.recovery-section-title, .plan-files) > .dialog-title {
+  position: sticky;
+  top: -26px;
+  z-index: 3;
+  margin: -26px -28px 16px;
+  padding: 20px 28px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 800px) {
+  .dialog:has(.recovery-section-title, .plan-files) > .dialog-title {
+    top: -22px;
+    margin: -22px -20px 16px;
+    padding: 18px 20px 14px;
+  }
+}

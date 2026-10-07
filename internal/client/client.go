@@ -276,11 +276,32 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 				return err
 			}
 			return call("POST", "plans/"+args[2]+"/apply", map[string]string{"confirmation": *confirmation})
-		case "plan":
-			f := fs("restore plan")
+		case "status", "reconcile":
+			if len(args) != 3 {
+				return errors.New("anker restore status PLAN")
+			}
+			return call("POST", "plans/"+args[2]+"/reconcile", map[string]any{})
+		case "rollback":
+			if len(args) < 3 {
+				return errors.New("Plan-ID fehlt")
+			}
+			f := fs("restore rollback")
+			confirmation := f.String("confirm", "", "Plan-ID ausdrücklich zur Rücksetzung bestätigen")
+			if err := f.Parse(args[3:]); err != nil {
+				return err
+			}
+			if f.NArg() != 0 || *confirmation != args[2] {
+				return errors.New("anker restore rollback PLAN --confirm PLAN erforderlich")
+			}
+			return call("POST", "plans/"+args[2]+"/rollback", map[string]string{"confirmation": *confirmation})
+		case "plan", "inspect":
+			f := fs("restore " + args[1])
 			var p anker.PlanRequest
 			files := f.String("files", "", "Kommaliste")
 			ports := f.String("ports", "", "eno1=ens3,eno2=ens4")
+			storage := f.String("storage", "", "Storage-ID=Ziel-ID oder Storage-ID=manual; manuelle Entscheidung")
+			f.StringVar(&p.Mapping.Hostname, "hostname", "", "Gewünschte Hostidentität; manuelle Entscheidung")
+			f.StringVar(&p.Mapping.Address, "address", "", "Gewünschte Adresse; manuelle Entscheidung")
 			f.StringVar(&p.BackupID, "backup", "", "Backup-ID")
 			f.StringVar(&p.TargetID, "target", "", "Ziel-ID")
 			f.StringVar(&p.Scenario, "scenario", "files", "Szenario")
@@ -302,6 +323,24 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 					return errors.New("Portzuordnung muss alt=neu sein")
 				}
 				p.Mapping.Interfaces[v[0]] = v[1]
+			}
+			p.Mapping.Storage = map[string]string{}
+			for _, pair := range strings.Split(*storage, ",") {
+				if pair == "" {
+					continue
+				}
+				v := strings.SplitN(pair, "=", 2)
+				if len(v) != 2 || strings.TrimSpace(v[0]) == "" || strings.TrimSpace(v[1]) == "" {
+					return errors.New("Storage-Entscheidung muss ID=Ziel oder ID=manual sein")
+				}
+				p.Mapping.Storage[strings.TrimSpace(v[0])] = strings.TrimSpace(v[1])
+			}
+			if args[1] == "inspect" {
+				return call("POST", "plans/inspect", p)
+			}
+			var inspection anker.RecoveryInspection
+			if err := c.Call(ctx, "POST", "plans/inspect", p, &inspection); err != nil {
+				return err
 			}
 			return call("POST", "plans", p)
 		}
@@ -435,15 +474,21 @@ Hosts und Sicherungen
 
 Wiederherstellung und Aufträge
   anker restore list
+  anker restore inspect --backup ID --target HOST --scenario files --files etc/test.conf
   anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf
   anker restore plan --backup ID --target HOST --scenario migration --ports eno1=ens3 --console --source-offline
   anker restore apply PLAN --confirm PLAN
+  anker restore status PLAN                 Hostprotokoll abgleichen, keine Übernahme wiederholen
+  anker restore rollback PLAN --confirm PLAN Kontrollierte Rücksetzung nach Hostprüfung
   anker restore export PLAN ./plan.tar
   anker jobs
   anker job show ID | cancel ID | retry ID | remove ID
   Ziel, Dateien und Plan prüfen; Migration braucht Konsole und isolierte Quelle.
   Gesamtrecovery, neue Hardware und Cluster: auf echten Hosts manuell geführter Plan.
   Anleitung und Originaldateien mit restore export herunterladen.
+  Plan prüft das Ziel frisch; inspect zeigt nur benötigte Ports und logische Storage-IDs.
+  --storage ID=manual, --hostname NAME und --address IP dokumentieren manuelle Entscheidungen.
+  Netzwerkdateien sind vorbereitet; Aktivierung bleibt manuell über Konsole.
   Wiederherstellungen werden nicht automatisch wiederholt.
 
 Einstellungen, Benutzer, Zertifikat und Speicher

@@ -41,6 +41,7 @@ func TestRestoreScenariosReachableThroughKeyboard(t *testing.T) {
 				t.Fatal("whole recovery must explain manual execution and export before submission")
 			}
 			m.form.fields[3].value = "etc/sysctl.d/99-anker.conf"
+			acceptInspectionForTest(&m)
 			m, _ = key(m, "ctrl+s")
 			if m.pending == nil {
 				t.Fatal("valid guided plan did not reach review")
@@ -75,6 +76,7 @@ func TestRestoreLargeFileListAllowsDirectPathEntry(t *testing.T) {
 	m = next.(Model)
 	next, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = next.(Model)
+	acceptInspectionForTest(&m)
 	m, _ = key(m, "ctrl+s")
 	if m.pending == nil {
 		t.Fatal("entered path disappeared before review")
@@ -107,6 +109,7 @@ func TestRestoreDirectPathEntryKeepsValidationAndPickerSelection(t *testing.T) {
 	m = next.(Model)
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = next.(Model)
+	acceptInspectionForTest(&m)
 	m, _ = key(m, "ctrl+s")
 	if m.pending == nil || m.pending.input.(anker.PlanRequest).Files[0] != "etc/test.conf" {
 		t.Fatal("returning to list mode broke existing file selection")
@@ -122,10 +125,12 @@ func TestDirectRestorePathCreatesReviewedPlanAgainstService(t *testing.T) {
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
 	m = next.(Model)
 	m, _ = key(m, "etc/sysctl.d/99-anker.conf")
-	m, _ = key(m, "ctrl+s")
-	if m.pending == nil || m.pending.path != "plans" {
-		t.Fatal("direct path must be reviewed before the service receives it")
+	m, cmd = key(m, "ctrl+s")
+	if m.pending != nil || cmd == nil {
+		t.Fatal("direct path must be inspected without redundant read-only approval")
 	}
+	m = complete(t, m, cmd)
+	m, _ = key(m, "ctrl+s")
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
 	p := object(m.data["preview"])
@@ -154,6 +159,13 @@ func TestGuidedClusterRecoveryRemainsManualAgainstService(t *testing.T) {
 	}
 	m.form.fields[5].value = "ja"
 	m.form.fields[6].value = "ja"
+	m, cmd = key(m, "ctrl+s")
+	m = complete(t, m, cmd)
+	inspection := recoveryInspection(m.form)
+	if ports := list(inspection["ports"]); len(ports) > 0 {
+		m.form.fields[4].value = str(object(ports[0]), "name") + "=" + str(object(list(inspection["target_ports"])[0]), "name")
+	}
+	m.form.fields[5].value, m.form.fields[6].value = "ja", "ja"
 	m, _ = key(m, "ctrl+s")
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
@@ -221,4 +233,8 @@ func TestRestoreUnchangedIdentityPreservesDraft(t *testing.T) {
 			t.Fatal("cycling a single unchanged source/target discarded the draft")
 		}
 	}
+}
+
+func acceptInspectionForTest(m *Model) {
+	m.handleResult(commandResult{purpose: recoveryPurpose(m.form), data: map[string]any{"ports": []any{}, "storage": []any{}}})
 }

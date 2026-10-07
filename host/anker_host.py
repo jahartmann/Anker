@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Anker host protocol v1. Install root-owned; stdin JSON, stdout JSON or tar.
+"""Anker host envelope v1, hardened restore protocol v2. Install root-owned; stdin JSON, stdout JSON or tar.
 No daemon, no user-supplied commands, no shell interpolation.
 """
-import re, errno, base64, hashlib, json, os, pathlib, shutil, socket, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
+import contextlib, fcntl, pwd, grp, re, errno, base64, hashlib, json, os, pathlib, shutil, socket, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_REQUEST = 32 * 1024 * 1024
@@ -18,58 +18,82 @@ def asjson(text,default):
  except (ValueError,TypeError): return default
 
 def probe(root=pathlib.Path('/'),test_mode=False):
+ root=pathlib.Path(root)
  if test_mode:
   p=root/'inventory.json'
   return json.loads(p.read_text()) if p.exists() else {'hostname':'test','pve_version':'8.4','interfaces':[],'disks':[],'details':{},'cluster_id':'','quorate':False}
- version=command(['pveversion']).strip();version=version.split('/')[1] if '/' in version else version
- interfaces=asjson(command(['ip','-j','link','show']),[])
- net=[]
+ results={}
+ def run(key,args,optional=False,parse=False):
+  try:
+   p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,check=False)
+   if p.returncode!=0:raise OSError('exit %d: %s'%(p.returncode,p.stderr.decode('utf-8','replace')[:2048]))
+   if len(p.stdout)>8*1024*1024:raise ValueError('command output truncated')
+   raw=p.stdout.decode('utf-8','replace');value=json.loads(raw) if parse else raw
+   if parse and ((key=='disks' and not isinstance(value,dict)) or (key!='disks' and not isinstance(value,list))):raise ValueError('unexpected command JSON shape')
+   results[key]={'state':'ok'};return value
+  except FileNotFoundError as exc:
+   results[key]={'state':'not_applicable' if optional else 'failed','error':str(exc)}
+  except (OSError,ValueError,subprocess.TimeoutExpired) as exc:results[key]={'state':'failed','error':str(exc)}
+  return {} if key=='disks' else [] if parse else ''
+ version=run('pve_version',['pveversion']).strip();version=version.split('/')[1] if '/' in version else version
+ interfaces=run('interfaces',['ip','-j','link','show'],parse=True);net=[]
  for i in interfaces:
-  name=i.get('ifname','');pci=''
-  try:pci=str((pathlib.Path('/sys/class/net')/name/'device').resolve().name)
-  except OSError:pass
-  net.append({'name':name,'mac':i.get('address',''),'pci':pci})
- blk=asjson(command(['lsblk','-J','-b','-o','NAME,TYPE,SIZE,UUID,MOUNTPOINT,SERIAL,WWN']),{})
- disks=[]
- def flatten(items):
+  name=i.get('ifname','');device=root/'sys/class/net'/name/'device';physical=device.exists();pci=''
+  if physical:
+   try:pci=device.resolve().name
+   except OSError as exc:results['interfaces']={'state':'failed','error':str(exc)}
+  net.append({'name':name,'mac':i.get('address',''),'pci':pci,'type':i.get('linkinfo',{}).get('info_kind') or ('physical' if physical else 'virtual'),'physical':physical})
+ blk=run('disks',['lsblk','-J','-b','-o','NAME,TYPE,SIZE,UUID,MOUNTPOINT,SERIAL,WWN,FSTYPE'],parse=True);disks=[]
+ def flatten(items,parent=''):
   for d in items:
-   disks.append({'name':d.get('name',''),'id':d.get('wwn') or d.get('serial') or d.get('uuid') or d.get('name',''),'size':int(d.get('size') or 0),'uuid':d.get('uuid') or '', 'mount':d.get('mountpoint') or ''})
-   flatten(d.get('children',[]))
- flatten(blk.get('blockdevices',[]))
- cluster=command(['pvecm','status']);cluster_id='';quorate=False
+   disks.append({'name':d.get('name',''),'id':d.get('wwn') or d.get('serial') or d.get('uuid') or d.get('name',''),'size':int(d.get('size') or 0),'uuid':d.get('uuid') or '', 'mount':d.get('mountpoint') or '', 'type':d.get('type') or '', 'parent':parent,'filesystem':d.get('fstype') or ''})
+   flatten(d.get('children',[]),d.get('name',''))
+ try:flatten(blk.get('blockdevices',[]))
+ except (ValueError,TypeError,AttributeError) as exc:results['disks']={'state':'failed','error':str(exc)}
+ if (root/'etc/pve/corosync.conf').exists():cluster=run('cluster',['pvecm','status'])
+ else:cluster='';results['cluster']={'state':'not_applicable'}
+ cluster_id='';quorate=False
  for line in cluster.splitlines():
   if line.startswith('Name:'):cluster_id=line.split(':',1)[1].strip()
   if line.startswith('Quorate:'):quorate=line.split(':',1)[1].strip().lower()=='yes'
- details={
-  'addresses':asjson(command(['ip','-j','addr','show']),[]),
-  'routes':asjson(command(['ip','-j','route','show']),[]),
-  'packages':command(['dpkg-query','-W','-f=${binary:Package} ${Version}\n']),
-  'manual_packages':command(['apt-mark','showmanual']),
-  'storage':command(['pvesm','status']), 'zfs':command(['zpool','list','-Hp']),
-  'lvm':command(['vgs','--reportformat','json']),
-  'guests':command(['qm','list']), 'containers':command(['pct','list']),
-  'cluster':cluster, 'ceph':command(['ceph','status','--format','json']),
-  'pci':command(['lspci','-nn']), 'boot':command(['proxmox-boot-tool','status']),
- }
- # Capture content preconditions; unreadable targets are never treated as missing.
- hashes={}
+ details={'addresses':run('addresses',['ip','-j','addr','show'],parse=True),'routes':run('routes',['ip','-j','route','show'],parse=True),
+  'packages':run('packages',['dpkg-query','-W','-f=${binary:Package} ${Version}\n']), 'manual_packages':run('manual_packages',['apt-mark','showmanual']),
+  'storage':run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
+  'guests':run('guests',['qm','list']), 'containers':run('containers',['pct','list']), 'cluster':cluster,
+  'pci':run('pci',['lspci','-nn']), 'boot':run('boot',['proxmox-boot-tool','status']),
+  'capabilities':{'restore_protocol':2,'journal':True}}
+ if (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
+ else:details['ceph']='';results['ceph']={'state':'not_applicable'}
+ hashes={};metas={};walk_errors=[]
+ def walk_error(exc):walk_errors.append(str(exc))
  for base in ('etc','usr/local'):
   start=root/base
   if not start.exists():continue
-  for folder,dirs,files in os.walk(start,followlinks=False):
-   dirs[:]=[x for x in dirs if not (pathlib.Path(folder)/x).is_symlink()]
-   for name in files:
+  for folder,dirs,files in os.walk(start,followlinks=False,onerror=walk_error):
+   links=[x for x in dirs if (pathlib.Path(folder)/x).is_symlink()];dirs[:]=[x for x in dirs if x not in links]
+   for name in files+links:
     p=pathlib.Path(folder)/name;rel=p.relative_to(root).as_posix()
     try:
-     if p.is_symlink():hashes[rel]='symlink:'+os.readlink(p)
-     elif p.stat().st_size<=MAX_FILE:hashes[rel]=digest(p.read_bytes())
+     e=entry_meta(p,rel)
+     if e is None:hashes[rel]='unsupported';continue
+     metas[rel]={k:e[k] for k in ('type','mode','uid','gid','xattrs')}
+     if 'link' in e:metas[rel]['link']=e['link']
+     if e.get('metadata_warning'):metas[rel]['metadata_warning']=e['metadata_warning'];walk_errors.append(rel+': '+e['metadata_warning'])
+     if e['type']=='symlink':hashes[rel]='symlink:'+e['link']
+     elif e['size']<=MAX_FILE:hashes[rel]=digest(p.read_bytes())
      else:hashes[rel]='too-large'
-    except OSError:hashes[rel]='unreadable'
- details['file_hashes']=hashes
- try:details['boot_id']=(root/'proc/sys/kernel/random/boot_id').read_text().strip()
- except OSError:details['boot_id']=''
+    except OSError as exc:hashes[rel]='unreadable';walk_errors.append(rel+': '+str(exc))
+ details['file_hashes']=hashes;details['file_metadata']=metas
+ results['file_inventory']={'state':'failed','error':'; '.join(walk_errors)[:4096]} if walk_errors else {'state':'ok'}
+ for key,getter,attribute in (('users',pwd.getpwall,'pw_uid'),('groups',grp.getgrall,'gr_gid')):
+  try:
+   details[key]={str(getattr(x,attribute)):getattr(x,'pw_name' if key=='users' else 'gr_name') for x in getter()};results[key]={'state':'ok'}
+  except OSError as exc:details[key]={};results[key]={'state':'failed','error':str(exc)}
+ try:details['boot_id']=(root/'proc/sys/kernel/random/boot_id').read_text().strip();results['boot_id']={'state':'ok'}
+ except OSError as exc:details['boot_id']='';results['boot_id']={'state':'failed','error':str(exc)}
  try:debian=(root/'etc/debian_version').read_text().strip()
  except OSError:debian=''
+ details['command_results']=results
  return {'hostname':socket.gethostname(),'pve_version':version,'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
 
 def relative(path):
@@ -222,47 +246,283 @@ def dependency_warnings(out,entries,root=None):
     if candidate.lstrip('/') not in known:warnings.append('Referenced config/secret is not captured: '+candidate+' ('+e['path']+')')
  return sorted(set(warnings))
 
-def apply_files(root,items,test_mode=False):
- root=pathlib.Path(root);prepared=[]
- for e in items:
-  p=confined(root,e['path'])
-  if not (e['path'].startswith('etc/') or e['path'].startswith('usr/local/')):raise ValueError('restore path not allowed')
-  if e['path'].startswith('etc/pve/') or e['path'] in ('etc/shadow','etc/passwd','etc/group','etc/gshadow','etc/fstab','etc/machine-id'):raise ValueError('protected restore requires manual procedure')
-  old=p.read_bytes() if p.exists() else None
-  if e.get('before_sha')!=('missing' if old is None else digest(old)):raise ValueError('target file changed: '+e['path'])
-  content=base64.b64decode(e['content'],validate=True)
-  if len(content)>MAX_FILE:raise ValueError('restore file too large')
-  if e.get('type','file')!='file':raise ValueError('symlink restore needs manual metadata procedure')
-  prepared.append((p,e,old,content))
- rollback=root/'var/lib/anker-host/rollback'/('%d-%s'%(time.time_ns(),os.getpid()));rollback.mkdir(parents=True,mode=0o700)
- before=[];applied=[]
- for p,e,old,content in prepared:
-  rel=e['path'];before.append(dict(entry_meta(p,rel),existed=True) if old is not None else {'path':rel,'existed':False})
-  if old is not None:
-   b=rollback/rel;b.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,b,follow_symlinks=False);os.chmod(b,0o600)
- (rollback/'before.json').write_text(json.dumps(before,indent=2))
- # Persist the complete rollback before changing the first target file.
- for folder,dirs,files in os.walk(rollback,topdown=False):
-  for name in files:
-   with open(pathlib.Path(folder)/name,'rb') as f:os.fsync(f.fileno())
-  sync_directory(pathlib.Path(folder))
- sync_directory(rollback.parent)
+class RestoreError(OSError):
+ """Failed mutation with its durable recovery result and original cause."""
+ def __init__(self,cause,result):
+  super().__init__(str(cause));self.result=result
+
+
+def metadata(p,test_mode=False):
+ e=entry_meta(p,'')
+ if not e or e['type']!='file':raise ValueError('restore target must be a regular file')
+ if e.get('metadata_warning') and not (test_mode and not hasattr(os,'listxattr')):raise ValueError('target metadata unavailable: '+e['metadata_warning'])
+ return {k:e[k] for k in ('type','mode','uid','gid','xattrs')}
+
+
+def file_state(root,rel,test_mode=False):
+ p=confined(root,rel)
+ try:meta=metadata(p,test_mode)
+ except FileNotFoundError:return 'missing',None
+ if p.stat().st_size>MAX_FILE:raise ValueError('target file too large')
+ return digest(p.read_bytes()),meta
+
+
+def protected_restore(path):
+ prefixes=('usr/local/lib/anker/','etc/sudoers.d/','etc/pam.d/','etc/pve/','etc/corosync/','etc/ssh/','etc/apt/','etc/default/grub','etc/kernel/','etc/modprobe.d/','etc/udev/','etc/systemd/system/','etc/network/')
+ names=('etc/passwd','etc/shadow','etc/group','etc/gshadow','etc/fstab','etc/machine-id','etc/hostname','etc/hosts','etc/anker-host.json','etc/sudoers','etc/nsswitch.conf')
+ return path in names or path.startswith(prefixes) or not path.startswith(('etc/','usr/local/'))
+
+
+def operation_id(value):
+ if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}',value):raise ValueError('invalid operation ID')
+ return value
+
+
+def operation_path(root,plan_id):
+ return confined(pathlib.Path(root),'var/lib/anker-host/rollback/'+operation_id(plan_id))
+
+
+@contextlib.contextmanager
+def mutation_lock(root):
+ folder=confined(root,'var/lib/anker-host');folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+ sync_ancestors(root,folder)
+ fd=os.open(folder/'restore.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
  try:
-  for p,e,old,content in prepared:
-   p.parent.mkdir(parents=True,exist_ok=True)
-   fd,tmp=tempfile.mkstemp(prefix='.anker-',dir=p.parent)
+  fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  yield
+ finally:os.close(fd)
+
+
+def durable_json(path,value):
+ # The initial exclusive file also leaves an inspectable marker if killed early.
+ content=json.dumps(value,indent=2).encode()
+ if not path.exists():
+  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  with os.fdopen(fd,'wb') as f:f.write(content);f.flush();os.fsync(f.fileno())
+ else:
+  fd,tmp=tempfile.mkstemp(prefix='.journal-',dir=path.parent)
+  try:
+   with os.fdopen(fd,'wb') as f:f.write(content);f.flush();os.fsync(f.fileno())
+   os.replace(tmp,path)
+  finally:
    try:
-    with os.fdopen(fd,'wb') as f:
-     f.write(content);f.flush();os.fchmod(f.fileno(),int(e.get('mode',0o600)) & 0o777)
-     if not test_mode:os.fchown(f.fileno(),int(e.get('uid',0)),int(e.get('gid',0)))
-     os.fsync(f.fileno())
-    os.replace(tmp,p);applied.append(e['path']);sync_directory(p.parent)
-   finally:
     if os.path.exists(tmp):os.unlink(tmp)
-  return {'applied':applied,'rollback_path':str(rollback),'checks':['file hashes verified; service and reboot checks require operator'],'reboot_verified':False}
- except Exception as exc:
-  (rollback/'failure.json').write_text(json.dumps({'applied':applied,'error':str(exc)}))
- raise
+   except OSError:pass
+ sync_directory(path.parent)
+
+
+def save_journal(folder,journal):durable_json(folder/'journal.json',journal)
+
+
+def result_of(folder,journal):
+ r={'state':journal['state'],'operation_id':journal['operation_id'],'applied':[e['path'] for e in journal['files'] if e.get('applied')], 'rollback_path':str(folder),'checks':journal.get('checks',[])+[e['path']+': '+e['phase']+(' (replacement outcome requires inspection)' if e['phase']=='writing' else '') for e in journal['files']],'reboot_verified':False}
+ if journal.get('error'):r['error']=journal['error']
+ return r
+
+
+def load_journal(folder):
+ if not folder.exists():raise ValueError('operation journal not found')
+ try:
+  if not (folder/'journal.json').exists():raise ValueError('operation journal missing: legacy helper rollback directory or interrupted journal creation; manual inspection required')
+  j=json.loads((folder/'journal.json').read_text())
+  if j['operation_id']!=folder.name or j.get('version')!=2:raise ValueError('invalid operation journal')
+  if j['state'] not in ('writing','applied','rolling_back','rolled_back','interrupted','rollback_conflict','failed') or not isinstance(j['files'],list):raise ValueError('invalid journal state')
+  for e in j['files']:
+   relative(e['path'])
+   if protected_restore(e['path']) or e['phase'] not in ('prepared','writing','applied','rolling_back','rolled_back','rollback_conflict'):raise ValueError('invalid journal file')
+   for key in ('before_sha','after_sha'):
+    if not re.fullmatch(r'[0-9a-f]{64}',e[key]) and not (key=='before_sha' and e[key]=='missing'):raise ValueError('invalid journal hash')
+   if e['before_sha']=='missing' and e['before_metadata'] is not None:raise ValueError('invalid journal metadata')
+  allowed={'applied':('applied',),'failed':('prepared',),'rolled_back':('prepared','rolled_back')}
+  if j['state'] in allowed and any(e['phase'] not in allowed[j['state']] for e in j['files']):raise ValueError('inconsistent journal terminal state')
+  return j
+ except (OSError,ValueError,KeyError,TypeError) as exc:raise RestoreError(exc,{'state':'interrupted','operation_id':folder.name,'applied':[],'rollback_path':str(folder),'checks':['journal unreadable; operator inspection required'],'reboot_verified':False}) from exc
+
+
+def inspect_journal(folder):
+ j=load_journal(folder)
+ if j['state'] in ('writing','rolling_back'):
+  j['state']='interrupted';j['checks'].append('execution interrupted; inspect write-ahead file phases');save_journal(folder,j)
+ return j
+
+
+def restore_status(root,plan_id):
+ root=pathlib.Path(root);folder=operation_path(root,plan_id)
+ with mutation_lock(root):
+  if not folder.exists():return {'state':'not_found','operation_id':plan_id,'applied':[],'rollback_path':str(folder),'checks':['no operation directory exists; no host write was started for this ID'],'reboot_verified':False}
+  return result_of(folder,inspect_journal(folder))
+
+
+def write_file(path,data,mode,uid,gid,test_mode):
+ fd,tmp=tempfile.mkstemp(prefix='.anker-',dir=path.parent)
+ try:
+  with os.fdopen(fd,'wb') as f:
+   f.write(data);f.flush()
+   if not test_mode:os.fchown(f.fileno(),uid,gid)
+   os.fchmod(f.fileno(),mode);os.fsync(f.fileno())
+  if metadata(pathlib.Path(tmp),test_mode)['xattrs']:raise ValueError('staging metadata contains unsupported ACL/xattrs; manual procedure required')
+  sync_directory(path.parent)
+  return tmp
+ except BaseException:
+  try:
+   if os.path.exists(tmp):os.unlink(tmp)
+  except OSError:pass
+  raise
+
+
+def rollback_journal(root,folder,j,test_mode=False,retry_conflicts=False):
+ # Explicit retry remains conditional: only our after state or original before
+ # state is accepted; an unresolved foreign state is preserved again.
+ j['state']='rolling_back';save_journal(folder,j);conflict=False
+ for e in reversed(j['files']):
+  if e['phase'] not in ('writing','applied','rolling_back') and not (retry_conflicts and e['phase']=='rollback_conflict'):continue
+  try:
+   p=confined(root,e['path']);current=file_state(root,e['path'],test_mode)
+   if current==(e['before_sha'],e['before_metadata']):e['phase']='rolled_back';save_journal(folder,j);continue
+   if current!=(e['after_sha'],e['after_metadata']):
+    e['phase']='rollback_conflict';conflict=True;save_journal(folder,j);continue
+   e['phase']='rolling_back';save_journal(folder,j)
+   if e['before_sha']=='missing':
+    # Recheck immediately before unlink, just as for replacement.
+    if file_state(root,e['path'],test_mode)!=current:raise ValueError('rollback target changed: '+e['path'])
+    p.unlink();sync_directory(p.parent)
+   else:
+    backup=confined(folder,'before/'+e['path']);data=backup.read_bytes()
+    if digest(data)!=e['before_sha']:raise ValueError('rollback backup integrity failure')
+    m=e['before_metadata'];tmp=write_file(p,data,m['mode'],m['uid'],m['gid'],test_mode)
+    try:
+     if file_state(root,e['path'],test_mode)!=current:raise ValueError('rollback target changed: '+e['path'])
+     os.replace(tmp,p);sync_directory(p.parent)
+    finally:
+     try:
+      if os.path.exists(tmp):os.unlink(tmp)
+     except OSError:pass
+   if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('rollback verification failed: '+e['path'])
+   e['phase']='rolled_back';save_journal(folder,j)
+  except Exception as rollback_error:
+   e['phase']='rollback_conflict';conflict=True;j['checks'].append(e['path']+': rollback failed: '+str(rollback_error));save_journal(folder,j)
+ if any(e['phase']=='rollback_conflict' for e in j['files']):conflict=True
+ j['state']='rollback_conflict' if conflict else 'rolled_back';save_journal(folder,j)
+ return result_of(folder,j)
+
+
+def rollback_files(root,plan_id,confirm,test_mode=False):
+ root=pathlib.Path(root);folder=operation_path(root,plan_id)
+ if confirm!=plan_id:raise ValueError('explicit plan confirmation required')
+ with mutation_lock(root):
+  j=inspect_journal(folder)
+  prior_error=j.pop('error',None)
+  if prior_error:
+   j.setdefault('initial_error',prior_error)
+   j['checks'].append('earlier operation error: '+prior_error)
+  try:
+   result=rollback_journal(root,folder,j,test_mode,retry_conflicts=True)
+   if j['state']=='rollback_conflict':
+    j['error']='rollback conflict: target content or metadata differs from this operation';save_journal(folder,j);result=result_of(folder,j)
+   return result
+  except Exception as exc:
+   j['state']='rollback_conflict';j['error']=str(exc)
+   try:save_journal(folder,j)
+   except Exception as journal_error:j['checks'].append('journal update failed: '+str(journal_error))
+   raise RestoreError(exc,result_of(folder,j)) from exc
+
+
+def apply_files(root,items,test_mode=False,plan_id=None):
+ """Per-file verified replacement; flock coordinates helpers, not arbitrary writers.
+ An external writer can still race the final check/rename. No global host atomicity.
+ """
+ root=pathlib.Path(root);plan_id=operation_id(('local-'+str(time.time_ns())) if plan_id is None else plan_id)
+ folder=operation_path(root,plan_id)
+ with mutation_lock(root):
+  if folder.exists():
+   j=inspect_journal(folder);raise RestoreError('operation already exists; inspect or rollback, never replay',result_of(folder,j))
+  if folder.parent.exists():
+   for older in sorted(folder.parent.iterdir()):
+    if not older.is_dir():continue
+    operation_path(root,older.name)
+    old_j=inspect_journal(older)
+    if old_j['state'] in ('writing','rolling_back','interrupted','rollback_conflict'):
+     raise RestoreError('unresolved earlier operation '+older.name+'; inspect and rollback first',result_of(older,old_j))
+  prepared=[];seen=set()
+  for item in items:
+   rel=item['path'];p=confined(root,rel)
+   if protected_restore(rel):raise ValueError('protected restore requires manual procedure: '+rel)
+   if rel in seen:raise ValueError('duplicate restore path')
+   seen.add(rel)
+   if item.get('type','file')!='file' or item.get('xattrs'):raise ValueError('file metadata requires manual procedure')
+   before,meta=file_state(root,rel,test_mode)
+   if item.get('before_sha')!=before:raise ValueError('target file changed: '+rel)
+   if not test_mode and 'expected_metadata' not in item:raise ValueError('expected target metadata required')
+   expected=item.get('expected_metadata',meta)
+   if expected!=meta:raise ValueError('target metadata changed: '+rel)
+   if meta and meta['xattrs']:raise ValueError('target ACL/xattrs require manual procedure')
+   if not test_mode:
+    for key in ('type','mode','uid','gid','user','group'):
+     if key not in item:raise ValueError('restore field required: '+key)
+    try:
+     if pwd.getpwuid(item['uid']).pw_name!=item['user'] or grp.getgrgid(item['gid']).gr_name!=item['group']:raise ValueError('target owner identity changed')
+    except KeyError as exc:raise ValueError('target owner identity unknown') from exc
+   mode=item.get('mode',0o600);uid=item.get('uid',os.getuid());gid=item.get('gid',os.getgid())
+   if any(not isinstance(x,int) or isinstance(x,bool) for x in (mode,uid,gid)) or mode<0 or mode>0o777 or uid<0 or gid<0:raise ValueError('invalid restore permissions')
+   data=base64.b64decode(item['content'],validate=True)
+   if len(data)>MAX_FILE:raise ValueError('restore file too large')
+   prepared.append((p,item,data,meta,before))
+  if not prepared:raise ValueError('no restore files')
+  folder.mkdir(parents=True,mode=0o700);sync_ancestors(root,folder)
+  j={'version':2,'operation_id':plan_id,'state':'writing','files':[],'checks':['helper lock held; external writers require an operator change freeze','service and reboot checks require operator']}
+  stages=[]
+  try:
+   save_journal(folder,j)
+   for p,item,data,meta,before in prepared:
+    rel=item['path'];p.parent.mkdir(parents=True,exist_ok=True);confined(root,rel);sync_ancestors(root,p.parent)
+    old=p.read_bytes() if before!='missing' else None
+    # Validate the bytes actually backed up, not a stale initial hash.
+    if file_state(root,rel,test_mode)!=(before,meta) or (old is not None and digest(old)!=before):raise ValueError('target changed during rollback capture: '+rel)
+    if old is not None:
+     backup=confined(folder,'before/'+rel);backup.parent.mkdir(parents=True,exist_ok=True)
+     with open(backup,'xb') as f:f.write(old);f.flush();os.fsync(f.fileno())
+     sync_directory(backup.parent)
+    stage=write_file(p,data,item.get('mode',0o600),item.get('uid',0),item.get('gid',0),test_mode);stages.append(stage)
+    after_meta=metadata(pathlib.Path(stage),test_mode)
+    j['files'].append({'path':rel,'before_sha':before,'before_metadata':meta,'after_sha':digest(data),'after_metadata':after_meta,'stage':str(stage),'phase':'prepared','applied':False})
+   # Every rollback file, staging file and metadata record is durable before writes.
+   for directory,_,_ in os.walk(folder,topdown=False):sync_directory(pathlib.Path(directory))
+   save_journal(folder,j)
+   for e in j['files']:
+    p=confined(root,e['path'])
+    e['phase']='writing';save_journal(folder,j)
+    if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before replace: '+e['path'])
+    if digest(pathlib.Path(e['stage']).read_bytes())!=e['after_sha'] or metadata(pathlib.Path(e['stage']),test_mode)!=e['after_metadata']:raise ValueError('staged file integrity failure')
+    # Revalidate after reading the staged bytes and immediately before rename.
+    if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before replace: '+e['path'])
+    os.replace(e['stage'],p);e['applied']=True;sync_directory(p.parent)
+    if file_state(root,e['path'],test_mode)!=(e['after_sha'],e['after_metadata']):raise ValueError('replacement verification failed: '+e['path'])
+    e['phase']='applied';save_journal(folder,j)
+   j['state']='applied';j['checks'].append('all replacement contents and metadata verified');save_journal(folder,j)
+   return result_of(folder,j)
+  except Exception as exc:
+   j['error']=str(exc)
+   try:
+    if any(e['phase'] in ('writing','applied') for e in j['files']):rollback_journal(root,folder,j,test_mode)
+    else:j['state']='failed';save_journal(folder,j)
+   except Exception as rollback_error:
+    j['state']='rollback_conflict';j['checks'].append('rollback or journal failure: '+str(rollback_error))
+    try:save_journal(folder,j)
+    except Exception as journal_error:j['checks'].append('journal update failed: '+str(journal_error))
+   raise RestoreError(exc,result_of(folder,j)) from exc
+  finally:
+   for stage in stages:
+    try:
+     if os.path.exists(stage):os.unlink(stage)
+    except OSError as cleanup_error:j['checks'].append('staging cleanup failed: '+str(cleanup_error))
+
+def sync_ancestors(root,path):
+ root=pathlib.Path(root);path=pathlib.Path(path)
+ while True:
+  sync_directory(path)
+  if path==root:break
+  if root not in path.parents:raise ValueError('directory outside restore root')
+  path=path.parent
 
 def sync_directory(path):
  fd=os.open(path,os.O_RDONLY)
@@ -270,10 +530,10 @@ def sync_directory(path):
  finally:os.close(fd)
 
 def authorize(operation,read_only=False):
- if operation not in ("probe","collect","apply"):raise ValueError("unknown operation")
- if read_only and operation=="apply":raise ValueError("read-only backup authority cannot restore")
+ if operation not in ("probe","collect","apply","restore-status","rollback"):raise ValueError("unknown operation")
+ if read_only and operation in ("apply","restore-status","rollback"):raise ValueError("read-only backup authority cannot restore")
 
-def main():
+def main(root=None):
  os.umask(0o077)
  if os.geteuid()!=0 or sys.platform!='linux':raise ValueError('host helper requires root on Linux')
  if sys.argv[1:] not in ([],['--read-only']):raise ValueError('invalid arguments')
@@ -282,7 +542,7 @@ def main():
  if len(data)>MAX_REQUEST:raise ValueError('request too large')
  request=json.loads(data);op=request.get('operation');authorize(op,read_only)
  if request.get('version')!=1:raise ValueError('unsupported protocol version')
- root=pathlib.Path('/')
+ root=pathlib.Path('/') if root is None else pathlib.Path(root)
  if op=='probe':print(json.dumps(probe()))
  elif op=='collect':
   configpath=pathlib.Path('/etc/anker-host.json')
@@ -295,20 +555,31 @@ def main():
    out=pathlib.Path(d);c=collect(root,out,paths);(out/'collection.json').write_text(json.dumps(c))
    with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as t:
     for p in sorted(out.rglob('*')):t.add(p,arcname=p.relative_to(out).as_posix(),recursive=False)
+ elif op=='restore-status':print(json.dumps(restore_status(root,request['plan_id'])))
+ elif op=='rollback':print(json.dumps(rollback_files(root,request['plan_id'],request.get('confirm'))))
  elif op=='apply':
   if not request.get('confirm') or request.get('confirm')!=request.get('plan_id'):raise ValueError('explicit plan confirmation required')
-  expected=dict(request['expected_inventory']);current=probe()
+  operation_id(request.get('plan_id'))
+  if any('expected_metadata' not in e for e in request.get('files',[])):raise ValueError('expected target metadata required')
+  expected=dict(request['expected_inventory']);current=probe(root)
+  required=('pve_version','users','groups','file_inventory')
+  for inv in (expected,current):
+   details=inv.get('details',{})
+   if details.get('capabilities',{}).get('restore_protocol')!=2 or details.get('capabilities',{}).get('journal') is not True:raise ValueError('hardened restore capabilities required')
+   if any(details.get('command_results',{}).get(k,{}).get('state')!='ok' for k in required):raise ValueError('required target inventory query failed')
   for x in ('captured_at','fingerprint'):expected.pop(x,None);current.pop(x,None)
-  stable=('file_hashes','boot_id','addresses','routes','packages','manual_packages','pci','boot')
+  stable=('file_hashes','file_metadata','users','groups','capabilities','command_results','boot_id','addresses','routes','packages','manual_packages','pci','boot')
   for inv in (expected,current):inv['details']={k:v for k,v in inv.get('details',{}).items() if k in stable}
   def normalize(v):
    if isinstance(v,dict):return {k:normalize(x) for k,x in v.items() if k not in ('valid_life_time','preferred_life_time') and x not in ('',None,[],{})}
    if isinstance(v,list):return [normalize(x) for x in v]
    return v
   if normalize(expected)!=normalize(current):raise ValueError('target inventory changed')
-  print(json.dumps(apply_files(root,request['files'])))
+  print(json.dumps(apply_files(root,request['files'],plan_id=request['plan_id'])))
  else:raise ValueError('unknown operation')
 if __name__=='__main__':
  try:main()
  except Exception as exc:
+  result=getattr(exc,'result',{'state':'failed','operation_id':'','applied':[],'rollback_path':'','checks':[],'reboot_verified':False,'error':str(exc)})
+  print(json.dumps(result))
   print('Anker host operation failed: '+str(exc),file=sys.stderr);sys.exit(1)

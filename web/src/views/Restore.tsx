@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { api, date, labels } from "../api";
-import type { Entry, Inventory, Plan, Status, User } from "../api";
+import { api, ApiError, date, labels } from "../api";
+import type {
+  Entry,
+  Job,
+  Plan,
+  RecoveryInspection,
+  Status,
+  User,
+} from "../api";
 import {
   Dialog,
   Download,
@@ -13,6 +20,7 @@ import {
   State,
 } from "../components/shared";
 import type { Notify } from "../components/shared";
+import RecoveryMapping from "../components/RecoveryMapping";
 
 function RestoreFiles({
   entries,
@@ -104,6 +112,71 @@ function RestoreFiles({
   );
 }
 
+function RecoveryEvidence({
+  title,
+  items,
+  ordered = false,
+}: {
+  title: string;
+  items: string[];
+  ordered?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const matches = useMemo(
+    () =>
+      items.filter((item) =>
+        item.toLowerCase().includes(query.trim().toLowerCase()),
+      ),
+    [items, query],
+  );
+  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  const rows = matches
+    .slice((current - 1) * 25, current * 25)
+    .map((item, i) => <li key={(current - 1) * 25 + i}>{item}</li>);
+  return (
+    <details
+      className={
+        "recovery-disclosure recovery-evidence" +
+        (ordered ? " manual-steps" : "")
+      }
+    >
+      <summary>
+        {title} · {items.length}
+      </summary>
+      <section aria-label={title}>
+        {items.length > 25 && (
+          <Field label={title + " durchsuchen"}>
+            <input
+              value={query}
+              placeholder="Text suchen"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+            />
+          </Field>
+        )}
+        {ordered ? (
+          <ol start={(current - 1) * 25 + 1}>{rows}</ol>
+        ) : (
+          <ul>{rows}</ul>
+        )}
+        {!matches.length && <p className="muted">Keine passenden Einträge.</p>}
+        {items.length > 25 && (
+          <Pagination
+            page={current}
+            pageSize={25}
+            total={matches.length}
+            onPageChange={setPage}
+            label={title}
+          />
+        )}
+      </section>
+    </details>
+  );
+}
+
 function PlanFiles({ steps }: { steps: Plan["steps"] }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -171,18 +244,34 @@ export default function Restore({
   );
   const [target, setTarget] = useState("");
   const [scenario, setScenario] = useState("files");
-  const [source, setSource] = useState<Inventory | null>(null);
+  const [hostname, setHostname] = useState("");
+  const [address, setAddress] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [interfaces, setInterfaces] = useState<Record<string, string>>({});
+  const [storage, setStorage] = useState<Record<string, string>>({});
+  const [inspection, setInspection] = useState<RecoveryInspection | null>(null);
+  const [inspectionKey, setInspectionKey] = useState("");
+  const [pendingJob, setPendingJob] = useState("");
+  const [uncertainPlans, setUncertainPlans] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [rollbackConfirmation, setRollbackConfirmation] = useState("");
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const activeRequest = useRef(false);
+  const mounted = useRef(true);
   const [consoleOK, setConsoleOK] = useState(false);
   const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [canRevise, setCanRevise] = useState(false);
-  const [targetInventory, setTargetInventory] = useState<Inventory | null>(
-    null,
-  );
+  const uncertain = !!plan && !!uncertainPlans[plan.id];
+  const targetBusy =
+    !!plan &&
+    status.jobs.some(
+      (j) =>
+        j.host_id === plan.target_id && ["queued", "running"].includes(j.state),
+    );
   const [planQuery, setPlanQuery] = useState("");
   const [planState, setPlanState] = useState("");
   const [planPage, setPlanPage] = useState(1);
@@ -191,6 +280,70 @@ export default function Restore({
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reload, setReload] = useState(0);
+  const contextKey = JSON.stringify([
+    backup,
+    target,
+    scenario,
+    [...files].sort(),
+  ]);
+  const currentContext = useRef(contextKey);
+  currentContext.current = contextKey;
+  const inspected = !!inspection && inspectionKey === contextKey;
+  const missingDecisions =
+    inspected &&
+    (inspection.ports.some((p) => !interfaces[p.name]) ||
+      inspection.storage.some((s) => !storage[s.id]) ||
+      (inspection.requires_console && !consoleOK) ||
+      (inspection.requires_source_offline && !offline));
+  const portValues =
+    inspection?.ports.map((p) => interfaces[p.name]).filter(Boolean) || [];
+  const duplicatePorts = new Set(portValues).size !== portValues.length;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setInspection(null);
+    setInspectionKey("");
+    setInterfaces({});
+    setStorage({});
+    setConsoleOK(false);
+    setOffline(false);
+    setFormError("");
+  }, [contextKey]);
+  useEffect(() => {
+    if (!busy) return;
+    const protect = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", protect);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, [busy]);
+  useEffect(() => {
+    if (!plan) return;
+    const latest = status.plans.find((p) => p.id === plan.id);
+    const job = pendingJob && status.jobs.find((j) => j.id === pendingJob);
+    const finished = job && !["queued", "running"].includes(job.state);
+    if (!finished && (!latest || latest.state === plan.state)) return;
+    let active = true;
+    api<Plan>("plans/" + plan.id)
+      .then((p) => {
+        if (!active) return;
+        setPlan(p);
+        if (finished) {
+          setPendingJob("");
+          setConfirmation("");
+        }
+      })
+      .catch((e) => {
+        if (active) setFormError((e as Error).message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [status.plans, status.jobs, pendingJob, plan?.id, plan?.state]);
   useEffect(() => {
     if (initialBackup) {
       setBackup(initialBackup);
@@ -199,7 +352,6 @@ export default function Restore({
   }, [initialBackup]);
   useEffect(() => {
     setFiles([]);
-    setSource(null);
     setEntries([]);
     setInterfaces({});
     setConsoleOK(false);
@@ -212,13 +364,9 @@ export default function Restore({
     }
     let active = true;
     setLoading(true);
-    Promise.all([
-      api<Inventory>("backups/" + backup + "/inventory"),
-      api<Entry[]>("backups/" + backup + "/files"),
-    ])
-      .then(([inventory, items]) => {
+    api<Entry[]>("backups/" + backup + "/files")
+      .then((items) => {
         if (!active) return;
-        setSource(inventory);
         setEntries(items);
         if (
           backup === initialBackup &&
@@ -237,51 +385,144 @@ export default function Restore({
       active = false;
     };
   }, [backup, initialBackup, initialFile, reload]);
+  function requestBody() {
+    return {
+      backup_id: backup,
+      target_id: target,
+      scenario,
+      files: scenario === "files" ? files : [],
+      mapping: {
+        interfaces,
+        storage,
+        ...(scenario !== "files"
+          ? { hostname: hostname.trim(), address: address.trim() }
+          : {}),
+      },
+      console_confirmed: consoleOK,
+      source_offline: offline,
+    };
+  }
   async function create(e: FormEvent) {
     e.preventDefault();
-    if (busy || loading || loadError) return;
+    if (
+      activeRequest.current ||
+      loading ||
+      loadError ||
+      !backup ||
+      !target ||
+      (scenario === "files" && !files.length)
+    )
+      return;
+    if (inspected && (missingDecisions || duplicatePorts)) return;
+    activeRequest.current = true;
+    const key = contextKey;
     setBusy(true);
     setFormError("");
     try {
-      const p = await api<Plan>("plans", "POST", {
-        backup_id: backup,
-        target_id: target,
-        scenario,
-        files: scenario === "files" ? files : [],
-        mapping: { interfaces, storage: {} },
-        console_confirmed: consoleOK,
-        source_offline: offline,
-      });
-      setPlan(p);
-      setCanRevise(true);
-      setWizard(false);
-      setConfirmation("");
-      refresh();
-      notify("Wiederherstellungsplan erstellt");
+      if (!inspected) {
+        const result = await api<RecoveryInspection>(
+          "plans/inspect",
+          "POST",
+          requestBody(),
+        );
+        if (!mounted.current || currentContext.current !== key) return;
+        setInspection(result);
+        setInspectionKey(key);
+        setInterfaces(
+          Object.fromEntries(
+            (result.ports || [])
+              .filter((p) => p.suggested)
+              .map((p) => [p.name, p.suggested!]),
+          ),
+        );
+        // Storage decisions remain explicit even when an inventory suggests a match.
+        setStorage({});
+      } else {
+        const p = await api<Plan>("plans", "POST", requestBody());
+        if (!mounted.current || currentContext.current !== key) return;
+        setPlan(p);
+        setCanRevise(true);
+        setWizard(false);
+        setConfirmation("");
+        setRollbackConfirmation("");
+        setRollbackOpen(false);
+        setPendingJob("");
+        refresh();
+        notify("Wiederherstellungsplan erstellt");
+      }
     } catch (e) {
-      setFormError((e as Error).message);
+      if (mounted.current && currentContext.current === key)
+        setFormError((e as Error).message);
     } finally {
-      setBusy(false);
+      activeRequest.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
-  async function apply() {
-    if (!plan) return;
+  async function execute(action: "apply" | "rollback" | "reconcile") {
+    if (
+      !plan ||
+      activeRequest.current ||
+      pendingJob ||
+      (action !== "reconcile" && (uncertain || targetBusy))
+    )
+      return;
+    activeRequest.current = true;
     setBusy(true);
     setFormError("");
+    const id = plan.id;
+    let jobAccepted = false;
     try {
-      await api("plans/" + plan.id + "/apply", "POST", { confirmation });
-      setPlan(null);
+      if (action === "reconcile") {
+        const p = await api<Plan>("plans/" + id + "/reconcile", "POST");
+        if (!mounted.current) return;
+        setPlan(p);
+        if (
+          [
+            "applied",
+            "checks_pending",
+            "rolled_back",
+            "failed",
+            "rollback_conflict",
+          ].includes(p.state)
+        )
+          setUncertainPlans((old) => ({ ...old, [id]: false }));
+      } else {
+        const job = await api<Job>("plans/" + id + "/" + action, "POST", {
+          confirmation:
+            action === "apply" ? confirmation : rollbackConfirmation,
+        });
+        jobAccepted = true;
+        if (!mounted.current) return;
+        setPendingJob(job.id);
+        setConfirmation("");
+        setRollbackConfirmation("");
+        setRollbackOpen(false);
+        setPlan(await api<Plan>("plans/" + id));
+        notify(
+          action === "apply"
+            ? "Dateiübernahme beauftragt. Hostnachweis abwarten."
+            : "Kontrollierte Rücksetzung beauftragt.",
+        );
+      }
       refresh();
-      notify("Wiederherstellung gestartet. Ergebnis im Auftrag prüfen.");
     } catch (e) {
-      setFormError((e as Error).message);
+      if (mounted.current) {
+        setFormError((e as Error).message);
+        const rejected =
+          !jobAccepted &&
+          e instanceof ApiError &&
+          e.status !== undefined &&
+          e.status >= 400 &&
+          e.status < 500;
+        if (action !== "reconcile" && !rejected)
+          setUncertainPlans((old) => ({ ...old, [id]: true }));
+        if (rejected) refresh();
+      }
     } finally {
-      setBusy(false);
+      activeRequest.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
-  const dest = status.hosts.find((h) => h.id === target);
-  const targetPorts =
-    targetInventory?.interfaces || dest?.inventory?.interfaces || [];
   const sources = new Map(status.backups.map((b) => [b.host_id, b.host_name]));
   const stands = status.backups
     .filter((b) => !sourceHost || b.host_id === sourceHost)
@@ -308,8 +549,10 @@ export default function Restore({
           user.role !== "reader" && (
             <button
               onClick={() => {
+                if (activeRequest.current) return;
                 setWizard(true);
                 setPlan(null);
+                setInspection(null);
                 setFormError("");
               }}
             >
@@ -384,14 +627,27 @@ export default function Restore({
                       <td className="right">
                         <button
                           className="text-button"
+                          disabled={busy}
                           onClick={async () => {
+                            if (activeRequest.current) return;
+                            activeRequest.current = true;
+                            setBusy(true);
                             try {
-                              setPlan(await api<Plan>("plans/" + p.id));
+                              const opened = await api<Plan>("plans/" + p.id);
+                              if (!mounted.current) return;
+                              setPlan(opened);
                               setCanRevise(false);
                               setConfirmation("");
+                              setRollbackConfirmation("");
+                              setRollbackOpen(false);
+                              setPendingJob("");
                               setFormError("");
                             } catch (e) {
-                              notify((e as Error).message, true);
+                              if (mounted.current)
+                                notify((e as Error).message, true);
+                            } finally {
+                              activeRequest.current = false;
+                              if (mounted.current) setBusy(false);
                             }
                           }}
                         >
@@ -427,14 +683,17 @@ export default function Restore({
           title="Wiederherstellung vorbereiten"
           wide
           busy={busy}
-          onClose={() => setWizard(false)}
+          onClose={() => {
+            if (!activeRequest.current) setWizard(false);
+          }}
         >
           <form onSubmit={create}>
             <fieldset className="form-fields" disabled={busy}>
               <p className="dialog-intro">
-                Der Plan liest das Zielinventar und verändert noch keine
-                Konfiguration.
+                Quelle auswählen, Ziel frisch prüfen, dann Änderungen ansehen.
+                Die Vorbereitung verändert keine Konfiguration.
               </p>
+              <h3 className="recovery-section-title">1 · Quelle und Ziel</h3>
               <div className="form-grid">
                 <Field
                   label="Quellhost"
@@ -482,7 +741,6 @@ export default function Restore({
                       setInterfaces({});
                       setConsoleOK(false);
                       setOffline(false);
-                      setTargetInventory(null);
                     }}
                   >
                     <option value="">Ziel auswählen</option>
@@ -532,74 +790,123 @@ export default function Restore({
                   onChange={setFiles}
                 />
               )}
-              {source?.interfaces.length &&
-              dest &&
-              (scenario !== "files" ||
-                files.some((f) => f.startsWith("etc/network/"))) ? (
-                <section className="mapping">
-                  <h3>Netzwerkports zuordnen</h3>
-                  <p className="muted">
-                    Für neue Hardware werden Ports ausdrücklich zugeordnet. Das
-                    Ziel wird bei der Planerstellung erneut geprüft.
-                  </p>
-                  {!targetPorts.length && (
-                    <p className="field-hint">
-                      Noch kein Zielinventar vorhanden. „Plan prüfen“ liest die
-                      Ports; danach kannst du die Zuordnungen im Plan anpassen.
-                    </p>
-                  )}
-                  {source.interfaces
-                    .filter((p) => p.name !== "lo")
-                    .map((p) => (
-                      <Field key={p.name} label={p.name + " → Zielport"}>
-                        <select
-                          value={interfaces[p.name] || ""}
-                          onChange={(e) =>
-                            setInterfaces((old) => ({
-                              ...old,
-                              [p.name]: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">
-                            Gleicher Name, sofern vorhanden
-                          </option>
-                          {targetPorts
-                            .filter((t) => t.name !== "lo")
-                            .map((t) => (
-                              <option key={t.name} value={t.name}>
-                                {t.name} · {t.mac}
-                              </option>
-                            ))}
-                        </select>
-                      </Field>
-                    ))}
-                </section>
-              ) : null}
-              {(scenario !== "files" ||
-                files.some((f) => f.startsWith("etc/network/"))) && (
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={consoleOK}
-                    onChange={(e) => setConsoleOK(e.target.checked)}
-                  />
-                  Konsolenzugang zum Ziel ist verfügbar
-                </label>
+              {scenario !== "files" && (
+                <p className="notice">
+                  Dieses Szenario wird manuell geführt. Der Plan bereitet einen
+                  Export und konkrete Prüfschritte vor; er baut keinen
+                  vollständigen Host oder Cluster automatisch wieder auf.
+                </p>
               )}
               {scenario !== "files" && (
+                <details className="recovery-disclosure">
+                  <summary>Hostidentität festlegen (optional, manuell)</summary>
+                  <p className="field-hint">
+                    Diese Wünsche werden im Plan dokumentiert. Hostname und
+                    Adresse werden nicht automatisch in Konfigurationsdateien
+                    geändert. Leer lassen, wenn die Identität später vor Ort
+                    entschieden wird.
+                  </p>
+                  <div className="form-grid">
+                    <Field label="Gewünschter Hostname (manuell)">
+                      <input
+                        value={hostname}
+                        onChange={(e) => setHostname(e.target.value)}
+                        placeholder="z. B. pve-ersatz"
+                      />
+                    </Field>
+                    <Field label="Gewünschte Adresse (manuell)">
+                      <input
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="IP-Adresse oder DNS-Name"
+                      />
+                    </Field>
+                  </div>
+                </details>
+              )}
+              <h3 className="recovery-section-title">
+                2 · Zielprüfung und Entscheidungen
+              </h3>
+              {!inspected && (
+                <p className="field-hint">
+                  „Ziel prüfen“ liest das aktuelle Zielinventar. Danach
+                  erscheinen nur die für diese Auswahl benötigten
+                  Entscheidungen.
+                </p>
+              )}
+              {inspected && inspection && (
                 <>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={offline}
-                      onChange={(e) => setOffline(e.target.checked)}
+                  <div className="recovery-inspection-meta">
+                    <strong>
+                      {inspection.source.hostname} →{" "}
+                      {inspection.target.hostname}
+                    </strong>
+                    <span className="state success">Ziel geprüft</span>
+                  </div>
+                  <p className="field-hint">
+                    Quelle {inspection.source.pve_version} · Ziel{" "}
+                    {inspection.target.pve_version} ·{" "}
+                    {inspection.automatic
+                      ? "Dateiübernahme nach Planprüfung möglich"
+                      : "Manuelle Vorbereitung erforderlich"}
+                  </p>
+                  {inspection.blockers?.map((s, i) => (
+                    <p className="notice warning" key={i}>
+                      {s}
+                    </p>
+                  ))}
+                  {inspection.warnings?.length > 0 && (
+                    <RecoveryEvidence
+                      key={inspectionKey + "warnings"}
+                      title="Hinweise zur Zielprüfung"
+                      items={inspection.warnings}
                     />
-                    Alter Host ist ausgeschaltet oder isoliert
-                  </label>
-                  <p className="notice">
-                    Gesamtszenarien werden auf realen Hosts manuell geführt, bis
-                    Hardware und Clusterabläufe im Labor validiert sind.
+                  )}
+                  <RecoveryMapping
+                    inspection={inspection}
+                    interfaces={interfaces}
+                    storage={storage}
+                    onInterfaces={setInterfaces}
+                    onStorage={setStorage}
+                  />
+                  {duplicatePorts && (
+                    <p className="notice warning" role="alert">
+                      Mehrere Quellports sind demselben Zielport zugeordnet. Für
+                      jeden Port ein eigenes Ziel wählen.
+                    </p>
+                  )}
+                  {inspection.requires_console && (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={consoleOK}
+                        onChange={(e) => setConsoleOK(e.target.checked)}
+                      />
+                      Konsolenzugang zum Ziel ist verfügbar
+                    </label>
+                  )}
+                  {inspection.requires_source_offline && (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={offline}
+                        onChange={(e) => setOffline(e.target.checked)}
+                      />
+                      Alter Host ist ausgeschaltet oder isoliert
+                    </label>
+                  )}
+                  {inspection.manual?.length > 0 && (
+                    <RecoveryEvidence
+                      key={inspectionKey + "manual"}
+                      title="Manuelle Schritte"
+                      items={inspection.manual}
+                      ordered
+                    />
+                  )}
+                  <p className="field-hint">
+                    „Plan prüfen“ prüft das Ziel und diese Entscheidungen
+                    erneut. Änderungen an Quelle, Ziel, Szenario oder
+                    Dateiauswahl erfordern eine neue Zielprüfung.
                   </p>
                 </>
               )}
@@ -624,10 +931,18 @@ export default function Restore({
                     !!loadError ||
                     !backup ||
                     !target ||
-                    (scenario === "files" && !files.length)
+                    (scenario === "files" && !files.length) ||
+                    !!missingDecisions ||
+                    duplicatePorts
                   }
                 >
-                  {busy ? "Ziel wird geprüft …" : "Plan prüfen"}
+                  {busy
+                    ? inspected
+                      ? "Plan wird geprüft …"
+                      : "Ziel wird geprüft …"
+                    : inspected
+                      ? "Plan prüfen"
+                      : "Ziel prüfen"}
                 </button>
               </footer>
             </fieldset>
@@ -639,7 +954,9 @@ export default function Restore({
           title="Wiederherstellungsplan"
           wide
           busy={busy}
-          onClose={() => setPlan(null)}
+          onClose={() => {
+            if (!activeRequest.current) setPlan(null);
+          }}
         >
           <div className="plan-meta">
             <strong>
@@ -656,15 +973,18 @@ export default function Restore({
               {s}
             </p>
           ))}
+          <h3 className="recovery-section-title">3 · Änderungen prüfen</h3>
+          <p className="field-hint">
+            {plan.steps.filter((s) => s.action === "apply").length} vorbereitete reguläre Dateien · {plan.steps.filter((s) => s.action !== "apply").length}{" "}
+            manuelle Dateien
+          </p>
           {plan.manual?.length > 0 && (
-            <section className="manual-steps">
-              <h3>Manuelle Schritte</h3>
-              <ol>
-                {plan.manual.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ol>
-            </section>
+            <RecoveryEvidence
+              key={plan.id + "manual"}
+              title="Manuelle Schritte"
+              items={plan.manual}
+              ordered
+            />
           )}
           <p className="field-hint">
             Die Dateiansicht zeigt Anpassungen an der Sicherung. Sie ist kein
@@ -672,26 +992,101 @@ export default function Restore({
             Zielhosts.
           </p>
           <PlanFiles key={plan.id} steps={plan.steps} />
+          {targetBusy && (
+            <p className="notice" role="status">
+              Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
+              Übernahme und Rücksetzung wieder verfügbar.
+            </p>
+          )}
+          {pendingJob && (
+            <p className="notice" role="status">
+              Auftrag läuft. Datei- und Hostnachweis werden nach Abschluss
+              geladen.
+            </p>
+          )}
           {plan.result && (
-            <div className="notice">
+            <div className="notice recovery-result">
               <p>
-                {plan.result.applied?.length || 0} Dateien übernommen. Rollback:{" "}
-                <span className="mono">{plan.result.rollback_path}</span>
+                {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
+                {plan.state === "rolled_back"
+                  ? "Rücksetzung laut Hostjournal abgeschlossen."
+                  : "Betriebsprüfung bleibt ausstehend."}
               </p>
-              {plan.result.checks?.map((s, i) => (
-                <p key={i}>{s}</p>
-              ))}
+              {plan.result.operation_id && (
+                <p>
+                  Recovery-ID:{" "}
+                  <span className="mono">{plan.result.operation_id}</span>
+                </p>
+              )}
+              {plan.result.rollback_path && (
+                <p>
+                  Rollback:{" "}
+                  <span className="mono">{plan.result.rollback_path}</span>
+                </p>
+              )}
+              {plan.result.error && <p role="alert">{plan.result.error}</p>}
+              <p>
+                Ein vollständiger Host-Restore und ein geprüfter Neustart sind
+                damit nicht bestätigt.
+              </p>
+              {!!plan.result.checks?.length && (
+                <RecoveryEvidence
+                  key={plan.id + "checks"}
+                  title="Hostnachweise"
+                  items={plan.result.checks}
+                />
+              )}
             </div>
           )}
-          {plan.state === "ready" && user.role !== "reader" && (
+          {(uncertain ||
+            ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
+              plan.state,
+            )) && (
+            <p className="notice warning">
+              Den aktuellen Hostzustand über das Journal abgleichen. Eine
+              unklare Übernahme wird nicht automatisch wiederholt.
+            </p>
+          )}
+          {plan.state === "ready" && user.role !== "reader" && !pendingJob && (
             <Field label="Plan-ID zur Ausführung eingeben" hint={plan.id}>
               <input
                 autoComplete="off"
+                disabled={busy}
                 value={confirmation}
                 onChange={(e) => setConfirmation(e.target.value)}
                 placeholder={plan.id}
               />
             </Field>
+          )}
+          {rollbackOpen && (
+            <section className="recovery-rollback">
+              <p className="notice warning">
+                Nur unveränderte Dateien aus dieser Übernahme werden
+                kontrolliert zurückgesetzt. Zwischenzeitliche Fremdänderungen
+                können die Rücksetzung blockieren.
+              </p>
+              <Field label="Plan-ID zur Rücksetzung eingeben" hint={plan.id}>
+                <input
+                  autoComplete="off"
+                  disabled={busy}
+                  value={rollbackConfirmation}
+                  onChange={(e) => setRollbackConfirmation(e.target.value)}
+                  placeholder={plan.id}
+                />
+              </Field>
+              <button
+                disabled={
+                  busy ||
+                  !!pendingJob ||
+                  uncertain ||
+                  targetBusy ||
+                  rollbackConfirmation !== plan.id
+                }
+                onClick={() => execute("rollback")}
+              >
+                Rücksetzung bestätigen
+              </button>
+            </section>
           )}
           {formError && (
             <p className="notice warning" role="alert">
@@ -700,13 +1095,17 @@ export default function Restore({
           )}
           <footer className="dialog-footer">
             {canRevise &&
+              !uncertain &&
+              !pendingJob &&
               ["ready", "blocked", "manual"].includes(plan.state) && (
                 <button
                   className="secondary"
                   disabled={busy}
                   onClick={() => {
-                    setTargetInventory(plan.target);
-                    setInterfaces(plan.mapping?.interfaces || interfaces);
+                    setInspection(null);
+                    setInspectionKey("");
+                    setConsoleOK(false);
+                    setOffline(false);
                     setPlan(null);
                     setWizard(true);
                     setFormError("");
@@ -720,10 +1119,56 @@ export default function Restore({
                 Plan herunterladen
               </Download>
             )}
+            {!status.demo &&
+              user.role !== "reader" &&
+              (uncertain ||
+                [
+                  "interrupted",
+                  "failed",
+                  "unknown",
+                  "rollback_conflict",
+                ].includes(plan.state)) && (
+                <button
+                  className="secondary"
+                  disabled={busy || !!pendingJob}
+                  onClick={() => execute("reconcile")}
+                >
+                  Hostzustand abgleichen
+                </button>
+              )}
+            {!status.demo &&
+              user.role !== "reader" &&
+              !rollbackOpen &&
+              !!plan.result?.rollback_path &&
+              [
+                "applied",
+                "checks_pending",
+                "interrupted",
+                "failed",
+                "rollback_conflict",
+              ].includes(plan.state) && (
+                <button
+                  className="secondary"
+                  disabled={busy || !!pendingJob || uncertain || targetBusy}
+                  onClick={() => {
+                    setRollbackOpen(true);
+                    setRollbackConfirmation("");
+                    setConfirmation("");
+                  }}
+                >
+                  Dateien zurücksetzen
+                </button>
+              )}
             {plan.state === "ready" && user.role !== "reader" && (
               <button
-                disabled={confirmation !== plan.id || busy}
-                onClick={apply}
+                disabled={
+                  confirmation !== plan.id ||
+                  busy ||
+                  !!pendingJob ||
+                  uncertain ||
+                  targetBusy
+                }
+                onClick={() => execute("apply")}
               >
                 {busy
                   ? "Startet …"

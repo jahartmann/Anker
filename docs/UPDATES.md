@@ -1,6 +1,6 @@
 # Installation und Updates
 
-Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das aktuelle Hostprotokoll bleibt Version 1; inkompatible Releases werden abgelehnt.
+Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
 ## Repository vorbereiten
 

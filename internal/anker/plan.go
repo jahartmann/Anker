@@ -33,12 +33,12 @@ func fileHashes(i Inventory) map[string]string {
 	return out
 }
 func protectedPath(p string) bool {
-	for _, pre := range []string{"etc/pve/", "etc/corosync/", "etc/ssh/ssh_host_", "etc/apt/", "etc/default/grub", "etc/kernel/", "etc/modprobe.d/", "etc/udev/", "etc/systemd/system/"} {
+	for _, pre := range []string{"etc/pve/", "etc/corosync/", "etc/ssh/", "etc/sudoers.d/", "etc/pam.d/", "usr/local/lib/anker/", "etc/network/", "etc/apt/", "etc/default/grub", "etc/kernel/", "etc/modprobe.d/", "etc/udev/", "etc/systemd/system/"} {
 		if strings.HasPrefix(p, pre) {
 			return true
 		}
 	}
-	for _, v := range []string{"etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/fstab", "etc/machine-id", "etc/hostname", "etc/hosts"} {
+	for _, v := range []string{"etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/fstab", "etc/machine-id", "etc/hostname", "etc/hosts", "etc/sudoers", "etc/anker-host.json", "etc/nsswitch.conf"} {
 		if p == v {
 			return true
 		}
@@ -46,44 +46,49 @@ func protectedPath(p string) bool {
 	return !(strings.HasPrefix(p, "etc/") || strings.HasPrefix(p, "usr/local/"))
 }
 
-var interfaceToken = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9_.:-]*`)
+var interfaceToken = regexp.MustCompile(`\S+`)
+var interfaceSuffix = regexp.MustCompile(`^(?:\.[0-9]+)*(?::[0-9]+)?$`)
 
 func mapNetwork(data string, source, target Inventory, m Mapping) (string, []string) {
-	targetNames := map[string]bool{}
-	for _, i := range target.Interfaces {
-		targetNames[i.Name] = true
-	}
-	missing := []string{}
-	oldNames := map[string]string{}
-	for _, i := range source.Interfaces {
-		if i.Name == "lo" || strings.HasPrefix(i.Name, "vmbr") || strings.HasPrefix(i.Name, "bond") || strings.Contains(i.Name, ".") {
+	lines := strings.Split(data, "\n")
+	for index, line := range lines {
+		code, comment := line, ""
+		if hash := strings.Index(line, "#"); hash >= 0 {
+			code, comment = line[:hash], line[hash:]
+		}
+		fields := strings.Fields(code)
+		if len(fields) == 0 {
 			continue
 		}
-		if !strings.Contains(data, i.Name) {
+		switch fields[0] {
+		case "iface", "auto", "allow-hotplug", "allow-auto", "bridge-ports", "bond-slaves", "bond-ports", "bond-primary", "vlan-raw-device":
+		default:
 			continue
 		}
-		newName := m.Interfaces[i.Name]
-		if newName == "" && targetNames[i.Name] {
-			newName = i.Name
-		}
-		if !targetNames[newName] {
-			missing = append(missing, "Netzwerkport "+i.Name+" muss einem vorhandenen Zielport zugeordnet werden")
-			continue
-		}
-		oldNames[i.Name] = newName
-	}
-	result := interfaceToken.ReplaceAllStringFunc(data, func(token string) string {
-		if v, ok := oldNames[token]; ok {
-			return v
-		}
-		for old, newName := range oldNames {
-			if strings.HasPrefix(token, old+".") {
-				return newName + strings.TrimPrefix(token, old)
+		position := -1
+		code = interfaceToken.ReplaceAllStringFunc(code, func(token string) string {
+			position++
+			if position == 0 || (fields[0] == "iface" && position != 1) {
+				return token
 			}
-		}
-		return token
-	})
-	return result, missing
+			if value, ok := m.Interfaces[token]; ok {
+				return value
+			}
+			longest, replacement := "", token
+			for old, newName := range m.Interfaces {
+				if strings.HasPrefix(token, old) && len(old) > len(longest) {
+					suffix := strings.TrimPrefix(token, old)
+					if suffix != "" && interfaceSuffix.MatchString(suffix) {
+						longest = old
+						replacement = newName + suffix
+					}
+				}
+			}
+			return replacement
+		})
+		lines[index] = code + comment
+	}
+	return strings.Join(lines, "\n"), []string{}
 }
 func lineDiff(before, after string) string {
 	if before == after {
@@ -129,7 +134,17 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	target.Fingerprint = Fingerprint(target)
+	inspection, err := s.analyzeRecovery(b, m, target, r)
+	if err != nil {
+		return Plan{}, err
+	}
+	resolvedPorts, mappingBlockers, mappingManual := validateRecoveryMapping(inspection, r)
 	p := Plan{ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	p.Blockers = append(p.Blockers, inspection.Blockers...)
+	p.Blockers = append(p.Blockers, mappingBlockers...)
+	p.Manual = append(p.Manual, inspection.Manual...)
+	p.Manual = append(p.Manual, mappingManual...)
+	p.Mapping.Interfaces = resolvedPorts
 	if _, real := s.Collector.(SSHCollector); real {
 		if _, authErr := RestoreSSHArgs(h); authErr != nil {
 			p.Blockers = append(p.Blockers, "Für die Ausführung ist ein separat berechtigter Wiederherstellungszugang erforderlich")
@@ -158,15 +173,9 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	case "version":
 		p.Manual = append(p.Manual, "Versionsmigration und In-place-Upgrade sind unterschiedliche Abläufe; den offiziell unterstützten Pfad und Vorprüfungen verwenden.")
 	}
-	selected := map[string]bool{}
-	for _, file := range r.Files {
-		if err = ValidPath(file); err != nil {
-			return p, err
-		}
-		selected[file] = true
-	}
-	if r.Scenario == "files" && len(selected) == 0 {
-		return p, errors.New("mindestens eine Datei auswählen")
+	selected, err := recoverySelection(m, r)
+	if err != nil {
+		return p, err
 	}
 	root := filepath.Join(s.Root, "plans", p.ID)
 	if err = os.MkdirAll(filepath.Join(root, "prepared-files"), 0700); err != nil {
@@ -186,7 +195,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		if e.Type == "directory" {
 			continue
 		}
-		if len(r.Files) > 0 && !selected[e.Path] {
+		if !selected[e.Path] {
 			continue
 		}
 		delete(selected, e.Path)
@@ -197,18 +206,19 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		}
 		step.Secret = step.Secret || fileEntry.Secret
 		prepared := data
-		if e.Type != "file" || protectedPath(e.Path) || len(e.XAttrs) > 0 {
+		if reason := fileManualReason(e, m.Inventory, target); reason != "" {
 			step.Action = "manual"
-			step.Reason = "Hardware-, Identitäts-, Cluster- oder Metadatenbestandteil gezielt manuell übernehmen"
+			step.Reason = reason
 		}
 		if strings.HasPrefix(e.Path, "etc/network/") {
-			mapped, missing := mapNetwork(string(data), m.Inventory, target, r.Mapping)
+			mapped, missing := mapNetwork(string(data), m.Inventory, target, Mapping{Interfaces: resolvedPorts})
 			prepared = []byte(mapped)
 			p.Blockers = append(p.Blockers, missing...)
 			if !r.ConsoleConfirmed {
 				p.Blockers = append(p.Blockers, "Für Netzwerkänderungen Konsolenzugang bestätigen")
 			}
-			step.Reason = "Portzuordnung geprüft; Aktivierung und Erreichbarkeit über Konsole prüfen"
+			step.Action = "manual"
+			step.Reason = "Netzwerkdatei vorbereitet; Aktivierung manuell über Konsole, lokaler Rückfallwächter fehlt"
 		}
 		if step.Action == "apply" {
 			requestBytes += 4*((len(prepared)+2)/3) + 4096
@@ -219,6 +229,9 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 			if step.BeforeSHA == "" {
 				step.BeforeSHA = "missing"
 			}
+			count++
+		}
+		if e.Type == "file" {
 			step.PreparedSHA = Hash(prepared)
 			step.Diff = lineDiff(string(data), string(prepared))
 			full, err := safeJoin(filepath.Join(root, "prepared-files"), e.Path)
@@ -228,7 +241,6 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 			if err = atomicWrite(full, prepared, 0600); err != nil {
 				return p, err
 			}
-			count++
 		}
 		p.Steps = append(p.Steps, step)
 	}
@@ -246,6 +258,11 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		p.State = "manual"
 		p.Manual = append(p.Manual, "Dieses Gesamtszenario hat noch keinen realen Hardware-/Cluster-Labortest. Vorbereitete Dateien und manuelle Anleitung exportieren; automatische Gesamtausführung bleibt gesperrt.")
 	}
+	uniqueBlockers := []string{}
+	for _, blocker := range p.Blockers {
+		uniqueBlockers = appendUnique(uniqueBlockers, blocker)
+	}
+	p.Blockers = uniqueBlockers
 	if len(p.Blockers) > 0 {
 		p.State = "blocked"
 	}
@@ -286,7 +303,7 @@ func (s *Service) savePlan(p Plan) error {
 func planGuide(p Plan, m Manifest) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# Zielbezogene Wiederherstellung\n\nPlan %s · Szenario %s · Status %s\n\nQuelle %s (%s) → Ziel %s (%s)\n\n", p.ID, p.Scenario, p.State, p.Source.Hostname, p.Source.PVEVersion, p.Target.Hostname, p.Target.PVEVersion))
-	b.WriteString("Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Haltepunkte\n\n")
+	b.WriteString("Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Ausführung und Rücksetzung\n\nBetroffene Dienste und fremde Schreiber vor Übernahme anhalten. Der Host speichert journal.json unter /var/lib/anker-host/rollback/" + p.ID + "/. Nach Abbruch Hostzustand abgleichen und nicht blind erneut anwenden. Rücksetzung benötigt eine separate Plan-ID-Bestätigung und erhält Fremdänderungen. Netzwerkdateien nur manuell mit Konsolenzugang und geprüftem Rückweg übernehmen.\n\n## Haltepunkte\n\n")
 	for _, x := range p.Blockers {
 		b.WriteString("- " + x + "\n")
 	}
@@ -368,7 +385,7 @@ func (s *Service) verifyPlanFiles(p Plan) error {
 		return errors.New("Planmanifest wurde verändert")
 	}
 	for _, step := range p.Steps {
-		if step.Action != "apply" {
+		if step.PreparedSHA == "" {
 			continue
 		}
 		file, err := safeJoin(filepath.Join(root, "prepared-files"), step.Path)

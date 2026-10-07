@@ -218,8 +218,12 @@ einen Plan erstellen:
   anker restore plan \-\-backup BACKUP \-\-target HOST \e
     \-\-scenario files \-\-files etc/test.conf
   anker restore list
+  anker restore inspect \-\-backup BACKUP \-\-target HOST \e
+    \-\-scenario files \-\-files etc/test.conf
   anker restore export PLAN ./plan.tar
   anker restore apply PLAN \-\-confirm PLAN
+  anker restore status PLAN
+  anker restore rollback PLAN \-\-confirm PLAN
 .fi
 .PP
 Für eine Migration sind eine geprüfte
@@ -243,6 +247,35 @@ vor Bestätigung erneut prüfen. Wiederherstellungen werden
 nicht automatisch
 wiederholt. Bei Abbruch Zielzustand und
 Rollbackverzeichnis prüfen.
+Die Zielprüfung mit
+.B restore inspect
+verändert keine Dateien und erstellt keinen Plan.
+Sie zeigt nur benötigte physische Ports und konfigurierte
+Storage-IDs. Auch
+.B restore plan
+prüft zuerst frisch. Im Terminal folgt nach der Prüfung
+die getrennte Zuordnungs- und Planansicht.
+.PP
+Netzwerkdateien werden vorbereitet und exportiert; ihre Aktivierung bleibt
+manuell über Konsole. Gesamtrecovery und Clusterwiederaufbau bleiben
+manuell geführt. Die Optionen
+.BR \-\-storage " ID=Ziel oder ID=manual, " \-\-hostname " NAME und " \-\-address " IP"
+dokumentieren manuelle Entscheidungen; sie formatieren keine Datenträger
+und schreiben Hostidentität oder Adressen nicht automatisch um.
+.PP
+Nach Abbruch oder unklarer Antwort liest
+.B restore status PLAN
+das planbezogene Hostprotokoll und gleicht den gespeicherten Stand ab.
+.B restore rollback PLAN \-\-confirm PLAN
+fordert die ausdrückliche Plan-ID und prüft die
+Nachherbedingungen, bevor ursprüngliche Dateien zurückgesetzt
+werden. Fremde Änderungen
+bleiben erhalten. Im Terminal stehen dafür im Plan
+.B r
+(Hostprotokoll) und
+.B b
+(Rücksetzung) bereit. Übernommene Dateien, Betriebsprüfung
+und Neustartprüfung sind getrennte Zustände.
 .SH AUFTRÄGE UND BETRIEB
 .nf
   anker status

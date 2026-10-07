@@ -30,6 +30,12 @@ Bei vollständigem Clusterverlust in isolierter Umgebung beginnen, einen geeigne
 
 Quell- und Zielversion samt Debian-Basis vergleichen. Bei anderer Hauptversion Konfiguration anhand geprüfter Regeln anpassen; keine pauschale Datenbankübernahme. Paket-Upgrades und Repository-Änderungen sind ein gesonderter Ablauf. Ohne getestete Kombination ist die Wiederherstellung manuell zu prüfen.
 
+## Automatische Einzeldateien und Unterbrechung
+
+Freigegebene gewöhnliche Dateien benötigen Restore-Protokoll 2 und erfasste Benutzer-/Gruppenidentitäten. Netzwerk, SSH-/sudo-/PAM-Zugang, Hosthelfer, Cluster und hardwareabhängige Configs bleiben manuell. Vor einer Übernahme andere Schreiber und betroffene Dienste anhalten. Anker sperrt nur eigene Helferprozesse, keine fremden Programme.
+
+Das Zieljournal liegt unter /var/lib/anker-host/rollback/<Plan-ID>/journal.json. Nach Abbruch Hostzustand über Anker abgleichen; eine ungeklärte Übernahme nicht wiederholen. Rücksetzung separat mit Plan-ID bestätigen. Nur eigene unveränderte Nachherzustände werden zurückgesetzt, Fremdänderungen bleiben erhalten. Originale und Journal bis zur Betriebsabnahme behalten. Dateiübernahme und Rücksetzung bestätigen keinen Reboot oder vollständigen Hostbetrieb.
+
 ## Einschränkungen
 
 Warnungen: %v

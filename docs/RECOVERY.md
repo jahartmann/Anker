@@ -2,11 +2,24 @@
 
 ## Einzeldateien
 
-Sicherung prüfen, Zielhost und Dateien auswählen, Zielinventar lesen lassen. Netzwerkports bei anderer Hardware zuordnen; für Netzwerkänderungen Konsolenzugang bestätigen. Der Plan speichert Zielprüfsummen und eine vorbereitete Kopie. Vor Ausführung werden Zielinventar und Dateiinhalte erneut geprüft. Die exakte Plan-ID bestätigt die Übernahme. Ein geänderter Zielzustand verlangt einen neuen Plan.
+1. Sicherung, Zielhost und Dateien wählen. **Ziel prüfen** liest das aktuelle Ziel, ohne einen Plan anzulegen oder Dateien zu ändern.
+2. Nur benötigte physische Ports und referenzierte Storage-IDs zuordnen. Bridges, Bonds, VLANs und Interface-Aliase werden über ihre Portabhängigkeiten betrachtet; unbeteiligte Adapter und Partitionen erscheinen nicht als Entscheidungen. Vorschläge anhand von MAC/PCI prüfen. Verkabelung wird nicht automatisch erkannt.
+3. **Plan prüfen** wiederholt die Zielprüfung. Netzwerkdateien werden angepasst und für die manuelle Übernahme vorbereitet. Storage, gewünschter Hostname und Adresse dokumentieren manuelle Entscheidungen; Anker baut keine Datenträger um und ersetzt diese Werte nicht pauschal in Configs.
+4. Freigegebene gewöhnliche Dateien nach Eingabe der exakten Plan-ID übernehmen. Der Plan prüft Inhalt, Rechte und Benutzer-/Gruppenidentität. Ein geänderter Zielstand verlangt einen neuen Plan.
 
-Normale Configdateien unter `/etc` und `/usr/local` können atomisch pro Datei übernommen werden. Identität, Accounts, Bootloader, Paketquellen, Clusterzustand, systemd-Dienste, symbolische Links und Dateien mit Extended Attributes bleiben manuelle Schritte. Es gibt keine atomische Transaktion über alle Dateien. Bei einem Fehler kann ein Teil bereits übernommen sein; Rollbackpfad und tatsächlichen Zustand prüfen.
+Accounts, Identität, Boot, Cluster, Paketquellen, Netzwerk, Zugangs- und Anker-Helferkonfiguration, Links sowie Dateien mit erweiterten Metadaten bleiben manuell. **Netzwerk wird nicht automatisch geschrieben oder aktiviert.** Ein unabhängiger lokaler Rückfallwächter ist noch nicht abgenommen; die Konsolenbestätigung hebt diese Grenze nicht auf.
 
-Vorherige Inhalte werden auf dem Ziel unter `/var/lib/anker-host/rollback/<zeit-id>/` abgelegt. `before.json` dokumentiert, ob Dateien existierten und ihre Originalmetadaten. Neue Dateien müssen beim Rollback gegebenenfalls entfernt werden. Eine automatische Rücknahme, Dienstaktivierung oder ein Neustart wird nicht behauptet. Nach Übernahme Konfigurationssyntax, Dienstfunktion, Netzwerk, Storage, PBS und Reboot gesondert prüfen.
+Automatische Übernahmen brauchen Hosthelfer mit Restore-Protokoll 2. Nach einem zentralen Update bei vorhandenen Hosts einmal **Hosts → Verbindung neu einrichten** und danach einen neuen Backupstand erstellen. Alte Stände bleiben exportierbar; fehlende Eigentümeridentitäten werden nicht geraten. Das SSH-Nachrichtenformat bleibt Version 1.
+
+## Unterbrechung und Rücksetzung
+
+Der Host sichert Originale und schreibt ein synchronisiertes Journal unter `/var/lib/anker-host/rollback/<Plan-ID>/journal.json`. Eine lokale Exklusivsperre verhindert parallele Helfermutationen. Jede Datei wird unmittelbar vor Austausch und danach nach Inhalt und Metadaten geprüft. Betroffene Dienste und andere Schreiber für die Übernahme anhalten: Ankers Sperre kann fremde Programme nicht sperren, und mehrere Dateien bilden keine globale Transaktion.
+
+Bei einem gewöhnlichen Schreibfehler setzt der Helfer eigene bereits geänderte Dateien kontrolliert zurück. Zwischenzeitliche Fremdänderungen bleiben erhalten und erscheinen als Rücksetzungskonflikt. Bei Verbindungsabbruch oder Prozessende keine zweite Übernahme starten. **Hostzustand abgleichen** liest nur das Journal. Ein vollständig fehlendes Journal wird als ungeklärt erklärt; ein vorhandenes beschädigtes Journal blockiert weitere Schreiboperationen.
+
+**Dateien zurücksetzen** verlangt die Plan-ID erneut. Die Rücksetzung prüft für jede Datei den eigenen Nachherzustand oder den bereits wiederhergestellten Vorherzustand. Fremde Inhalte oder Rechte werden nicht überschrieben. Originalkopien und Protokoll erst nach bestätigter Betriebsprüfung entfernen. Alte Rollbackordner ohne Journal müssen vor einer neuen automatischen Übernahme manuell geprüft werden; nicht ungeprüft löschen.
+
+„Dateien übernommen“ bedeutet: Dateischritte bestätigt. Syntax, Dienstfunktion, Netzwerk, Storage, PBS und Neustart bleiben zu prüfen. Eine erfolgreiche Rücksetzung bestätigt ebenfalls keinen vollständigen Hostbetrieb.
 
 ## Hostausfall oder neue Hardware
 

@@ -61,7 +61,9 @@ func (m Model) View() string {
 		body = append(body, strong.Render(clean(f.title)))
 		start := m.formStart()
 		count := max(1, (m.bodyCapacity()-1)/3)
-		for i := start; i < len(f.fields) && i < start+count; i++ {
+		positions := m.visibleFormFields()
+		for position := start; position < len(positions) && position < start+count; position++ {
+			i := positions[position]
 			e := f.fields[i]
 			value := clean(e.value)
 			if e.secret {
@@ -125,7 +127,20 @@ func (m Model) View() string {
 		if f.focus == len(f.fields) {
 			actions = strong.Render(actions)
 		}
-		hint = fmt.Sprintf("Feld %d/%d · Enter nächstes Feld; auf Weiter: Enter", min(f.focus+1, len(f.fields)), len(f.fields))
+		visiblePosition := len(positions)
+		for position, index := range positions {
+			if index == f.focus {
+				visiblePosition = position + 1
+				break
+			}
+		}
+		hint = fmt.Sprintf("Feld %d/%d · Enter nächstes Feld; auf Weiter: Enter", visiblePosition, len(positions))
+		if f.kind == "plan" && recoveryInspection(f) != nil {
+			inspection := recoveryInspection(f)
+			if boolean(inspection, "requires_console") {
+				hint = "Netzwerk vorbereitet · Aktivierung manuell über Konsole; lokaler Rückfallwächter fehlt."
+			}
+		}
 		if f.kind == "plan" && f.fields[2].value != "files" {
 			hint = "Reale Hosts: manuell geführt · Export; keine automatische Gesamtausführung."
 		}
@@ -188,7 +203,14 @@ func (m Model) formStart() int {
 		return 0
 	}
 	count := max(1, (m.bodyCapacity()-1)/3)
-	focus := min(m.form.focus, len(m.form.fields)-1)
+	positions := m.visibleFormFields()
+	focus := len(positions) - 1
+	for index, value := range positions {
+		if value == m.form.focus {
+			focus = index
+			break
+		}
+	}
 	return max(0, focus-count+1)
 }
 func (m Model) detailLines() []string { return wrap(clean(m.detail), max(1, m.width)) }
@@ -403,6 +425,12 @@ func planText(p map[string]any, m Model) string {
 		}
 	} else {
 		b.WriteString("\nKeine Plansperren. Der Dienst prüft das Ziel vor der Ausführung erneut.\n")
+	}
+	if result := object(p["result"]); result != nil {
+		fmt.Fprintf(&b, "\nHostprotokoll: %s · Recovery-ID: %s\nRollbackpfad: %s\n%s\n", str(result, "state"), str(result, "operation_id"), str(result, "rollback_path"), str(result, "error"))
+	}
+	if recoveryMayHaveJournal(p) {
+		b.WriteString("Hostprotokoll mit r abgleichen; keine Dateiübernahme wiederholen. Kontrollierte Rücksetzung mit b und ausdrücklicher Plan-ID. Dienste und Neustart bleiben separat zu prüfen.\n")
 	}
 	b.WriteString("\nGeplante Dateiänderungen:\n")
 	for _, raw := range list(p["steps"]) {

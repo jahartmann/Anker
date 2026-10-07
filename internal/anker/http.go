@@ -317,6 +317,22 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		}
 		s.LogAudit(u.ID, "host.save", h.ID)
 		return jsonOut(w, h)
+	case "plans/inspect":
+		if method != "POST" {
+			return fail(405, "Methode nicht unterstützt")
+		}
+		if err := require(u, "restore"); err != nil {
+			return err
+		}
+		var in PlanRequest
+		if err := input(r, &in); err != nil {
+			return err
+		}
+		inspection, err := s.InspectRecovery(r.Context(), in)
+		if err != nil {
+			return err
+		}
+		return jsonOut(w, inspection)
 	case "plans":
 		if method == "GET" {
 			p, err := s.Plans()
@@ -672,6 +688,34 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				return err
 			}
 			s.LogAudit(u.ID, "plan.apply", id)
+			return jsonOut(w, j)
+		}
+		if action == "reconcile" && method == "POST" {
+			if err = require(u, "restore"); err != nil {
+				return err
+			}
+			p, err = s.ReconcilePlan(r.Context(), id)
+			if err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "plan.reconcile", id)
+			return jsonOut(w, redactPlan(p, false))
+		}
+		if action == "rollback" && method == "POST" {
+			if err = require(u, "restore"); err != nil {
+				return err
+			}
+			var in struct {
+				Confirmation string `json:"confirmation"`
+			}
+			if err = input(r, &in); err != nil {
+				return err
+			}
+			j, err := s.QueueRollback(id, in.Confirmation)
+			if err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "plan.rollback", id)
 			return jsonOut(w, j)
 		}
 		if action == "download" && method == "GET" {

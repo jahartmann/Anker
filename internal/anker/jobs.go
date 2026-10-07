@@ -82,7 +82,7 @@ func (s *Service) RecoverJobs() error {
 		return err
 	}
 	for _, p := range plans {
-		if p.State == "applying" {
+		if p.State == "applying" || p.State == "rolling_back" {
 			p.State = "interrupted"
 			if err = s.savePlan(p); err != nil {
 				return err

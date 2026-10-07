@@ -249,6 +249,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadErr = v.err.Error()
 		} else {
 			m.data = mergeData(m.data, v.data)
+			m.refreshRecoveryPreview()
 			m.loadErr = ""
 			m.buildRows()
 		}
@@ -305,7 +306,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.form != nil {
 				start := m.formStart()
-				index := start + (v.Y-5)/3
+				position := start + (v.Y-5)/3
+				positions := m.visibleFormFields()
+				index := -1
+				if position >= 0 && position < len(positions) {
+					index = positions[position]
+				}
 				if v.Y >= 5 && index >= 0 && index < len(m.form.fields) && v.Y < m.height-4 {
 					m.form.focus = index
 					if (v.Y-5)%3 == 1 && len(m.form.fields[index].choices) > 0 {
@@ -421,7 +427,7 @@ func (m *Model) move(delta int) tea.Cmd {
 		return nil
 	}
 	if m.form != nil {
-		m.form.focus = max(0, min(len(m.form.fields)-1, m.form.focus+delta))
+		m.nextFormField(delta)
 		return nil
 	}
 	if m.detail != "" {
@@ -502,6 +508,9 @@ func (m *Model) acceptConfirmation() tea.Cmd {
 	return m.request(a)
 }
 func (m *Model) handleResult(v commandResult) {
+	if m.receiveRecoveryInspection(v) {
+		return
+	}
 	if strings.HasPrefix(v.purpose, "planFiles:") {
 		if m.form != nil && m.form.kind == "plan" && m.form.fields[0].value == strings.TrimPrefix(v.purpose, "planFiles:") {
 			entry := &m.form.fields[3]
@@ -540,7 +549,7 @@ func (m *Model) handleResult(v commandResult) {
 		m.offset = 0
 		m.detail = ""
 		m.buildRows()
-	case "plan":
+	case "plan", "recoveryStatus":
 		m.form = nil
 		p := object(v.data)
 		m.data["preview"] = p
@@ -550,6 +559,17 @@ func (m *Model) handleResult(v commandResult) {
 		m.cursor = 0
 		m.offset = 0
 		m.buildRows()
+	case "recoveryRollback":
+		p := clone(object(m.data["preview"]))
+		if str(object(v.data), "kind") == "rollback" {
+			p["state"] = "rolling_back"
+			m.data["preview"] = p
+			m.showDetail("Wiederherstellungsplan", planText(p, *m))
+			m.notice = "Rücksetzung als Auftrag " + str(object(v.data), "id") + " eingeplant; Ergebnis im Plan prüfen."
+		} else {
+			m.data["preview"] = v.data
+			m.showDetail("Wiederherstellungsplan", planText(object(v.data), *m))
+		}
 	case "storagePlan":
 		m.form = nil
 		m.data["growthPlan"] = v.data

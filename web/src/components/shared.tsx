@@ -344,12 +344,17 @@ export function Dialog({
           node?.querySelectorAll<HTMLElement>(
             "input:not([disabled]),select:not([disabled]),button:not([disabled]),textarea:not([disabled]),a[href],summary",
           ) || [],
-        ).filter((x) => x.offsetParent !== null);
+        ).filter((x) => x.offsetParent !== null && !x.matches(":disabled"));
         const first = elements[0],
           last = elements.at(-1);
-        if (!node?.contains(document.activeElement)) {
+        if (!elements.length) {
           e.preventDefault();
-          first?.focus();
+          node?.focus();
+          return;
+        }
+        if (!elements.includes(document.activeElement as HTMLElement)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first)?.focus();
         } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last?.focus();
@@ -376,6 +381,7 @@ export function Dialog({
         ref={root}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-busy={busy}
         aria-labelledby={titleID}
       >

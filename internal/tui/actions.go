@@ -37,7 +37,18 @@ func (m Model) detailActions() []hotAction {
 	case "Hostdetails", "Sicherungsdetails", "Auftragsdetails", "Benutzerdetails":
 		return m.listActions()
 	case "Wiederherstellungsplan":
-		return []hotAction{{"a", "Ausführen"}, {"x", "Export"}}
+		p := object(m.data["preview"])
+		actions := []hotAction{{"x", "Export"}}
+		if str(p, "state") == "ready" {
+			actions = append(actions, hotAction{"a", "Ausführen"})
+		}
+		if recoveryMayHaveJournal(p) {
+			actions = append(actions, hotAction{"r", "Hostprotokoll"})
+			if str(p, "state") != "rolled_back" {
+				actions = append(actions, hotAction{"b", "Rücksetzen"})
+			}
+		}
+		return actions
 	case "Speicher":
 		if storageManual(object(m.data["storage"])) {
 			return []hotAction{{"r", "Erweiterungsstatus"}}
@@ -239,6 +250,13 @@ func (m *Model) detailKey(key string) teaCmd {
 		id := str(p, "id")
 		if key == "x" {
 			m.openExport("plans/"+segment(id)+"/download", "anker-plan-"+id+".tar")
+		}
+		if key == "r" && recoveryMayHaveJournal(p) {
+			return m.request(action{title: "Hostprotokoll abgleichen", method: "POST", path: "plans/" + segment(id) + "/reconcile", input: map[string]any{}, purpose: "recoveryStatus"})
+		}
+		if key == "b" && recoveryMayHaveJournal(p) && str(p, "state") != "rolled_back" {
+			m.confirm(action{title: "Wiederherstellung kontrolliert zurücksetzen", summary: planText(p, *m) + "\nDer Host prüft Nachherbedingungen vor jeder Rücksetzung und erhält fremde Änderungen. Keine blinde Übernahme der Rollbackkopie.", method: "POST", path: "plans/" + segment(id) + "/rollback", input: map[string]string{"confirmation": id}, challenge: id, purpose: "recoveryRollback"})
+			return nil
 		}
 		if key == "a" {
 			blockers, _ := p["blockers"].([]any)

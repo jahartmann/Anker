@@ -9,6 +9,8 @@ export interface Port {
   name: string;
   mac: string;
   pci?: string;
+  physical?: boolean;
+  kind?: string;
 }
 export interface Inventory {
   hostname: string;
@@ -119,11 +121,35 @@ export interface Plan {
     address?: string;
   };
   result?: {
+    state?: string;
+    operation_id?: string;
+    error?: string;
     applied: string[];
     checks: string[];
     rollback_path: string;
     reboot_verified: boolean;
   };
+}
+export interface RecoveryStorage {
+  id: string;
+  kind: string;
+  path: string;
+  reason?: string;
+  suggested?: string;
+}
+export interface RecoveryInspection {
+  source: Inventory;
+  target: Inventory;
+  ports: (Port & { reason: string; suggested?: string })[];
+  target_ports: Port[];
+  storage: RecoveryStorage[];
+  target_storage: RecoveryStorage[];
+  blockers: string[];
+  warnings: string[];
+  manual: string[];
+  requires_console: boolean;
+  requires_source_offline: boolean;
+  automatic: boolean;
 }
 export interface Settings {
   password_min_length: number;
@@ -165,6 +191,14 @@ export const emptyStatus: Status = {
   timezone: "Europe/Berlin",
   stale_hours: 26,
 };
+export class ApiError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 export async function api<T>(
   path: string,
   method = "GET",
@@ -179,7 +213,7 @@ export async function api<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error(
+    throw new ApiError(
       "Anker ist nicht erreichbar. Verbindung und Dienst prüfen.",
     );
   }
@@ -189,9 +223,16 @@ export async function api<T>(
   try {
     value = await response.json();
   } catch {
-    throw new Error("Ungültige Serverantwort. Verbindung und Dienst prüfen.");
+    throw new ApiError(
+      "Ungültige Serverantwort. Verbindung und Dienst prüfen.",
+      response.status,
+    );
   }
-  if (!response.ok) throw new Error(value.error || "Anfrage fehlgeschlagen");
+  if (!response.ok)
+    throw new ApiError(
+      value?.error || "Anfrage fehlgeschlagen",
+      response.status,
+    );
   return value as T;
 }
 let displayTimezone = "Europe/Berlin";
@@ -228,7 +269,14 @@ export const labels: Record<string, string> = {
   queued: "Geplant",
   running: "Läuft",
   cancelled: "Abgebrochen",
-  interrupted: "Unterbrochen",
+  interrupted: "Unterbrochen · Hostzustand prüfen",
+  applied: "Dateien übernommen",
+  rolled_back: "Dateien zurückgesetzt",
+  rolling_back: "Wird zurückgesetzt",
+  rollback_conflict: "Rücksetzungskonflikt",
+  unknown: "Hostzustand ungeklärt",
+  not_found: "Hostjournal nicht gefunden",
+  writing: "Host schreibt Dateien",
   ready: "Bereit zur Prüfung",
   blocked: "Entscheidung erforderlich",
   manual: "Manuell geführt",
@@ -245,6 +293,7 @@ export const labels: Record<string, string> = {
   backup: "Sicherung",
   probe: "Hostprüfung",
   restore: "Wiederherstellung",
+  rollback: "Rücksetzung",
 };
 export function hostState(h: Host, s: Status) {
   const hostBackups = s.backups

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.8
+
+- Wiederherstellung mit eigener frischer Zielprüfung, nur benötigten physischen Ports und referenzierten Storage-IDs. Bridges, Bonds, VLANs und Interface-Aliase werden berücksichtigt; doppelte Portziele und unbekannte Referenzen blockieren.
+- Dateiinhalte, Rechte und Eigentümeridentitäten vor der Übernahme prüfen. Synchronisiertes Hostjournal, lokale Helfersperre und kontrollierte Rücksetzung erhalten Fremdänderungen und ursprüngliche Fehler.
+- Hostzustand nach Unterbrechung im Web oder Terminal abgleichen; Rücksetzung separat bestätigen. Ungültige oder verlorene Antworten erlauben keine blinde Wiederholung. Große Listen und Nachweise bleiben begrenzt.
+- Netzwerk und Zugangskonfiguration bleiben manuell; automatische Netzwerkaktivierung und vollständige Host-/Cluster-Recovery werden weiterhin nicht angeboten. Speicher- und Identitätsentscheidungen stehen im Plan statt als ungenutzte Zuordnung.
+- Vor automatischen Übernahmen bestehende Hosts einmal neu anbinden und neu sichern: Restore-Protokoll 2 und Eigentümeridentitäten sind erforderlich. Alte Sicherungen bleiben exportierbar.
+
 ## 0.2.7
 
 - Dateidialog passt Liste und Vorschau an die verfügbare Bildschirmhöhe an. Download und Wiederherstellungsaktionen bleiben auch auf kleineren Laptop- und Mobilansichten direkt sichtbar.

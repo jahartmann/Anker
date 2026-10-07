@@ -146,8 +146,9 @@ class DurableRestoreTests(unittest.TestCase):
      rollback_synced.append(path)
     return real_sync(fd)
    def replace(src,dest):
-    self.assertGreaterEqual(len(rollback_synced),3,'rollback and its metadata were not flushed')
-    self.assertTrue(directory_synced,'rollback directories were not flushed')
+    if pathlib.Path(dest)==target:
+     self.assertGreaterEqual(len(rollback_synced),3,'rollback and its metadata were not flushed')
+     self.assertTrue(directory_synced,'rollback directories were not flushed')
     return real_replace(src,dest)
    with patch.object(helper.os,'fsync',side_effect=sync),patch.object(helper.os,'replace',side_effect=replace):
     helper.apply_files(root,[{'path':'etc/test','before_sha':helper.digest(b'old'),'content':'bmV3','mode':420,'uid':0,'gid':0}],test_mode=True)

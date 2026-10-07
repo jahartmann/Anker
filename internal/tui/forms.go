@@ -47,6 +47,9 @@ func (m *Model) openForm(kind string, v map[string]any) {
 	m.clearEnrollmentSecret()
 	m.formGeneration++
 	f := &form{kind: kind, original: clone(v), generation: m.formGeneration}
+	if f.original == nil {
+		f.original = map[string]any{}
+	}
 	switch kind {
 	case "hostConnect":
 		f.title = "Host automatisch anbinden"
@@ -100,6 +103,9 @@ func (m *Model) openForm(kind string, v map[string]any) {
 			textField("Netzwerkports", str(v, "ports"), "Migration: eno1=ens3,eno2=ens4", false),
 			choiceField("Konsolenzugang bestätigt", "nein", "nein", "ja"),
 			choiceField("Quellhost ausgeschaltet / isoliert", "nein", "nein", "ja"),
+			textField("Storage (manuell)", "", "ID=Ziel oder ID=manual", false),
+			textField("Hostidentität (manuell)", "", "Gewünschter Hostname; keine automatische Configänderung", false),
+			textField("Adresse (manuell)", "", "Gewünschte Adresse; keine automatische Netzwerkaktivierung", false),
 		}
 	case "settings":
 		f.title = "Zeitplan & Aufbewahrung"
@@ -162,9 +168,9 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 		m.err = ""
 		return nil
 	case "tab", "down":
-		f.focus = (f.focus + 1) % (len(f.fields) + 1)
+		m.nextFormField(1)
 	case "shift+tab", "up":
-		f.focus = (f.focus + len(f.fields)) % (len(f.fields) + 1)
+		m.nextFormField(-1)
 	case "ctrl+f":
 		return m.planFiles()
 	case "ctrl+e":
@@ -178,12 +184,13 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 		if f.focus == len(f.fields) {
 			return m.submitForm()
 		}
-		f.focus++
+		m.nextFormField(1)
 	default:
 		if f.focus >= len(f.fields) {
 			return nil
 		}
 		entry := &f.fields[f.focus]
+		previousValue := entry.value
 		if len(entry.choices) > 0 && entry.multi && !entry.editing {
 			switch k.String() {
 			case "left":
@@ -208,6 +215,9 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 			case "ctrl+u":
 				entry.value = ""
 			}
+			if f.kind == "plan" && f.focus == 3 && entry.value != previousValue {
+				clearRecoveryDecisions(f)
+			}
 			return nil
 		}
 		if len(entry.choices) > 0 && !entry.editing {
@@ -225,10 +235,8 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 					delta = -1
 				}
 				entry.value = entry.choices[(idx+delta+len(entry.choices))%len(entry.choices)]
-				if f.kind == "plan" && entry.value != previous && (f.focus == 0 || f.focus == 1) {
-					f.fields[4].value = ""
-					f.fields[5].value = "nein"
-					f.fields[6].value = "nein"
+				if f.kind == "plan" && entry.value != previous && f.focus <= 3 {
+					clearRecoveryDecisions(f)
 					if f.focus == 0 {
 						f.fields[3].value = ""
 						f.fields[3].choices = nil
@@ -254,6 +262,9 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 			if len(entry.value) < 4096 {
 				entry.value += " "
 			}
+		}
+		if f.kind == "plan" && f.focus == 3 && entry.value != previousValue {
+			clearRecoveryDecisions(f)
 		}
 	}
 	return nil
@@ -353,21 +364,51 @@ func (m *Model) submitForm() tea.Cmd {
 			f.focus = 3
 			return nil
 		}
-		if value(4) != "" {
-			for _, pair := range strings.Split(value(4), ",") {
-				port := strings.Split(strings.TrimSpace(pair), "=")
-				if len(port) != 2 || strings.TrimSpace(port[0]) == "" || strings.TrimSpace(port[1]) == "" {
-					m.err = "Netzwerkports als alt=neu angeben."
-					f.focus = 4
-					return nil
-				}
-				p.Mapping.Interfaces[strings.TrimSpace(port[0])] = strings.TrimSpace(port[1])
+		ports, err := parseRecoveryPairs(value(4), "Netzwerkports")
+		if err != nil {
+			m.err = err.Error()
+			f.focus = 4
+			return nil
+		}
+		p.Mapping.Interfaces = ports
+		storage, err := parseRecoveryPairs(value(7), "Storage")
+		if err != nil {
+			m.err = err.Error()
+			f.focus = 7
+			return nil
+		}
+		p.Mapping.Storage = storage
+		p.Mapping.Hostname, p.Mapping.Address = value(8), value(9)
+		inspection := recoveryInspection(f)
+		if inspection == nil {
+			return m.request(action{title: "Ziel und benötigte Zuordnungen prüfen", method: "POST", path: "plans/inspect", input: p, purpose: recoveryPurpose(f)})
+		}
+		for _, raw := range list(inspection["ports"]) {
+			name := str(object(raw), "name")
+			if ports[name] == "" {
+				m.err = "Benötigten Netzwerkport " + name + " einem geprüften Zielport zuordnen."
+				f.focus = 4
+				return nil
+			}
+		}
+		for _, raw := range list(inspection["storage"]) {
+			name := str(object(raw), "id")
+			if storage[name] == "" {
+				m.err = "Manuelle Storage-Entscheidung für " + name + " angeben."
+				f.focus = 7
+				return nil
 			}
 		}
 		a.title = "Wiederherstellungsplan erstellen"
 		a.summary = "Sicherung: " + p.BackupID + "\nZiel: " + m.hostName(p.TargetID) + "\nSzenario: " + restoreScenarioLabel(p.Scenario) + "\nDer Dienst erstellt und prüft die Vorschau. Zur Ausführung ist eine separate Bestätigung nötig."
 		if p.Scenario != "files" {
 			a.summary += "\nAuf realen Hosts manuell geführt: vorbereitete Dateien und Anleitung exportieren; keine automatische Gesamtausführung."
+		}
+		for _, raw := range list(inspection["blockers"]) {
+			a.summary += "\nSperre: " + fmt.Sprint(raw)
+		}
+		for _, raw := range list(inspection["manual"]) {
+			a.summary += "\nManuell: " + fmt.Sprint(raw)
 		}
 		a.path = "plans"
 		a.input = p

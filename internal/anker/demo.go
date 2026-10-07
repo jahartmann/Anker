@@ -36,6 +36,7 @@ func (c DemoCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 		return inv, err
 	}
 	hashes := map[string]string{}
+	metadata := map[string]any{}
 	err = filepath.WalkDir(filepath.Join(root, "files"), func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -48,7 +49,14 @@ func (c DemoCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 		if err != nil {
 			return err
 		}
-		hashes[filepath.ToSlash(rel)] = Hash(data)
+		path := filepath.ToSlash(rel)
+		hashes[path] = Hash(data)
+		mode := 0644
+		if isSecret(path) {
+			mode = 0600
+		}
+		// Explicit demo models the host namespace, not the macOS fixture owner.
+		metadata[path] = map[string]any{"type": "file", "mode": mode, "uid": 0, "gid": 0, "xattrs": map[string]string{}}
 		return nil
 	})
 	if err != nil {
@@ -58,6 +66,26 @@ func (c DemoCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 		inv.Details = map[string]json.RawMessage{}
 	}
 	inv.Details["file_hashes"], _ = json.Marshal(hashes)
+	inv.Details["file_metadata"], _ = json.Marshal(metadata)
+	inv.Details["users"] = json.RawMessage(`{"0":"root"}`)
+	inv.Details["groups"] = json.RawMessage(`{"0":"root"}`)
+	inv.Details["capabilities"] = json.RawMessage(`{"restore_protocol":2,"journal":true}`)
+	results := map[string]any{}
+	for _, name := range []string{"pve_version", "interfaces", "disks", "addresses", "routes", "packages", "storage", "file_inventory", "users", "groups"} {
+		results[name] = map[string]string{"state": "ok"}
+	}
+	results["cluster"] = map[string]string{"state": "not_applicable"}
+	if inv.ClusterID != "" {
+		results["cluster"] = map[string]string{"state": "ok"}
+	}
+	inv.Details["command_results"], _ = json.Marshal(results)
+	if storage, err := os.ReadFile(filepath.Join(root, "files/etc/pve/storage.cfg")); err == nil {
+		inv.Details["storage_config"], _ = json.Marshal(string(storage))
+	}
+	for index := range inv.Interfaces {
+		inv.Interfaces[index].Type = "physical"
+		inv.Interfaces[index].Physical = true
+	}
 	inv.CapturedAt = now()
 	inv.Fingerprint = Fingerprint(inv)
 	return inv, nil
@@ -152,7 +180,7 @@ func (c DemoCollector) Apply(ctx context.Context, h Host, p Plan, root string) (
 			return ApplyResult{}, errors.New("Demo-Ziel wurde verändert")
 		}
 	}
-	result := ApplyResult{Applied: []string{}, RollbackPath: filepath.Join(target, "rollback", p.ID), Checks: []string{"Lokale Testdateien übertragen. Kein realer Proxmox-Host geändert."}}
+	result := ApplyResult{State: "applied", OperationID: p.ID, Applied: []string{}, RollbackPath: filepath.Join(target, "rollback", p.ID), Checks: []string{"Lokale Testdateien übertragen. Kein realer Proxmox-Host geändert."}}
 	for _, step := range p.Steps {
 		if step.Action != "apply" {
 			continue

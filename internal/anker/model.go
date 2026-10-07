@@ -39,17 +39,22 @@ type Host struct {
 	ProbeError     string     `json:"probe_error,omitempty"`
 }
 type Interface struct {
-	Name string `json:"name"`
-	MAC  string `json:"mac"`
-	PCI  string `json:"pci,omitempty"`
-	Role string `json:"role,omitempty"`
+	Physical bool   `json:"physical"`
+	Type     string `json:"type,omitempty"`
+	Name     string `json:"name"`
+	MAC      string `json:"mac"`
+	PCI      string `json:"pci,omitempty"`
+	Role     string `json:"role,omitempty"`
 }
 type Disk struct {
-	Name  string `json:"name"`
-	ID    string `json:"id"`
-	Size  int64  `json:"size"`
-	UUID  string `json:"uuid,omitempty"`
-	Mount string `json:"mount,omitempty"`
+	Parent     string `json:"parent,omitempty"`
+	Filesystem string `json:"filesystem,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Name       string `json:"name"`
+	ID         string `json:"id"`
+	Size       int64  `json:"size"`
+	UUID       string `json:"uuid,omitempty"`
+	Mount      string `json:"mount,omitempty"`
 }
 type Inventory struct {
 	Hostname    string                     `json:"hostname"`
@@ -165,6 +170,9 @@ type Plan struct {
 	Result    *ApplyResult `json:"result,omitempty"`
 }
 type ApplyResult struct {
+	State          string   `json:"state,omitempty"`
+	OperationID    string   `json:"operation_id,omitempty"`
+	Error          string   `json:"error,omitempty"`
 	Applied        []string `json:"applied"`
 	RollbackPath   string   `json:"rollback_path"`
 	Checks         []string `json:"checks"`
@@ -312,7 +320,7 @@ func Fingerprint(i Inventory) string {
 	i.CapturedAt = ""
 	i.Fingerprint = ""
 	stable := map[string]json.RawMessage{}
-	for _, key := range []string{"file_hashes", "boot_id", "addresses", "routes", "packages", "manual_packages", "pci", "boot"} {
+	for _, key := range []string{"file_hashes", "boot_id", "addresses", "routes", "packages", "manual_packages", "pci", "boot", "users", "groups", "file_metadata", "capabilities", "command_results"} {
 		if v, ok := i.Details[key]; ok {
 			if key == "addresses" {
 				var value any

@@ -42,7 +42,7 @@ func sshArgs(h Host, readOnly bool) ([]string, error) {
 }
 func sshRun(ctx context.Context, h Host, request any, consume func(io.Reader) error) error {
 	args, err := SSHArgs(h)
-	if requestMap, ok := request.(map[string]any); ok && requestMap["operation"] == "apply" {
+	if requestMap, ok := request.(map[string]any); ok && (requestMap["operation"] == "apply" || requestMap["operation"] == "rollback" || requestMap["operation"] == "restore-status") {
 		args, err = RestoreSSHArgs(h)
 		h.KeyPath = h.RestoreKeyPath
 	}
@@ -124,6 +124,11 @@ func (c SSHCollector) Apply(ctx context.Context, h Host, p Plan, root string) (A
 	for _, e := range m.Entries {
 		entries[e.Path] = e
 	}
+	var metadata map[string]json.RawMessage
+	if json.Unmarshal(p.Target.Details["file_metadata"], &metadata) != nil {
+		return result, errors.New("Zielmetadaten fehlen; Plan mit aktualisiertem Hosthelfer neu erstellen")
+	}
+	users, groups := identityNames(p.Source, "users"), identityNames(p.Source, "groups")
 	for _, step := range p.Steps {
 		if step.Action != "apply" {
 			continue
@@ -140,9 +145,61 @@ func (c SSHCollector) Apply(ctx context.Context, h Host, p Plan, root string) (A
 			return result, errors.New("vorbereitete Datei wurde verändert")
 		}
 		e := entries[step.Path]
-		files = append(files, map[string]any{"path": step.Path, "before_sha": step.BeforeSHA, "content": base64.StdEncoding.EncodeToString(data), "mode": e.Mode, "uid": e.UID, "gid": e.GID, "type": e.Type})
+		var expected any
+		if value, ok := metadata[step.Path]; ok {
+			if err = json.Unmarshal(value, &expected); err != nil {
+				return result, errors.New("Zielmetadaten sind ungültig")
+			}
+		}
+		files = append(files, map[string]any{"path": step.Path, "before_sha": step.BeforeSHA, "content": base64.StdEncoding.EncodeToString(data), "mode": e.Mode, "uid": e.UID, "gid": e.GID, "type": e.Type, "expected_metadata": expected, "user": users[strconv.Itoa(e.UID)], "group": groups[strconv.Itoa(e.GID)]})
 	}
 	req := map[string]any{"version": 1, "operation": "apply", "plan_id": p.ID, "confirm": p.ID, "expected_inventory": p.Target, "files": files}
-	err = sshRun(ctx, h, req, func(r io.Reader) error { return json.NewDecoder(io.LimitReader(r, 1<<20)).Decode(&result) })
+	err = sshRun(ctx, h, req, func(r io.Reader) error {
+		var decodeErr error
+		result, decodeErr = decodeRecoveryResult(r)
+		return decodeErr
+	})
+	if result.Error != "" {
+		err = errors.Join(err, fmt.Errorf("Wiederherstellung: %s", result.Error))
+	}
 	return result, err
+}
+
+func (c SSHCollector) RestoreStatus(ctx context.Context, h Host, p Plan) (ApplyResult, error) {
+	var result ApplyResult
+	err := sshRun(ctx, h, map[string]any{"version": 1, "operation": "restore-status", "plan_id": p.ID}, func(r io.Reader) error {
+		var decodeErr error
+		result, decodeErr = decodeRecoveryResult(r)
+		return decodeErr
+	})
+	if err != nil {
+		return result, fmt.Errorf("Hostprotokoll nicht erreichbar oder lesbar: %w", err)
+	}
+	return result, nil
+}
+func (c SSHCollector) Rollback(ctx context.Context, h Host, p Plan, confirmation string) (ApplyResult, error) {
+	var result ApplyResult
+	err := sshRun(ctx, h, map[string]any{"version": 1, "operation": "rollback", "plan_id": p.ID, "confirm": confirmation}, func(r io.Reader) error {
+		var decodeErr error
+		result, decodeErr = decodeRecoveryResult(r)
+		return decodeErr
+	})
+	if result.Error != "" {
+		err = errors.Join(err, fmt.Errorf("Rücksetzung: %s", result.Error))
+	}
+	return result, err
+}
+
+// Reject incomplete or multiple JSON values rather than retaining partially decoded evidence.
+func decodeRecoveryResult(r io.Reader) (ApplyResult, error) {
+	var result ApplyResult
+	decoder := json.NewDecoder(io.LimitReader(r, (1<<20)+1))
+	if err := decoder.Decode(&result); err != nil {
+		return ApplyResult{}, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return ApplyResult{}, errors.New("Ungültige zusätzliche Hostantwort")
+	}
+	return result, nil
 }

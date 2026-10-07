@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,6 +43,32 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	if Fingerprint(inv) != p.Target.Fingerprint {
 		return p, errors.New("Ziel hat sich seit der Planung geändert; Plan neu erstellen")
 	}
+	if _, real := s.Collector.(SSHCollector); real {
+		var capability struct {
+			Protocol int  `json:"restore_protocol"`
+			Journal  bool `json:"journal"`
+		}
+		if json.Unmarshal(inv.Details["capabilities"], &capability) != nil || capability.Protocol != 2 || !capability.Journal {
+			return p, errors.New("Hosthelfer unterstützt die abgesicherte Wiederherstellung noch nicht; Verbindung am Host neu einrichten")
+		}
+		manifest, readErr := s.Manifest(p.BackupID)
+		if readErr != nil {
+			return p, readErr
+		}
+		entries := map[string]Entry{}
+		for _, entry := range manifest.Entries {
+			entries[entry.Path] = entry
+		}
+		for _, step := range p.Steps {
+			if step.Action != "apply" {
+				continue
+			}
+			entry, ok := entries[step.Path]
+			if !ok || fileManualReason(entry, p.Source, inv) != "" {
+				return p, errors.New("Plan enthält inzwischen nur manuell freigegebene Dateien; Plan neu erstellen")
+			}
+		}
+	}
 	for _, step := range p.Steps {
 		if step.Action != "apply" {
 			continue
@@ -63,14 +90,26 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 		return p, err
 	}
 	result, err := s.Collector.Apply(ctx, h, p, filepath.Join(s.Root, "plans", id))
+	if _, real := s.Collector.(SSHCollector); real && result.OperationID != "" {
+		if validationErr := validateHostResult(p, result); validationErr != nil {
+			result = ApplyResult{State: "interrupted", OperationID: p.ID, Error: validationErr.Error()}
+			err = errors.Join(err, validationErr)
+		}
+	}
+	if _, real := s.Collector.(SSHCollector); real && err == nil && result.OperationID == "" {
+		err = errors.New("Hostantwort bestätigt keine Recovery-ID; tatsächlichen Zustand über Hostprotokoll prüfen")
+	}
+	if _, real := s.Collector.(SSHCollector); real && err == nil && result.State != "applied" {
+		err = errors.New("Host bestätigt keine erfolgreiche Dateiübernahme; Hostprotokoll prüfen")
+	}
+	setRecoveryResult(&p, result, err)
 	if err != nil {
-		p.State = "failed"
 		p.Manual = append(p.Manual, "Ausführung unterbrochen; tatsächlichen Zielzustand und Host-Rollbackprotokoll prüfen. Nicht ungeprüft wiederholen.")
-		s.savePlan(p)
+		if saveErr := s.savePlan(p); saveErr != nil {
+			return p, errors.Join(err, saveErr)
+		}
 		return p, err
 	}
-	p.Result = &result
-	p.State = "checks_pending"
 	if s.Demo {
 		p.State = "demo_applied"
 	}
