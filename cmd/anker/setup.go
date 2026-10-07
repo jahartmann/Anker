@@ -149,6 +149,9 @@ func setupUpdateIdle() error {
 			return err
 		}
 	}
+	return setupHelperIdle()
+}
+func setupHelperIdle() error {
 	response, err := updater.UnixClient(updater.Socket, 2*time.Second).Get("http://updater.local/status")
 	if err != nil {
 		return nil

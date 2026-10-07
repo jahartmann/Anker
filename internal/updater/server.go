@@ -265,15 +265,48 @@ func Serve(ctx context.Context, current string) error {
 	if err = i.Recover(ctx); err != nil {
 		return fmt.Errorf("Unterbrochenes Update: %w", err)
 	}
-	if hadPending {
-		if err = ctl.Release(ctx); err != nil {
+	if i.recoveredHelper {
+		// Preserve the recovery result across exec; the restored process finds
+		// a completed journal but should still report what happened.
+		var recovered State
+		if b, readErr := os.ReadFile(filepath.Join(StateDir, "status.json")); readErr == nil {
+			json.Unmarshal(b, &recovered)
+		}
+		recovered.Status = "rolled_back"
+		recovered.Message = "Unterbrochenes Update auf vorherige Version zurückgesetzt"
+		b, marshalErr := json.Marshal(recovered)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if err = atomic(filepath.Join(StateDir, "status.json"), b, 0600, -1, -1); err != nil {
 			return err
+		}
+		// The executable was restored on disk; exec it so the old helper code
+		// actually runs as well. Go's service lock closes across exec.
+		return syscall.Exec(HelperPath, []string{HelperPath, "updater-serve"}, os.Environ())
+	}
+	activeLocalInstall := false
+	if _, pendingErr := os.Stat(filepath.Join(StateDir, "pending.json")); pendingErr == nil {
+		// Recovery deferred to the live local coordinator. Do not release its
+		// maintenance guard or describe it as a completed rollback.
+		activeLocalInstall = true
+		hadPending = false
+	} else if !os.IsNotExist(pendingErr) {
+		return pendingErr
+	}
+	if hadPending {
+		if _, guardErr := os.Stat(Maintenance); guardErr == nil {
+			if err = ctl.Release(ctx); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(guardErr) {
+			return guardErr
 		}
 		if v, err := ctl.call(ctx, "GET", ""); err == nil {
 			current = v
 		}
 	}
-	if _, err := os.Stat(Maintenance); err == nil {
+	if _, err := os.Stat(Maintenance); err == nil && !activeLocalInstall {
 		if err = ctl.Release(ctx); err != nil {
 			return err
 		}

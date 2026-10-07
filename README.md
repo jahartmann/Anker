@@ -6,27 +6,26 @@ VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker si
 
 ## Installation
 
-Ein produktiver signierter Release ist noch nicht veröffentlicht. Bis dahin aus dem geprüften Quellcode bauen. Die fertige Weboberfläche ist im Repository enthalten; für die Installation muss sie nicht nochmals mit Node.js gebaut werden.
-
-Auf einer frischen Debian-13-VM zunächst die Werkzeuge installieren:
+Auf Debian 13 mit systemd, als root:
 
 ```sh
-sudo apt-get update
-sudo apt-get install -y ca-certificates git golang-go python3 openssh-client openssl util-linux e2fsprogs rsync
+git clone https://github.com/jahartmann/Anker.git /opt/anker-source
+cd /opt/anker-source
+./scripts/install-server.sh
 ```
 
-Danach bauen und den Installer öffnen:
+Der Installer installiert fehlende Systempakete, lädt bei Bedarf den passenden Go-Compiler, baut Anker und öffnet den Einrichtungsassistenten. Die Weboberfläche ist bereits enthalten; Node.js und make werden auf dem Server nicht gebraucht. Nach der Bestätigung laufen beide Dienste und starten beim Booten automatisch. Die Angaben für Administratorzugang und Webadresse bleiben im Assistenten erforderlich. Bei einem vorhandenen Anker werden Programme und Katalog vor dem Austausch gesichert; Benutzer, SSH-Schlüssel, Zertifikate und Einstellungen bleiben erhalten. Ein fehlgeschlagener Programmstart löst einen Rückfall aus. Lokale Änderungen an systemd-Units werden bei Aktualisierung nicht überschrieben.
+
+Für spätere Aktualisierungen aus dem Quellcode im selben Ordner:
 
 ```sh
-git clone https://github.com/jahartmann/Anker.git
-cd Anker
-ANKER_ARCH=$(dpkg --print-architecture)
-CGO_ENABLED=0 GOTOOLCHAIN=auto go build -trimpath -o "bin/anker-linux-$ANKER_ARCH" ./cmd/anker
-# Nur nach erfolgreichem Build:
-sudo ./scripts/install-server.sh "bin/anker-linux-$ANKER_ARCH"
+git pull --ff-only
+./scripts/install-server.sh
 ```
 
-Unterstützt werden amd64 und arm64. Go lädt bei Bedarf den in `go.mod` angegebenen Compiler automatisch; der Build benötigt Internetzugriff. Der Installer öffnet die Ersteinrichtung und benötigt ein laufendes systemd. Go wird nur zum Bauen verwendet. Für Änderungen an der Weboberfläche oder einen vollständigen Build mit `make linux` zusätzlich Node.js 22.12+, npm und make installieren. Der Build kann auch auf einem anderen Rechner erfolgen; anschließend den Projektordner einschließlich der passenden `bin/anker-linux-*` auf den Server übertragen und dort den Installer ausführen.
+Dieser Weg gilt für den normalen Clone auf `main`. Der Installer aktualisiert die Dateien aus deinem Checkout; er lädt keine Git-Änderungen im Hintergrund. Falls der Checkout früher auf einen einzelnen Commit gesetzt wurde, einmal `git switch main` ausführen. Für Installation ohne anschließenden interaktiven Assistenten `--no-setup` verwenden. Fehlende Werkzeuge installiert der Installer über APT; auf anderen Linux-Systemen müssen sie zuvor vorhanden sein. Unterstützt werden amd64 und arm64. Der erste Build benötigt Internetzugriff und vorübergehend zusätzlichen Platz für Compiler und Module.
+
+Ein produktiver signierter Release ist noch nicht veröffentlicht. Der Quellcodeweg arbeitet mit dem von dir gewählten Checkout. Sobald signierte Releases verfügbar sind, erfolgt die Aktualisierung über die Oberfläche oder `anker update`, ohne Compiler und Git auf dem Server.
 
 Sobald ein signierter Release bereitsteht, geht es ohne Compiler auf dem Server:
 
@@ -73,7 +72,7 @@ Vor dem Speichern kann der Assistent ohne Änderungen abgebrochen werden. Beim S
 | Nur über SSH-Tunnel | Im Assistenten SSH-Tunnel wählen. Anker bleibt auf `127.0.0.1:8087`; kein zusätzliches TLS-Zertifikat nötig. |
 | Optional: vorhandenes Zertifikat | HTTPS wählen und Zertifikat samt Kette und passendem privatem Schlüssel importieren. Der Assistent prüft Adresse, Gültigkeit und Schlüsselpaar. |
 
-Ohne interne CA und ohne eigene öffentliche Domain im Assistenten „automatisch erzeugen“ wählen. Anker erstellt ein Zertifikat für den angegebenen internen DNS-Namen oder die IP. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Eine interne CA wird dafür nicht vorausgesetzt. Die Prüfung ist in jedem verwendeten Browser beziehungsweise auf jedem Arbeitsplatz erforderlich. Bereits vorhandene, vom Browser vertraute Zertifikate lassen sich optional importieren.
+Ohne interne CA und ohne eigene öffentliche Domain im Assistenten „Erzeugen“ wählen. Anker erstellt ein Zertifikat für den angegebenen internen DNS-Namen oder die IP. Dafür sind weder Domainregistrierung noch ein öffentlicher ACME-Dienst erforderlich. Die Verbindung ist verschlüsselt; das Zertifikat ist zunächst **nicht vom Browser vertraut**. Den am Server angezeigten SHA256-Fingerprint mit dem Browser vergleichen, bevor eine Ausnahme bestätigt wird. Eine interne CA wird dafür nicht vorausgesetzt. Die Prüfung ist in jedem verwendeten Browser beziehungsweise auf jedem Arbeitsplatz erforderlich. Bereits vorhandene, vom Browser vertraute Zertifikate lassen sich optional importieren.
 
 Das automatisch erzeugte Zertifikat gilt ein Jahr. Bei neuer Einrichtung ist die automatische Erneuerung eingeschaltet: Anker prüft beim Start und alle sechs Stunden und erneuert standardmäßig innerhalb der letzten 30 Tage. Der Webdienst übernimmt das neue Zertifikat ohne Neustart. Der private Schlüssel und die eingerichteten DNS-Namen/IPs bleiben erhalten; das vorherige öffentliche Zertifikat bleibt als Rückfallkopie vorhanden.
 

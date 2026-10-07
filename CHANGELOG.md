@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Installation direkt nach dem Clone: fehlende Werkzeuge automatisch installieren und Anker bauen. Dasselbe Skript erkennt bestehende Installationen und aktualisiert Hauptprogramm und Systemhelfer mit Sicherung, Startprüfung und Rückfall.
+
 - Wiederholte Terminaleinrichtung mit „Fortsetzen“ oder „Neu konfigurieren“. Vorhandene Ports, Zertifikate, Benutzer und SSH-Schlüssel bleiben erhalten; unterbrochene Konfigurationsänderungen werden beim nächsten Einrichtungsaufruf aus einem geschützten Journal zurückgenommen.
 
 - Terminaleinrichtung mit klaren Abschnitten, kompakter Konfigurationsübersicht und animierter Dienstprüfung; ruhige Ausgabe für einfache Terminals und Logs.

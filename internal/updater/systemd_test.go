@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -162,6 +163,10 @@ func TestSystemdInstallationAndRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			j.Snapshot, j.UID, j.GID = true, uid, gid
+			j.Helper, j.Coordinated = true, true
+			if err = copyFile(HelperPath, filepath.Join(StateDir, "previous-helper"), 0755, -1, -1); err != nil {
+				t.Fatal(err)
+			}
 			if err = i.writeJournal(j); err != nil {
 				t.Fatal(err)
 			}
@@ -171,6 +176,13 @@ func TestSystemdInstallationAndRecovery(t *testing.T) {
 		}
 		if err = atomic(BinaryPath, bad, 0755, -1, -1); err != nil {
 			t.Fatal(err)
+		}
+		if snapshot {
+			// Start a different helper executable, then verify the actual running
+			// inode after rollback, not only the restored path on disk.
+			if err = atomic(HelperPath, candidate, 0755, -1, -1); err != nil {
+				t.Fatal(err)
+			}
 		}
 		// Restart both real units as they are enabled at boot. The known helper repairs.
 		exec.CommandContext(ctx, "systemctl", "start", "anker").Run() // Candidate failure is expected.
@@ -202,6 +214,21 @@ func TestSystemdInstallationAndRecovery(t *testing.T) {
 		response.Body.Close()
 		if err != nil || state.Status != "rolled_back" {
 			t.Fatal(state, err)
+		}
+		if snapshot {
+			pid, pidErr := exec.Command("systemctl", "show", "anker-updater", "--property=MainPID", "--value").Output()
+			if pidErr != nil {
+				t.Fatal(pidErr)
+			}
+			running, readErr := os.ReadFile(filepath.Join("/proc", strings.TrimSpace(string(pid)), "exe"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			restored, readErr := os.ReadFile(filepath.Join(StateDir, "previous-helper"))
+			if readErr != nil || sha256.Sum256(running) != sha256.Sum256(restored) {
+				t.Fatal("helper recovery did not execute the restored version", readErr)
+			}
+			t.Log("paired recovery executes restored helper code")
 		}
 		t.Log("interrupted update recovered; catalog snapshot:", snapshot)
 	}

@@ -26,6 +26,7 @@ const StateDir = "/var/lib/anker-updater"
 const BinaryPath = "/usr/local/bin/anker"
 const HelperPath = "/usr/local/libexec/anker-updater"
 const DataDir = "/srv/anker"
+const LocalInstallLock = "/run/anker-local-install.lock"
 
 type Config struct {
 	Repository string `json:"repository"`

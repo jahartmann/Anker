@@ -52,6 +52,12 @@ func run(args []string) error {
 		}
 		return nil
 	}
+	if command[0] == "install-local" {
+		if len(command) != 1 {
+			return errors.New("Installationsbefehl ohne Argumente verwenden")
+		}
+		return runLocalInstall()
+	}
 	if command[0] == "updater-serve" {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

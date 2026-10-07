@@ -46,7 +46,7 @@ Der GitHub-Token wird verdeckt abgefragt. Ein Fine-grained Token mit Zugriff nur
 
 Die Einrichtung kann mit `sudo anker setup` wiederholt werden. Bestehende Benutzer und private SSH-Schlüssel werden erhalten; unvollständige öffentliche Schlüssel und Dateirechte werden repariert. Die Einrichtung sperrt den Updater während Änderungen. Bei der ersten Einrichtung wird HTTPS für LAN/VPN vorgeschlagen; der Assistent erzeugt auf Wunsch ein Zertifikat für den angegebenen DNS-Namen oder die IP. Ein selbst erzeugtes Zertifikat braucht eine unabhängige Fingerprintprüfung im Browser. Alternativ vorhandene CA-Dateien importieren oder den lokalen SSH-Tunnel wählen. Gültige bestehende TLS-Dateien bleiben bei Wiederholung erhalten. Details zu Vertrauen und Erneuerung stehen in der README.
 
-Unterbrechung während der Installation: Solange `/etc/anker/install-pending` existiert, dasselbe geprüfte Installationsskript erneut ausführen. Der Hauptprogrammwechsel erfolgt erst nach synchronisierten Grundlagen. Ist die Installation abgeschlossen, `anker setup` verwenden; der Installer ersetzt keine bestehende Installation. Eine reine Quellcode-Installation unterstützt `scripts/install-server.sh --no-setup` für automatisierte Abläufe.
+Unterbrechung während der Installation: Solange `/etc/anker/install-pending` existiert, dasselbe geprüfte Installationsskript erneut ausführen. Der Hauptprogrammwechsel erfolgt erst nach synchronisierten Grundlagen. Ist die Installation abgeschlossen, `anker setup` verwenden; der Installer erkennt eine bestehende Installation und aktualisiert die Programme mit Sicherung und Startprüfung. Ein Quellcode-Checkout wird mit `scripts/install-server.sh` automatisch gebaut und installiert; fehlende Werkzeuge werden unter Debian/Ubuntu über APT installiert. `--no-setup` lässt nur den abschließenden interaktiven Assistenten aus.
 
 Manueller Paketweg:
 
@@ -63,7 +63,7 @@ cd anker-install
 sudo ./scripts/install-server.sh ./anker
 ```
 
-Das Installationsskript öffnet die Einrichtung automatisch. Der Installer überschreibt eine bestehende Anker-Installation nicht. Eine ältere Entwicklungsinstallation zuerst im Wartungsfenster stoppen und nach Sicherung des Katalogs auf diesen Installationsstand bringen.
+Das Installationsskript öffnet die Einrichtung automatisch. Der Installer erkennt vorhandene Installationen und verwendet für den Programmaustausch den Update-Mechanismus mit Sicherung und Startprüfung. Laufende Sicherungen und Wiederherstellungen verhindern einen Austausch; später erneut starten.
 
 Die root-eigene Zertifikatsverwaltung verwendet denselben Dienst und startet auch ohne `update.json`. Für bestehende Installationen einmal `sudo anker setup` ausführen: dabei wird die frühere Dienstbedingung für eine vorhandene Updatequelle entfernt, ohne lokale Unit-Einstellungen zu verwerfen. Eine OTA-Aktualisierung tauscht weiterhin die Binärdateien; dieser einmalige Einrichtungsschritt registriert bestehende selbst erzeugte Zertifikate für die Automatik. In der Demo bleiben sämtliche Zertifikatsänderungen gesperrt.
 

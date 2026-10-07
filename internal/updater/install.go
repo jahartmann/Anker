@@ -23,16 +23,24 @@ type Control interface {
 	Health(context.Context, string) error
 }
 type Installer struct {
-	Binary, Data, StateDir string
-	Control                Control
-	spaceCheck             func(string, int64) error
+	Binary, Data, StateDir       string
+	Helper                       string
+	AllowMissingCatalog, Offline bool
+	Coordinated                  bool
+	LocalLockPath                string
+	AfterHealth                  func(context.Context) error
+	recoveredHelper              bool
+	Control                      Control
+	spaceCheck                   func(string, int64) error
 }
 type journal struct {
-	Version  string
-	Previous string
-	Snapshot bool
-	WAL      bool
-	UID, GID int
+	Version         string
+	Previous        string
+	Snapshot        bool
+	Helper, Offline bool
+	Coordinated     bool
+	WAL             bool
+	UID, GID        int
 }
 
 func syncDir(p string) error {
@@ -140,7 +148,7 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 	required := int64(len(content)) + (64 << 20)
 	for _, name := range []string{i.Binary, filepath.Join(i.Data, "catalog.db"), filepath.Join(i.Data, "catalog.db-wal")} {
 		st, err := os.Lstat(name)
-		if os.IsNotExist(err) && strings.HasSuffix(name, "-wal") {
+		if os.IsNotExist(err) && (strings.HasSuffix(name, "-wal") || i.AllowMissingCatalog && name == filepath.Join(i.Data, "catalog.db")) {
 			continue
 		}
 		if err != nil {
@@ -150,6 +158,16 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 			return errors.New("Updatequelle ist keine reguläre Datei")
 		}
 		required += 2 * st.Size()
+	}
+	if i.Helper != "" {
+		st, err := os.Lstat(i.Helper)
+		if err != nil {
+			return err
+		}
+		if !st.Mode().IsRegular() {
+			return errors.New("Updater ist keine reguläre Datei")
+		}
+		required += int64(len(content)) + 2*st.Size()
 	}
 	check := i.spaceCheck
 	if check == nil {
@@ -169,6 +187,17 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 	if err := copyFile(i.Binary, filepath.Join(i.StateDir, "previous"), 0755, -1, -1); err != nil {
 		return err
 	}
+	helperStaged := ""
+	if i.Helper != "" {
+		helperStaged = i.Helper + ".next"
+		if err := atomic(helperStaged, content, 0755, -1, -1); err != nil {
+			return err
+		}
+		defer os.Remove(helperStaged)
+		if err := copyFile(i.Helper, filepath.Join(i.StateDir, "previous-helper"), 0755, -1, -1); err != nil {
+			return err
+		}
+	}
 	previous, err := i.Control.Prepare(ctx)
 	if err != nil {
 		return err
@@ -178,7 +207,7 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 			i.Control.Release(context.Background())
 		}
 	}()
-	j := journal{Version: r.Version, Previous: previous, UID: -1, GID: -1}
+	j := journal{Version: r.Version, Previous: previous, UID: -1, GID: -1, Helper: i.Helper != "", Offline: i.Offline, Coordinated: i.Coordinated}
 	if err = i.writeJournal(j); err != nil {
 		return err
 	}
@@ -194,30 +223,32 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 		return fmt.Errorf("Update fehlgeschlagen; vorherige Version wiederhergestellt: %w", cause)
 	}
 	st, err := os.Lstat(filepath.Join(i.Data, "catalog.db"))
-	if err != nil {
+	if err != nil && !(i.AllowMissingCatalog && os.IsNotExist(err)) {
 		return fail(err)
 	}
-	if !st.Mode().IsRegular() {
-		return fail(errors.New("Katalog ist keine reguläre Datei"))
-	}
-	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
-		j.UID, j.GID = int(sys.Uid), int(sys.Gid)
-	}
-	if err = copyFile(filepath.Join(i.Data, "catalog.db"), filepath.Join(i.StateDir, "catalog.db"), 0600, -1, -1); err != nil {
-		return fail(err)
-	}
-	wal := filepath.Join(i.Data, "catalog.db-wal")
-	if _, err = os.Lstat(wal); err == nil {
-		if err = copyFile(wal, filepath.Join(i.StateDir, "catalog.db-wal"), 0600, -1, -1); err != nil {
+	if err == nil {
+		if !st.Mode().IsRegular() {
+			return fail(errors.New("Katalog ist keine reguläre Datei"))
+		}
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			j.UID, j.GID = int(sys.Uid), int(sys.Gid)
+		}
+		if err = copyFile(filepath.Join(i.Data, "catalog.db"), filepath.Join(i.StateDir, "catalog.db"), 0600, -1, -1); err != nil {
 			return fail(err)
 		}
-		j.WAL = true
-	} else if !os.IsNotExist(err) {
-		return fail(err)
-	}
-	j.Snapshot = true
-	if err = i.writeJournal(j); err != nil {
-		return fail(err)
+		wal := filepath.Join(i.Data, "catalog.db-wal")
+		if _, err = os.Lstat(wal); err == nil {
+			if err = copyFile(wal, filepath.Join(i.StateDir, "catalog.db-wal"), 0600, -1, -1); err != nil {
+				return fail(err)
+			}
+			j.WAL = true
+		} else if !os.IsNotExist(err) {
+			return fail(err)
+		}
+		j.Snapshot = true
+		if err = i.writeJournal(j); err != nil {
+			return fail(err)
+		}
 	}
 	if err = os.Rename(staged, i.Binary); err != nil {
 		return fail(err)
@@ -225,11 +256,24 @@ func (i *Installer) Install(ctx context.Context, r Release, content []byte) erro
 	if err = syncDir(filepath.Dir(i.Binary)); err != nil {
 		return fail(err)
 	}
+	if helperStaged != "" {
+		if err = os.Rename(helperStaged, i.Helper); err != nil {
+			return fail(err)
+		}
+		if err = syncDir(filepath.Dir(i.Helper)); err != nil {
+			return fail(err)
+		}
+	}
 	if err = i.Control.Start(ctx); err != nil {
 		return fail(err)
 	}
 	if err = i.Control.Health(ctx, r.Version); err != nil {
 		return fail(err)
+	}
+	if i.AfterHealth != nil {
+		if err = i.AfterHealth(ctx); err != nil {
+			return fail(err)
+		}
 	}
 	if err = i.clearJournal(); err != nil {
 		return fail(err)
@@ -248,11 +292,36 @@ func (i *Installer) Recover(ctx context.Context) error {
 	if err = json.Unmarshal(raw, &j); err != nil {
 		return err
 	}
+	if j.Coordinated && !i.Coordinated {
+		path := i.LocalLockPath
+		if path == "" {
+			path = LocalInstallLock
+		}
+		fd, lockErr := unix.Open(path, unix.O_CREAT|unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer unix.Close(fd)
+		if lockErr = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); errors.Is(lockErr, unix.EWOULDBLOCK) {
+			return nil
+		} else if lockErr != nil {
+			return lockErr
+		}
+	}
 	if err = i.Control.Stop(ctx); err != nil {
 		return err
 	}
 	if err = copyFile(filepath.Join(i.StateDir, "previous"), i.Binary, 0755, -1, -1); err != nil {
 		return err
+	}
+	if j.Helper {
+		helper := i.Helper
+		if helper == "" {
+			helper = HelperPath
+		}
+		if err = copyFile(filepath.Join(i.StateDir, "previous-helper"), helper, 0755, -1, -1); err != nil {
+			return err
+		}
 	}
 	if j.Snapshot {
 		if err = copyFile(filepath.Join(i.StateDir, "catalog.db"), filepath.Join(i.Data, "catalog.db"), 0600, j.UID, j.GID); err != nil {
@@ -272,13 +341,19 @@ func (i *Installer) Recover(ctx context.Context) error {
 			return err
 		}
 	}
-	if err = i.Control.Start(ctx); err != nil {
+	if !j.Offline {
+		if err = i.Control.Start(ctx); err != nil {
+			return err
+		}
+		if err = i.Control.Health(ctx, j.Previous); err != nil {
+			return err
+		}
+	}
+	if err = i.clearJournal(); err != nil {
 		return err
 	}
-	if err = i.Control.Health(ctx, j.Previous); err != nil {
-		return err
-	}
-	return i.clearJournal()
+	i.recoveredHelper = j.Helper
+	return nil
 }
 
 func checkSpace(path string, required int64) error {
