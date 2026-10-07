@@ -4,7 +4,7 @@
 |---|---|---|---|
 | Lesbare versionierte Sicherungen und Prüfsummen | Ja | Go-Tests, Demo | Offen |
 | SQLite-Snapshot und pmxcfs-Dekodierung | Ja | Python-Fixture mit konsistentem Baum | Offen |
-| SSH mit geprüftem Hostschlüssel und festem Helfer | Ja | Argument-/Protokollprüfungen | Offen |
+| SSH mit geprüftem Hostschlüssel und festem Helfer | Ja | Echte SSH-Verbindungen und Helferinstallation auf isoliertem Debian-13-Ziel mit PVE-Kommandofixture, root/sudo, Rollen und Wiederanbindung; Go-/Browser-/PTY-Prüfungen | Reales PVE-Labor offen |
 | Einzeldateiübernahme mit Driftprüfung und Rollbackkopie | Ja | Go-/Python-Tests, Demo-Browserablauf | Offen |
 | Netzwerkportzuordnung | Ja | Transformation und fehlende Zuordnung | Verkabelung/Erreichbarkeit offen |
 | Neue Hardware, Cluster, Versionen, Topologie | Manuelle Pläne und Exporte | Entscheidungsregeln und Dokumente | Offen; automatische Gesamtausführung gesperrt |
@@ -115,3 +115,9 @@ Die abschließende lokale Prüfung umfasst 39 Browserabläufe und die vollständ
 Geprüft sind die echten API-Verbindungen für Einstellungen/Host-CRUD/Scheduler und Auftragsaktionen, Neustart ohne doppelten Tageslauf, Datenbankfehler sowie Browseraktionen. Die Browserprüfung nutzt einen isolierten Demo- und einen leeren Produktionsdienst; UI-Fehlerfälle werden zusätzlich gezielt simuliert. Die Go-Integration verwendet einen lokalen Test-Collector statt realer SSH-Hosts. Dies ersetzt keine Abnahme mit euren Hosts oder einen physischen Reboot-/Stromausfalltest.
 
 Abschließender lokaler Nachweis: 46 Browserabläufe, vollständige Go-Suite mit Race Detector, Go Vet, zehn Python-Helfertests und sieben Installerprüfungen. Webbuild und Linux-Crossbuild sind bestanden. Die unabhängige Codeprüfung hat nach Korrektur der gefundenen Konkurrenzfehler keine offenen Befunde.
+
+## Automatische Hostanbindung vom 07.10.2026
+
+[Linux-Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37597961722): Anbindung über die laufende Web-API und den root-Dienst an einen echten OpenSSH-Server im isolierten Debian-13-Container. Falsche Passwörter registrieren keinen Host und ändern keine Vertrauensdatei. Root-Anbindung installiert fehlendes sudo, beide Rollen werden mit getrennten Schlüsseln geprüft, erneute Anbindung über Passwort-sudo behält Host-ID, Profile und fremde autorisierte Schlüssel. Die Backuprolle kann keine Schreiboperation ausführen. Vorhandene zentrale Schlüssel bleiben im Besitz des Dienstbenutzers mit 0600; Verzeichnisse und verwaltete Vertrauensdatei bleiben root-kontrolliert. Passwortfreiheit im Katalog nachgewiesen.
+
+Der Zielcontainer verwendet eine ausdrücklich gefälschte `pveversion` zur Prüfung des Installations-/SSH-Wegs, keine reale Proxmox-Installation. SSH-Identitätswechsel, PAM-Passwortprompt, Abbruch, Ausgabegrenzen und unsichere Schlüsseldateien haben zusätzliche Go-Regressionen. 55 Browserfälle und echte Terminal-PTY-Prüfung bestanden.
