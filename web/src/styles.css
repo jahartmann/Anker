@@ -2069,6 +2069,62 @@ textarea {
   font-size: 12px;
   padding-left: 35px;
 }
+.restore-plan-filters,
+.restore-selection-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.restore-plan-filters input,
+.restore-selection-toolbar input {
+  min-width: 0;
+  flex: 1;
+}
+.restore-plan-filters select {
+  width: 180px;
+}
+.restore-file-selection {
+  max-height: none;
+  overflow: visible;
+}
+.restore-file-items {
+  max-height: 240px;
+  overflow: auto;
+  margin-bottom: 12px;
+}
+.restore-file-items .mono {
+  overflow-wrap: anywhere;
+}
+.restore-selection-toolbar button[aria-pressed="true"] {
+  background: var(--soft);
+  border-color: var(--muted);
+}
+@media (max-width: 760px) {
+  .host-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .host-toolbar .search-field {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .host-toolbar select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+@media (max-width: 640px) {
+  .restore-plan-filters,
+  .restore-selection-toolbar {
+    flex-direction: column;
+  }
+  .restore-plan-filters select {
+    width: 100%;
+  }
+  .restore-plans td {
+    overflow-wrap: anywhere;
+  }
+}
 .inventory-detail td {
   background: #fafaf8;
 }

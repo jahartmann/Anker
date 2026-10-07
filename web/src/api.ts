@@ -112,6 +112,12 @@ export interface Plan {
   steps: Step[];
   blockers: string[];
   manual: string[];
+  mapping?: {
+    interfaces: Record<string, string>;
+    storage?: Record<string, string>;
+    hostname?: string;
+    address?: string;
+  };
   result?: {
     applied: string[];
     checks: string[];

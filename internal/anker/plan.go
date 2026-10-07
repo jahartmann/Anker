@@ -297,7 +297,7 @@ func planGuide(p Plan, m Manifest) string {
 	for _, x := range p.Steps {
 		b.WriteString(fmt.Sprintf("- %s: %s. %s\n", x.Path, x.Action, x.Reason))
 	}
-	b.WriteString("\n" + recoveryGuide(m))
+	b.WriteString("\nDie folgende Anleitung bezieht sich auf original/: dort checksums.sha256 prüfen und original-files/ für Dateien mit Originalmetadaten verwenden.\n\n" + recoveryGuide(m))
 	return b.String()
 }
 func (s *Service) ExportPlan(id string, w io.Writer) error {
@@ -319,14 +319,25 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	if err = s.verifyPlanFiles(p); err != nil {
 		return err
 	}
+	b, err := s.Backup(p.BackupID)
+	if err != nil {
+		return err
+	}
+	m, err := s.Manifest(p.BackupID)
+	if err != nil {
+		return err
+	}
 	tw := tar.NewWriter(w)
 	root := filepath.Join(s.Root, "plans", id)
 	if err = tarTree(tw, root); err != nil {
 		tw.Close()
 		return err
 	}
-	b, _ := s.Backup(p.BackupID)
 	if err = tarPrefix(tw, s.backupDir(b), "original/"); err != nil {
+		tw.Close()
+		return err
+	}
+	if err = s.tarOriginalFiles(tw, b, m, "original/"); err != nil {
 		tw.Close()
 		return err
 	}

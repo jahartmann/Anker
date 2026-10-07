@@ -442,6 +442,8 @@ Wiederherstellung und Aufträge
   anker jobs
   anker job show ID | cancel ID | retry ID | remove ID
   Ziel, Dateien und Plan prüfen; Migration braucht Konsole und isolierte Quelle.
+  Gesamtrecovery, neue Hardware und Cluster: auf echten Hosts manuell geführter Plan.
+  Anleitung und Originaldateien mit restore export herunterladen.
   Wiederherstellungen werden nicht automatisch wiederholt.
 
 Einstellungen, Benutzer, Zertifikat und Speicher

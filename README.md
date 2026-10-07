@@ -269,6 +269,12 @@ Nach einem im Web gestarteten Update lädt die Seite automatisch neu, sobald die
 
 Gesamtrecovery, Hardwaremigration und Cluster-/Versionswechsel sind derzeit **manuell geführte Pläne**. Automatische Gesamtausführung bleibt gesperrt, bis die Proxmox-, Hardware- und Clusterfälle im Labor geprüft sind. Reboot, Storage, Quorum, HA und PBS-Erreichbarkeit separat bestätigen.
 
+Im Web lässt sich die Quelle nach Host filtern; Dateien und Pläne haben Suche und feste Seiten. Eine Dateiauswahl bleibt beim Suchen und Blättern erhalten. Wenn eine erste Zielprüfung neue Netzwerkports erkennt, führt „Zuordnungen anpassen“ zum bestehenden Entwurf zurück. Ein anderes Ziel erfordert neue Bestätigungen. Die Dateiansicht eines Plans zeigt Anpassungen an der Sicherung; sie ist kein vollständiger Inhaltsvergleich mit dem Zielhost.
+
+Im Terminal sind alle Wiederherstellungsszenarien auswählbar. Im Dateifeld wechselt `Ctrl+E` zwischen der Liste und direkter Eingabe relativer Pfade; mehrere Pfade mit Komma trennen. Vollständige Szenarien bleiben auf echten Hosts manuell geführt. Das Planpaket enthält vorbereitete Dateien und unter `original/original-files/` die Originale mit ihren gesicherten Metadaten.
+
+Der [Abgleich mit dem geplanten Umfang](docs/IMPLEMENTATION_STATUS.md) nennt die noch offenen Wiederherstellungsregeln, Clusterfunktionen und Unterschiede zwischen Web und Terminal.
+
 [Recovery](docs/RECOVERY.md), [Betrieb und optionaler SFTP-Export](docs/OPERATIONS.md), [geprüfter Umfang](docs/SUPPORT.md). Planexporte bleiben ohne laufenden Anker-Dienst verwendbar. SFTP kann bestehende Ordner ohne zweite Kopie bereitstellen.
 
 ## Optionale lokale Demo

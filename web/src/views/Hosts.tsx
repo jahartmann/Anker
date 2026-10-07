@@ -3,7 +3,14 @@ import type { FormEvent } from "react";
 import { ArrowLeft, ChevronDown, Search, ChevronRight } from "lucide-react";
 import { api, date, hostState } from "../api";
 import type { Host, HostIdentity, Status } from "../api";
-import { Dialog, Empty, Field, Heading, State } from "../components/shared";
+import {
+  Dialog,
+  Empty,
+  Field,
+  Heading,
+  Pagination,
+  State,
+} from "../components/shared";
 import type { Notify } from "../components/shared";
 import { BackupTable } from "./Backups";
 import Inventory from "../components/Inventory";
@@ -602,6 +609,8 @@ export default function Hosts({
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState("");
   const [tab, setTab] = useState("Übersicht");
   const [form, setForm] = useState<Host | "new" | null>(null);
@@ -615,8 +624,15 @@ export default function Hosts({
   const hosts = status.hosts.filter(
     (h) =>
       (h.name + " " + h.address).toLowerCase().includes(query.toLowerCase()) &&
-      (!group || h.group === group),
+      (!group || h.group === group) &&
+      (!stateFilter ||
+        (stateFilter === "paused"
+          ? !h.enabled
+          : stateFilter === "attention"
+            ? h.enabled && hostState(h, status).tone !== "success"
+            : h.enabled && hostState(h, status).tone === "success")),
   );
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(hosts.length / 25)));
   const saved = status.hosts.filter(
     (h) => hostState(h, status).tone === "success",
   ).length;
@@ -842,7 +858,7 @@ export default function Hosts({
               )
             }
           />
-          <div className="toolbar">
+          <div className="toolbar host-toolbar">
             <div className="search-field">
               <Search size={15} aria-hidden="true" />
               <input
@@ -850,18 +866,37 @@ export default function Hosts({
                 aria-label="Hosts durchsuchen"
                 placeholder="Hosts durchsuchen"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
               />
             </div>
             <select
               aria-label="Gruppe filtern"
               value={group}
-              onChange={(e) => setGroup(e.target.value)}
+              onChange={(e) => {
+                setGroup(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="">Alle Gruppen</option>
               {groups.map((g) => (
                 <option key={g}>{g}</option>
               ))}
+            </select>
+            <select
+              aria-label="Hoststatus filtern"
+              value={stateFilter}
+              onChange={(e) => {
+                setStateFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Alle Status</option>
+              <option value="attention">Handlungsbedarf</option>
+              <option value="saved">Aktuell gesichert</option>
+              <option value="paused">Pausiert</option>
             </select>
           </div>
           {hosts.length ? (
@@ -877,89 +912,105 @@ export default function Hosts({
                   </tr>
                 </thead>
                 <tbody>
-                  {hosts.map((h) => {
-                    const state = hostState(h, status);
-                    return (
-                      <tr key={h.id}>
-                        <td>
-                          <button
-                            className="name-link"
-                            onClick={() => {
-                              setSelected(h.id);
-                              setTab("Übersicht");
-                            }}
-                          >
-                            {h.name}
-                          </button>
-                          <div className="secondary-line mono">{h.address}</div>
-                        </td>
-                        <td>{h.group || "Standalone"}</td>
-                        <td className="date">
-                          {date(state.backup?.created_at)}
-                        </td>
-                        <td>
-                          <span className={"state " + state.tone}>
-                            {state.text}
-                          </span>
-                          {status.jobs.some(
-                            (j) =>
-                              j.host_id === h.id &&
-                              j.kind === "backup" &&
-                              ["queued", "running"].includes(j.state),
-                          ) && (
-                            <div className="secondary-line">
-                              <State
-                                value={
-                                  status.jobs.some(
-                                    (j) =>
-                                      j.host_id === h.id &&
-                                      j.kind === "backup" &&
-                                      j.state === "running",
-                                  )
-                                    ? "running"
-                                    : "queued"
-                                }
-                                label={
-                                  status.jobs.some(
-                                    (j) =>
-                                      j.host_id === h.id &&
-                                      j.kind === "backup" &&
-                                      j.state === "running",
-                                  )
-                                    ? "Sicherung läuft"
-                                    : "Sicherung wartet"
-                                }
-                              />
+                  {hosts
+                    .slice((currentPage - 1) * 25, currentPage * 25)
+                    .map((h) => {
+                      const state = hostState(h, status);
+                      return (
+                        <tr key={h.id}>
+                          <td>
+                            <button
+                              className="name-link"
+                              onClick={() => {
+                                setSelected(h.id);
+                                setTab("Übersicht");
+                              }}
+                            >
+                              {h.name}
+                            </button>
+                            <div className="secondary-line mono">
+                              {h.address}
                             </div>
-                          )}
-                        </td>
-                        <td className="right">
-                          <button
-                            className="text-button"
-                            onClick={() => {
-                              setSelected(h.id);
-                              setTab("Übersicht");
-                            }}
-                          >
-                            Öffnen <ChevronRight size={14} aria-hidden="true" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          </td>
+                          <td>{h.group || "Standalone"}</td>
+                          <td className="date">
+                            {date(state.backup?.created_at)}
+                          </td>
+                          <td>
+                            <span className={"state " + state.tone}>
+                              {state.text}
+                            </span>
+                            {status.jobs.some(
+                              (j) =>
+                                j.host_id === h.id &&
+                                j.kind === "backup" &&
+                                ["queued", "running"].includes(j.state),
+                            ) && (
+                              <div className="secondary-line">
+                                <State
+                                  value={
+                                    status.jobs.some(
+                                      (j) =>
+                                        j.host_id === h.id &&
+                                        j.kind === "backup" &&
+                                        j.state === "running",
+                                    )
+                                      ? "running"
+                                      : "queued"
+                                  }
+                                  label={
+                                    status.jobs.some(
+                                      (j) =>
+                                        j.host_id === h.id &&
+                                        j.kind === "backup" &&
+                                        j.state === "running",
+                                    )
+                                      ? "Sicherung läuft"
+                                      : "Sicherung wartet"
+                                  }
+                                />
+                              </div>
+                            )}
+                          </td>
+                          <td className="right">
+                            <button
+                              className="text-button"
+                              onClick={() => {
+                                setSelected(h.id);
+                                setTab("Übersicht");
+                              }}
+                            >
+                              Öffnen{" "}
+                              <ChevronRight size={14} aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           ) : (
             <Empty
               title={
-                query || group ? "Keine passenden Hosts" : "Noch keine Hosts"
+                query || group || stateFilter
+                  ? "Keine passenden Hosts"
+                  : "Noch keine Hosts"
               }
             >
-              {query || group
+              {query || group || stateFilter
                 ? "Suche oder Filter ändern."
                 : "Mit „Host hinzufügen“ richtest du die erste Verbindung ein."}
             </Empty>
+          )}
+          {hosts.length > 0 && (
+            <Pagination
+              page={currentPage}
+              pageSize={25}
+              total={hosts.length}
+              onPageChange={setPage}
+              label="Hosts"
+            />
           )}
           <p className="table-footnote">
             {status.hosts.length} Hosts · {saved} gesichert ·{" "}

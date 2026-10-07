@@ -133,13 +133,21 @@ func (s *Service) ExportBackup(id string, w io.Writer) error {
 		tw.Close()
 		return err
 	}
+	if err = s.tarOriginalFiles(tw, b, m, ""); err != nil {
+		tw.Close()
+		return err
+	}
+	return tw.Close()
+}
+
+// The caller holds a readable backup lease and has verified its manifest/tree.
+func (s *Service) tarOriginalFiles(tw *tar.Writer, b Backup, m Manifest, prefix string) error {
 	for _, e := range m.Entries {
-		h := &tar.Header{Name: "original-files/" + e.Path, Mode: int64(e.Mode), Uid: e.UID, Gid: e.GID, ModTime: unixTime(e.MTime)}
+		h := &tar.Header{Name: prefix + "original-files/" + e.Path, Mode: int64(e.Mode), Uid: e.UID, Gid: e.GID, ModTime: unixTime(e.MTime)}
 		h.Xattrs = map[string]string{}
 		for name, encoded := range e.XAttrs {
 			value, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
-				tw.Close()
 				return fmt.Errorf("ungültiges Extended Attribute %s: %w", name, err)
 			}
 			h.Xattrs[name] = string(value)
@@ -156,30 +164,26 @@ func (s *Service) ExportBackup(id string, w io.Writer) error {
 		default:
 			continue
 		}
-		if err = tw.WriteHeader(h); err != nil {
-			tw.Close()
+		if err := tw.WriteHeader(h); err != nil {
 			return err
 		}
 		if e.Type == "file" {
 			p, err := safeJoin(filepath.Join(s.backupDir(b), "files"), e.Path)
 			if err != nil {
-				tw.Close()
 				return err
 			}
 			f, err := os.Open(p)
 			if err != nil {
-				tw.Close()
 				return err
 			}
 			_, err = io.Copy(tw, f)
 			f.Close()
 			if err != nil {
-				tw.Close()
 				return err
 			}
 		}
 	}
-	return tw.Close()
+	return nil
 }
 func (s *Service) verifyAt(id, root string) error {
 	b, err := s.Backup(id)

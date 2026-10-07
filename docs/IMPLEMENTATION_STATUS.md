@@ -1,5 +1,32 @@
 # Implementierung
 
+## Abgleich mit dem Konzept vom 7. Oktober 2026
+
+Die Grundlage für den täglichen Betrieb ist umgesetzt. Die ursprünglich geplante umfassende Wiederherstellung ist noch nicht vollständig umgesetzt oder an echten Proxmox-Hosts abgenommen. Die folgende Tabelle trennt vorhandene Funktionen von offenen Arbeitspaketen; die späteren Abschnitte dokumentieren frühere Prüfstände.
+
+| Bereich | Vorhanden | Noch offen oder begrenzt |
+|---|---|---|
+| Zentrale Hostverwaltung | Stabile Host-IDs, Gruppen, tägliche Zeitpläne, Aufträge und begrenzte Parallelität | Rund 40 Hosts bisher mit synthetischen Daten geprüft |
+| Cluster | Node-Konfigurationen und Clusterinventar werden erfasst | Eigener Clusterkatalog, abgestimmte Stände mehrerer Nodes und koordinierter Cluster-Restore |
+| Konfiguration und Geheimnisse | `/etc`, `/usr/local`, pmxcfs-Datenbanksnapshot, Originaldateien, Metadaten und Abhängigkeitshinweise | Zusätzliche Pfade werden im root-eigenen Hostprofil eingerichtet; das zentrale Feld prüft Vollständigkeit. Nicht jede fehlgeschlagene Inventarabfrage wird als Hinweis ausgegeben. Versionsprüfung des Decoders und echte pmxcfs-Abnahme fehlen |
+| Ablage, Archiv und Integrität | Lesbare Stände, Prüfsummen, Archivierung, erneutes Öffnen, Wiederindexierung | Reale Infrastruktur-, Platzmangel- und Stromausfallabnahme |
+| Downloads | Einzeldatei, vollständiger Stand und Planpaket mit vorbereiteten Dateien sowie `original/original-files/` und Originalmetadaten | Einzeldateien bis 64 MiB; vorhandene Pläne können eine ältere Anleitung enthalten |
+| Einzeldatei-Restore | Geprüfter Plan, Ziel- und Inhaltsdriftprüfung, Bestätigung, Rollbackkopie und atomarer Dateiaustausch | Freigegebene Dateitypen; Links, Extended Attributes und sensible Systemkonfigurationen manuell. Benutzer-/Gruppenzuordnung sowie Dienst- und Rebootabnahme fehlen |
+| Neue Hardware und vollständiger Host | Szenario, Netzwerkportzuordnung, Voraussetzungen und manuelle Pläne/Exporte | Regelwerk für Storage, Hostidentität, Boot und Gesamtausführung. Storage-/Hostname-/Adresszuordnungen werden noch nicht angewendet |
+| Cluster- und Versionswechsel | Szenarien und manuelle Voraussetzungen | Validierte Ablaufregeln und automatisierte Ausführung |
+| Web, Terminal und CLI | Gemeinsamer Dienst; Hostanbindung, Sicherungen, Pläne, Aufträge und Systemverwaltung | Terminal ohne Sicherungsvergleich und Inhaltsvorschau; lokale Socketverwaltung hat administrative Rechte und verwendet keine Webbenutzersitzung |
+| SSH-Einrichtung | Benutzer/Passwort, bestätigter Fingerprint, begrenzte getrennte Schlüssel und Helferinstallation | Hosthelfer werden nicht automatisch durch ein zentrales OTA-Update ersetzt |
+| SFTP | Optionales Skript für einen lesenden Exportzugang | Einrichtung und persistente Mounts durch Administrator; keine benutzerbezogene Filterung je Host, reale SFTP-Abnahme offen |
+| Benutzer und Anmeldung | Persistierte Anmeldung, Rollen, Sperren, Sitzungswiderruf, 30 Tage Standard und einstellbare Passwortlänge | Vorhanden und mit Fehlerfällen geprüft |
+| TLS | Eigene Zertifikate, automatische Erneuerung, Einstellungen und Übernahme ohne Dienstneustart | Browservertrauen bleibt bei selbstsignierten Zertifikaten manuell |
+| Installation und Updates | Clone/Installer, Wiederholung und Abbruchbehandlung, signierte Pakete, Katalog-/Programm-Rückfall, automatischer Webreload | Dienstneustarts unter Linux geprüft; physischer Reboot und Stromverlust nicht abgenommen |
+| Speicher | Belegung, Verlauf, bedingte Prognose, begrenzte Erweiterung vorhandener ext4-/XFS-Kapazität | LXC-Zuweisung, Partitionierung, LVM und Laufwerksumzug manuell; echte ext4-Prüfung vorhanden, weitere Plattformabnahmen offen |
+| Produktion und Verteilung | Leerer Produktionsstart, ausdrücklich getrennte Demo, öffentliches GitHub und MIT | Vorhanden und geprüft |
+
+Für den nächsten Ausbau haben Wiederherstellung und die Vollständigkeit des Inventars Vorrang: Eigentümer auf dem Ziel prüfen, fehlgeschlagene Inventarabfragen sichtbar machen, Zieländerungen nachvollziehbar vergleichen und die Standalone-/Hardwarefälle im isolierten Proxmox-Labor abnehmen. Danach folgen Storage-/Identitätsregeln und koordinierte Clusterabläufe. Ein allgemeiner Status „automatisch vollständig wiederherstellbar“ wird bis zu dieser Abnahme nicht vergeben.
+
+Die Bedienungsprüfung dieses Stands korrigiert erhaltene Bestätigungen nach Quell-/Zielwechsel, lange Wiederherstellungslisten, fehlende Zielportauswahl nach einer frischen Prüfung und unvollständige Originalmetadaten im Planexport. Im Terminal sind sämtliche Szenarien auswählbar; `Ctrl+E` wechselt zwischen Dateiliste und direkter Pfadeingabe.
+
 Anker besteht aus einem Go-Dienst mit eingebetteter React-Oberfläche, SQLite-Katalog, einem festen Python-Helfer auf dem Proxmox-Host, einem Unix-Socket-CLI und einer Bubble-Tea-Terminaloberfläche. Alle lokalen Demoabläufe sind isoliert; es wurde kein Produktionshost kontaktiert.
 
 Die ursprüngliche visuelle Richtung wurde nach Nutzerfeedback ersetzt. Referenz: `docs/design/anker-hosts-concept.png`. Die Umsetzung verwendet einen weißen Inhaltsbereich, eine hellgraue Navigation ohne dekorative Symbole, schlichte Tabellen, eine gemeinsame Typografie-/Abstandsskala und zurückhaltende Dialoge. Statuszahlen kommen aus dem Dienst. Suchzustände, Fokus, Formularfehler, Mobilnavigation und Secretvorschauen sind eigene Zustände desselben Systems.

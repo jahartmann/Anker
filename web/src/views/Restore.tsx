@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date, labels } from "../api";
 import type { Entry, Inventory, Plan, Status, User } from "../api";
@@ -9,9 +9,146 @@ import {
   Field,
   Heading,
   LoadError,
+  Pagination,
   State,
 } from "../components/shared";
 import type { Notify } from "../components/shared";
+
+function RestoreFiles({
+  entries,
+  files,
+  onChange,
+}: {
+  entries: Entry[];
+  files: string[];
+  onChange: (files: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const selected = useMemo(() => new Set(files), [files]);
+  const matches = useMemo(
+    () =>
+      entries
+        .filter(
+          (f) =>
+            f.type !== "directory" &&
+            f.path.toLowerCase().includes(query.trim().toLowerCase()) &&
+            (!selectedOnly || selected.has(f.path)),
+        )
+        .sort((a, b) =>
+          a.path.localeCompare(b.path, undefined, { numeric: true }),
+        ),
+    [entries, query, selectedOnly, selected],
+  );
+  useEffect(() => {
+    setPage(1);
+  }, [query, selectedOnly, entries]);
+  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  return (
+    <fieldset className="file-selection restore-file-selection">
+      <legend>Dateien auswählen · {files.length} ausgewählt</legend>
+      <div className="restore-selection-toolbar">
+        <input
+          aria-label="Wiederherstellungsdateien durchsuchen"
+          placeholder="Dateipfad suchen"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button
+          type="button"
+          className="secondary"
+          aria-pressed={selectedOnly}
+          onClick={() => setSelectedOnly((v) => !v)}
+        >
+          Nur ausgewählte Dateien
+        </button>
+      </div>
+      <div className="restore-file-items">
+        {matches.slice((current - 1) * 25, current * 25).map((f) => (
+          <label className="check" key={f.path}>
+            <input
+              type="checkbox"
+              checked={selected.has(f.path)}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? [...files, f.path]
+                    : files.filter((p) => p !== f.path),
+                )
+              }
+            />
+            <span className="mono">{f.path}</span>
+            {f.secret && <small className="muted">Geschützt</small>}
+          </label>
+        ))}
+        {!matches.length && (
+          <p className="muted">
+            {selectedOnly && !files.length
+              ? "Noch keine Dateien ausgewählt."
+              : "Keine passenden Dateien."}
+          </p>
+        )}
+      </div>
+      <Pagination
+        page={current}
+        pageSize={25}
+        total={matches.length}
+        onPageChange={setPage}
+        label="Dateien"
+      />
+      <p className="field-hint">
+        Die Auswahl bleibt beim Suchen und Blättern erhalten.
+      </p>
+    </fieldset>
+  );
+}
+
+function PlanFiles({ steps }: { steps: Plan["steps"] }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const matches = steps.filter((s) =>
+    s.path.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  return (
+    <section className="plan-files">
+      <Field label="Plandateien durchsuchen">
+        <input
+          placeholder="Dateipfad suchen"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(1);
+          }}
+        />
+      </Field>
+      {matches.slice((current - 1) * 25, current * 25).map((s) => (
+        <details className="file-diff" key={s.path}>
+          <summary>
+            <span className="mono">{s.path}</span>
+            <span className="muted">
+              {s.action === "apply" ? "Vorbereitet" : "Manuell"}
+            </span>
+          </summary>
+          <p>
+            {s.reason ||
+              "Originalinhalt mit geprüften Vorbedingungen übernehmen."}
+          </p>
+          {s.diff && <pre>{s.diff}</pre>}
+        </details>
+      ))}
+      {!matches.length && <p className="muted">Keine passenden Plandateien.</p>}
+      <Pagination
+        page={current}
+        pageSize={25}
+        total={matches.length}
+        onPageChange={setPage}
+        label="Plandateien"
+      />
+    </section>
+  );
+}
 export default function Restore({
   status,
   initialBackup,
@@ -29,6 +166,9 @@ export default function Restore({
 }) {
   const [wizard, setWizard] = useState(!!initialBackup);
   const [backup, setBackup] = useState(initialBackup);
+  const [sourceHost, setSourceHost] = useState(
+    status.backups.find((b) => b.id === initialBackup)?.host_id || "",
+  );
   const [target, setTarget] = useState("");
   const [scenario, setScenario] = useState("files");
   const [source, setSource] = useState<Inventory | null>(null);
@@ -39,6 +179,13 @@ export default function Restore({
   const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [canRevise, setCanRevise] = useState(false);
+  const [targetInventory, setTargetInventory] = useState<Inventory | null>(
+    null,
+  );
+  const [planQuery, setPlanQuery] = useState("");
+  const [planState, setPlanState] = useState("");
+  const [planPage, setPlanPage] = useState(1);
   const [confirmation, setConfirmation] = useState("");
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
@@ -106,6 +253,7 @@ export default function Restore({
         source_offline: offline,
       });
       setPlan(p);
+      setCanRevise(true);
       setWizard(false);
       setConfirmation("");
       refresh();
@@ -132,6 +280,25 @@ export default function Restore({
     }
   }
   const dest = status.hosts.find((h) => h.id === target);
+  const targetPorts =
+    targetInventory?.interfaces || dest?.inventory?.interfaces || [];
+  const sources = new Map(status.backups.map((b) => [b.host_id, b.host_name]));
+  const stands = status.backups
+    .filter((b) => !sourceHost || b.host_id === sourceHost)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const plans = status.plans
+    .filter(
+      (p) =>
+        (p.source.hostname + " " + p.target.hostname + " " + p.id)
+          .toLowerCase()
+          .includes(planQuery.trim().toLowerCase()) &&
+        (!planState || p.state === planState),
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const currentPlanPage = Math.min(
+    planPage,
+    Math.max(1, Math.ceil(plans.length / 25)),
+  );
   return (
     <>
       <Heading
@@ -152,51 +319,102 @@ export default function Restore({
         }
       />
       {status.plans.length ? (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Quelle → Ziel</th>
-                <th>Szenario</th>
-                <th>Status</th>
-                <th className="right">Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...status.plans]
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>
-                        {p.source.hostname} → {p.target.hostname}
-                      </strong>
-                      <div className="secondary-line">{date(p.created_at)}</div>
-                    </td>
-                    <td>{labels[p.scenario]}</td>
-                    <td>
-                      <State value={p.state} />
-                    </td>
-                    <td className="right">
-                      <button
-                        className="text-button"
-                        onClick={async () => {
-                          try {
-                            setPlan(await api<Plan>("plans/" + p.id));
-                            setConfirmation("");
-                            setFormError("");
-                          } catch (e) {
-                            notify((e as Error).message, true);
-                          }
-                        }}
-                      >
-                        Plan ansehen
-                      </button>
-                    </td>
-                  </tr>
+        <div>
+          <div className="restore-plan-filters">
+            <input
+              aria-label="Wiederherstellungspläne durchsuchen"
+              placeholder="Quelle, Ziel oder Plan suchen"
+              value={planQuery}
+              onChange={(e) => {
+                setPlanQuery(e.target.value);
+                setPlanPage(1);
+              }}
+            />
+            <select
+              aria-label="Planstatus filtern"
+              value={planState}
+              onChange={(e) => {
+                setPlanState(e.target.value);
+                setPlanPage(1);
+              }}
+            >
+              <option value="">Alle Status</option>
+              {Array.from(
+                new Set(
+                  [...status.plans.map((p) => p.state), planState].filter(
+                    Boolean,
+                  ),
+                ),
+              )
+                .sort()
+                .map((state) => (
+                  <option key={state} value={state}>
+                    {labels[state] || state}
+                  </option>
                 ))}
-            </tbody>
-          </table>
+            </select>
+          </div>
+          <div className="table-scroll">
+            <table className="restore-plans">
+              <thead>
+                <tr>
+                  <th>Quelle → Ziel</th>
+                  <th>Szenario</th>
+                  <th>Status</th>
+                  <th className="right">Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plans
+                  .slice((currentPlanPage - 1) * 25, currentPlanPage * 25)
+                  .map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <strong>
+                          {p.source.hostname} → {p.target.hostname}
+                        </strong>
+                        <div className="secondary-line">
+                          {date(p.created_at)}
+                        </div>
+                      </td>
+                      <td>{labels[p.scenario]}</td>
+                      <td>
+                        <State value={p.state} />
+                      </td>
+                      <td className="right">
+                        <button
+                          className="text-button"
+                          onClick={async () => {
+                            try {
+                              setPlan(await api<Plan>("plans/" + p.id));
+                              setCanRevise(false);
+                              setConfirmation("");
+                              setFormError("");
+                            } catch (e) {
+                              notify((e as Error).message, true);
+                            }
+                          }}
+                        >
+                          Plan ansehen
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          {!plans.length && (
+            <Empty title="Keine passenden Pläne">
+              Suche oder Statusfilter ändern.
+            </Empty>
+          )}
+          <Pagination
+            page={currentPlanPage}
+            pageSize={25}
+            total={plans.length}
+            onPageChange={setPlanPage}
+            label="Pläne"
+          />
         </div>
       ) : (
         <Empty title="Noch keine Wiederherstellungspläne">
@@ -218,6 +436,27 @@ export default function Restore({
                 Konfiguration.
               </p>
               <div className="form-grid">
+                <Field
+                  label="Quellhost"
+                  hint="Bei vielen Ständen zuerst nach dem Quellhost filtern."
+                >
+                  <select
+                    value={sourceHost}
+                    onChange={(e) => {
+                      setSourceHost(e.target.value);
+                      setBackup("");
+                    }}
+                  >
+                    <option value="">Alle Quellhosts</option>
+                    {Array.from(sources)
+                      .sort((a, b) => a[1].localeCompare(b[1]))
+                      .map(([id, name]) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
                 <Field label="Sicherung">
                   <select
                     required
@@ -225,13 +464,15 @@ export default function Restore({
                     onChange={(e) => setBackup(e.target.value)}
                   >
                     <option value="">Stand auswählen</option>
-                    {status.backups.map((b) => (
+                    {stands.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.host_name} · {date(b.created_at)}
                       </option>
                     ))}
                   </select>
                 </Field>
+              </div>
+              <div className="form-grid">
                 <Field label="Zielhost">
                   <select
                     required
@@ -239,6 +480,9 @@ export default function Restore({
                     onChange={(e) => {
                       setTarget(e.target.value);
                       setInterfaces({});
+                      setConsoleOK(false);
+                      setOffline(false);
+                      setTargetInventory(null);
                     }}
                   >
                     <option value="">Ziel auswählen</option>
@@ -249,27 +493,27 @@ export default function Restore({
                     ))}
                   </select>
                 </Field>
+                <Field label="Szenario">
+                  <select
+                    value={scenario}
+                    onChange={(e) => setScenario(e.target.value)}
+                  >
+                    {[
+                      "files",
+                      "standalone",
+                      "migration",
+                      "version",
+                      "cluster-node",
+                      "cluster-disaster",
+                      "topology",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {labels[s]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
-              <Field label="Szenario">
-                <select
-                  value={scenario}
-                  onChange={(e) => setScenario(e.target.value)}
-                >
-                  {[
-                    "files",
-                    "standalone",
-                    "migration",
-                    "version",
-                    "cluster-node",
-                    "cluster-disaster",
-                    "topology",
-                  ].map((s) => (
-                    <option key={s} value={s}>
-                      {labels[s]}
-                    </option>
-                  ))}
-                </select>
-              </Field>
               {loading && (
                 <p className="notice" role="status">
                   Sicherung wird gelesen …
@@ -281,29 +525,12 @@ export default function Restore({
                   retry={() => setReload((v) => v + 1)}
                 />
               )}
-              {scenario === "files" && !loading && !loadError && (
-                <fieldset className="file-selection">
-                  <legend>Dateien auswählen · {files.length} ausgewählt</legend>
-                  {entries
-                    .filter((f) => f.type !== "directory")
-                    .map((f) => (
-                      <label className="check" key={f.path}>
-                        <input
-                          type="checkbox"
-                          checked={files.includes(f.path)}
-                          onChange={(e) =>
-                            setFiles((old) =>
-                              e.target.checked
-                                ? [...old, f.path]
-                                : old.filter((v) => v !== f.path),
-                            )
-                          }
-                        />
-                        <span className="mono">{f.path}</span>
-                        {f.secret && <small className="muted">Geschützt</small>}
-                      </label>
-                    ))}
-                </fieldset>
+              {scenario === "files" && backup && !loading && !loadError && (
+                <RestoreFiles
+                  entries={entries}
+                  files={files}
+                  onChange={setFiles}
+                />
               )}
               {source?.interfaces.length &&
               dest &&
@@ -315,6 +542,12 @@ export default function Restore({
                     Für neue Hardware werden Ports ausdrücklich zugeordnet. Das
                     Ziel wird bei der Planerstellung erneut geprüft.
                   </p>
+                  {!targetPorts.length && (
+                    <p className="field-hint">
+                      Noch kein Zielinventar vorhanden. „Plan prüfen“ liest die
+                      Ports; danach kannst du die Zuordnungen im Plan anpassen.
+                    </p>
+                  )}
                   {source.interfaces
                     .filter((p) => p.name !== "lo")
                     .map((p) => (
@@ -331,11 +564,13 @@ export default function Restore({
                           <option value="">
                             Gleicher Name, sofern vorhanden
                           </option>
-                          {dest.inventory?.interfaces.map((t) => (
-                            <option key={t.name} value={t.name}>
-                              {t.name} · {t.mac}
-                            </option>
-                          ))}
+                          {targetPorts
+                            .filter((t) => t.name !== "lo")
+                            .map((t) => (
+                              <option key={t.name} value={t.name}>
+                                {t.name} · {t.mac}
+                              </option>
+                            ))}
                         </select>
                       </Field>
                     ))}
@@ -431,23 +666,12 @@ export default function Restore({
               </ol>
             </section>
           )}
-          <div className="plan-files">
-            {plan.steps.map((s) => (
-              <details className="file-diff" key={s.path}>
-                <summary>
-                  <span className="mono">{s.path}</span>
-                  <span className="muted">
-                    {s.action === "apply" ? "Vorbereitet" : "Manuell"}
-                  </span>
-                </summary>
-                <p>
-                  {s.reason ||
-                    "Originalinhalt mit geprüften Vorbedingungen übernehmen."}
-                </p>
-                {s.diff && <pre>{s.diff}</pre>}
-              </details>
-            ))}
-          </div>
+          <p className="field-hint">
+            Die Dateiansicht zeigt Anpassungen an der Sicherung. Sie ist kein
+            vollständiger Vergleich mit den aktuellen Dateiinhalten des
+            Zielhosts.
+          </p>
+          <PlanFiles key={plan.id} steps={plan.steps} />
           {plan.result && (
             <div className="notice">
               <p>
@@ -475,6 +699,22 @@ export default function Restore({
             </p>
           )}
           <footer className="dialog-footer">
+            {canRevise &&
+              ["ready", "blocked", "manual"].includes(plan.state) && (
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setTargetInventory(plan.target);
+                    setInterfaces(plan.mapping?.interfaces || interfaces);
+                    setPlan(null);
+                    setWizard(true);
+                    setFormError("");
+                  }}
+                >
+                  Zuordnungen anpassen
+                </button>
+              )}
             {user.secrets && (
               <Download path={"plans/" + plan.id + "/download"} notify={notify}>
                 Plan herunterladen

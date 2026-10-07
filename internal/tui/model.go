@@ -38,6 +38,7 @@ type field struct {
 	secret, required   bool
 	choices            []string
 	multi              bool
+	editing            bool
 	option             int
 }
 type form struct {

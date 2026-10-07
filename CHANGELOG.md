@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.5
+
+- Wiederherstellung mit Quellhostfilter, durchsuchbarer Dateiauswahl und festen Seiten für Dateien, Pläne und Planschritte. Auswahlen bleiben beim Suchen und Blättern erhalten; neu geprüfte Zielports sind über „Zuordnungen anpassen“ direkt erreichbar.
+- Quell-/Zielwechsel setzt Konsolen-/Isolationsbestätigungen und Netzwerkzuordnungen zurück. Planstatusfilter bleiben auch bei laufenden Statusänderungen sichtbar. Hostliste mit Seitenwechsel, Handlungsbedarfsfilter und übersichtlichen mobilen Filtern.
+- Terminal bietet sämtliche Wiederherstellungsszenarien und direkte Dateipfadeingabe mit `Ctrl+E`. Vollständige Szenarien werden ausdrücklich als manuell geführt erklärt.
+- Planexport enthält jetzt Originaldateien mit gesicherten Rechten, Eigentümern, Linkzielen und erweiterten Metadaten, auch aus archivierten Sicherungen. Vorbereitete Dateien, Integritäts- und Zugriffsprüfungen bleiben erhalten.
+- README und Implementierungsübersicht unterscheiden umgesetzte Betriebsfunktionen von offenen Recovery-Regeln und realen Laborabnahmen.
+
 ## 0.2.4
 
 - Die Weboberfläche lädt nach einem bestätigten Update automatisch neu, auch nach einem Seitenwechsel oder vorübergehendem Verbindungsabbruch. Fehlgeschlagene Updates erzeugen keine Reload-Schleife.

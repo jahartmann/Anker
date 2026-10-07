@@ -134,3 +134,14 @@ Lokaler Nachweis: vollständige Go-Suite mit Race Detector und Vet, 17 Python-He
 Zusätzliche visuelle Prüfung mit Playwright auf Desktop 1440×1000 und Mobilansicht 390×844: richtige Anker-Seite, vorhandene Inhalte, keine Fehlerüberlagerung, keine Anwendungsfehler in der Browserkonsole und kein seitlicher Seitenüberlauf. Dies ersetzt keine Abnahme an realen Proxmox-Hosts oder einen physischen Reboot-/Stromausfalltest.
 
 Der [Linux-Release-Prüflauf für 0.2.4](https://github.com/jahartmann/Anker/actions/runs/37608133761) und die [Repositoryprüfung desselben Stands](https://github.com/jahartmann/Anker/actions/runs/37608101374) sind bestanden. Zusätzlich zur vollständigen Suite werden echte systemd-Installation, wiederholte Einrichtung, SSH-Anbindung im isolierten Container, erhaltene Anmeldung und Schlüssel, fehlerhafter Programmwechsel sowie unterbrochene Updates mit und ohne Katalogsnapshot geprüft. Die Produktionsinstallation enthält keine Demo-Hosts, Sicherungen, Pläne oder Aufträge.
+
+
+## Funktions- und Bedienungsabgleich vom 07.10.2026
+
+Der aktuelle [Funktionsabgleich](IMPLEMENTATION_STATUS.md) trennt umgesetzte Funktionen von manuellen Abläufen und offenen Abnahmen. Gesamtrecovery, Hardwarewechsel und Clusterwiederaufbau sind weiterhin manuell geführte Pläne. Storage-, Hostnamen- und Adresszuordnungen sind noch keine ausgeführte Regelkette. Fehler einzelner Inventarkommandos werden nicht durchgängig als unvollständiges Inventar gemeldet; Benutzer-/Gruppenidentitäten benötigen eine eigene Zielprüfung.
+
+Die Wiederherstellung bietet einen Quellhostfilter, Pfadsuche und Seiten mit 25 Dateien bzw. Planschritten. Ausgewählte Dateien bleiben beim Filtern erhalten. Ein frisch gelesenes Zielinventar lässt sich im selben Entwurf für die Portzuordnung verwenden. Zielwechsel verwerfen Portzuordnungen und Sicherheitsbestätigungen; ältere Pläne übernehmen keinen fremden Entwurf. Die Planliste bleibt beim Wechsel des letzten passenden Status korrekt gefiltert. Hosts haben Statusfilter und feste Seiten; die mobile Suche bleibt neben den zusätzlichen Filtern benutzbar.
+
+Das Terminal bietet alle sieben Szenarien und direkte Dateipfadeingabe mit Ctrl+E. Planarchive enthalten jetzt den in der Anleitung verwendeten Baum `original/original-files/`, einschließlich ursprünglicher Dateimetadaten. Lesbare und archivierte Quellen sind dafür geprüft. Automatische Gesamtausführung bleibt gesperrt.
+
+Lokaler Nachweis: 70 Browserfälle, vollständige Go-Suite mit Race Detector und Vet, 17 Python-Helfertests und 14 Installerprüfungen. Neue Regressionen decken 1.600 Wiederherstellungsdateien, 70 Pläne, 40 Hosts, erhaltene Auswahl, frisches Zielinventar, Zielwechsel und Statuswechsel ab. Desktop 1440×1000 und Mobilansicht 390×844 wurden zusätzlich im eingebauten Browser kontrolliert. Die Terminalfälle prüfen echte Tastaturaktionen und Servicepläne. Das ersetzt weder ein reales Proxmox-Recovery-Labor noch einen physischen Reboot-/Stromausfalltest.

@@ -95,7 +95,7 @@ func (m *Model) openForm(kind string, v map[string]any) {
 		f.fields = []field{
 			choiceField("Sicherung", str(v, "backup_id"), backups...),
 			choiceField("Zielhost", str(v, "target_id"), hosts...),
-			choiceField("Szenario", defaultText(v, "scenario", "files"), "files", "migration"),
+			choiceField("Szenario", defaultText(v, "scenario", "files"), "files", "standalone", "migration", "version", "cluster-node", "cluster-disaster", "topology"),
 			textField("Dateien", str(v, "files"), "Relative Pfade, kommagetrennt (für files erforderlich)", false),
 			textField("Netzwerkports", str(v, "ports"), "Migration: eno1=ens3,eno2=ens4", false),
 			choiceField("Konsolenzugang bestätigt", "nein", "nein", "ja"),
@@ -167,6 +167,11 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 		f.focus = (f.focus + len(f.fields)) % (len(f.fields) + 1)
 	case "ctrl+f":
 		return m.planFiles()
+	case "ctrl+e":
+		if f.focus < len(f.fields) && f.fields[f.focus].multi {
+			f.fields[f.focus].editing = !f.fields[f.focus].editing
+		}
+		return nil
 	case "ctrl+s":
 		return m.submitForm()
 	case "enter":
@@ -179,7 +184,7 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		entry := &f.fields[f.focus]
-		if len(entry.choices) > 0 && entry.multi {
+		if len(entry.choices) > 0 && entry.multi && !entry.editing {
 			switch k.String() {
 			case "left":
 				entry.option = (entry.option + len(entry.choices) - 1) % len(entry.choices)
@@ -205,8 +210,9 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if len(entry.choices) > 0 {
+		if len(entry.choices) > 0 && !entry.editing {
 			if k.String() == "right" || k.String() == "left" || k.String() == " " {
+				previous := entry.value
 				idx := 0
 				for i, value := range entry.choices {
 					if value == entry.value {
@@ -219,10 +225,15 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 					delta = -1
 				}
 				entry.value = entry.choices[(idx+delta+len(entry.choices))%len(entry.choices)]
-				if f.kind == "plan" && f.focus == 0 {
-					f.fields[3].value = ""
-					f.fields[3].choices = nil
-					return m.planFiles()
+				if f.kind == "plan" && entry.value != previous && (f.focus == 0 || f.focus == 1) {
+					f.fields[4].value = ""
+					f.fields[5].value = "nein"
+					f.fields[6].value = "nein"
+					if f.focus == 0 {
+						f.fields[3].value = ""
+						f.fields[3].choices = nil
+						return m.planFiles()
+					}
 				}
 			}
 			return nil
@@ -354,7 +365,10 @@ func (m *Model) submitForm() tea.Cmd {
 			}
 		}
 		a.title = "Wiederherstellungsplan erstellen"
-		a.summary = "Sicherung: " + p.BackupID + "\nZiel: " + m.hostName(p.TargetID) + "\nSzenario: " + p.Scenario + "\nDer Dienst erstellt und prüft die Vorschau. Zur Ausführung ist eine separate Bestätigung nötig."
+		a.summary = "Sicherung: " + p.BackupID + "\nZiel: " + m.hostName(p.TargetID) + "\nSzenario: " + restoreScenarioLabel(p.Scenario) + "\nDer Dienst erstellt und prüft die Vorschau. Zur Ausführung ist eine separate Bestätigung nötig."
+		if p.Scenario != "files" {
+			a.summary += "\nAuf realen Hosts manuell geführt: vorbereitete Dateien und Anleitung exportieren; keine automatische Gesamtausführung."
+		}
 		a.path = "plans"
 		a.input = p
 		a.purpose = "plan"

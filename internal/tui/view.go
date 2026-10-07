@@ -91,7 +91,17 @@ func (m Model) View() string {
 			if f.kind == "plan" && i == 1 {
 				value = m.hostName(e.value) + " · " + e.value
 			}
-			if e.multi && len(e.choices) > 0 {
+			if f.kind == "plan" && i == 2 {
+				value = restoreScenarioLabel(e.value)
+			}
+			fieldHint := e.hint
+			if e.multi {
+				fieldHint = "←/→ Pfad · Leertaste wählen · Ctrl+E Eingabe · Ctrl+F neu laden"
+				if e.editing {
+					fieldHint = "Relative Pfade, kommagetrennt · Ctrl+E Liste · Ctrl+F neu laden"
+				}
+			}
+			if e.multi && len(e.choices) > 0 && !e.editing {
 				chosen := e.choices[e.option]
 				check := "[ ]"
 				for _, p := range strings.Split(e.value, ",") {
@@ -100,7 +110,7 @@ func (m Model) View() string {
 					}
 				}
 				value = "‹ " + check + " " + chosen + " ›"
-			} else if len(e.choices) > 0 {
+			} else if len(e.choices) > 0 && !e.editing {
 				value = "‹ " + value + " ›"
 			}
 			prefix := "  "
@@ -108,7 +118,7 @@ func (m Model) View() string {
 				prefix = "› "
 				value = strong.Render(value + "▏")
 			}
-			body = append(body, fit(prefix+e.label), fit("  "+value), fit("  "+clean(e.hint)))
+			body = append(body, fit(prefix+e.label), fit("  "+value), fit("  "+clean(fieldHint)))
 		}
 		helper = "Tab/↑/↓ Feld · Ctrl+U leeren · ←/→ Auswahl · Esc zurück"
 		actions = "[ Prüfen & weiter ]   Ctrl+S"
@@ -116,6 +126,9 @@ func (m Model) View() string {
 			actions = strong.Render(actions)
 		}
 		hint = fmt.Sprintf("Feld %d/%d · Enter nächstes Feld; auf Weiter: Enter", min(f.focus+1, len(f.fields)), len(f.fields))
+		if f.kind == "plan" && f.fields[2].value != "files" {
+			hint = "Reale Hosts: manuell geführt · Export; keine automatische Gesamtausführung."
+		}
 	case m.detail != "":
 		body = append(body, strong.Render(clean(m.detailTitle)))
 		detail := m.detailLines()
@@ -363,9 +376,26 @@ func displayValue(key string, v any) string {
 		return single(fmt.Sprint(x))
 	}
 }
+func restoreScenarioLabel(scenario string) string {
+	if label := restoreScenarioLabels[scenario]; label != "" {
+		return label
+	}
+	return scenario
+}
+
+var restoreScenarioLabels = map[string]string{
+	"files":            "Einzelne Dateien",
+	"standalone":       "Host nach Totalausfall",
+	"migration":        "Andere Hardware",
+	"version":          "Versionswechsel",
+	"cluster-node":     "Ersatznode im Cluster",
+	"cluster-disaster": "Vollständiger Clusterverlust",
+	"topology":         "Standalone / Cluster wechseln",
+}
+
 func planText(p map[string]any, m Model) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Plan-ID: %s\nZustand: %s\nSicherung: %s\nZiel: %s (%s)\nSzenario: %s\n", str(p, "id"), str(p, "state"), str(p, "backup_id"), m.hostName(str(p, "target_id")), str(p, "target_id"), str(p, "scenario"))
+	fmt.Fprintf(&b, "Plan-ID: %s\nZustand: %s\nSicherung: %s\nZiel: %s (%s)\nSzenario: %s\n", str(p, "id"), str(p, "state"), str(p, "backup_id"), m.hostName(str(p, "target_id")), str(p, "target_id"), restoreScenarioLabel(str(p, "scenario")))
 	if len(list(p["blockers"])) > 0 {
 		b.WriteString("\nGESPERRT – vor Ausführung beheben:\n")
 		for _, v := range list(p["blockers"]) {
