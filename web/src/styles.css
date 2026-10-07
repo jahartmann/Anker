@@ -2067,6 +2067,7 @@ textarea {
 }
 .inventory-toolbar input {
   font-size: 12px;
+  padding-left: 35px;
 }
 .inventory-detail td {
   background: #fafaf8;

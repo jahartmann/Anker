@@ -263,7 +263,7 @@ Updates unter **Einstellungen → System → Updates** einrichten, prüfen und i
 
 Alternativ `sudo anker update check`, danach `sudo anker update install`. Signatur und SHA-256 werden vor der Installation geprüft. Laufende Sicherungen und Wiederherstellungen blockieren das Update. Bei fehlgeschlagenem Start stellt der Updater die vorherige Version und den Katalog wieder her. [Einrichtung und Rückfall](docs/UPDATES.md).
 
-Nach einem im Web gestarteten Update lädt die Seite automatisch neu, sobald die neue Version die Startprüfung bestanden hat. Das funktioniert auch bei einem Seitenwechsel und kurzer Nichterreichbarkeit des Dienstes. Bei einem fehlgeschlagenen Update bleibt die Seite bestehen und zeigt den Rückfall. Ungespeicherte Einstellungen vor dem Update speichern. Beim ersten Update von einer älteren Oberfläche auf 0.2.3 die Seite einmal selbst neu laden; die Automatik gilt ab der neuen Oberfläche.
+Nach einem im Web gestarteten Update lädt die Seite automatisch neu, sobald die neue Version die Startprüfung bestanden hat. Das funktioniert auch bei einem Seitenwechsel und kurzer Nichterreichbarkeit des Dienstes. Bei einem fehlgeschlagenen Update bleibt die Seite bestehen und zeigt den Rückfall. Ungespeicherte Einstellungen vor dem Update speichern. Beim ersten Update von einer älteren Oberfläche auf 0.2.4 die Seite einmal selbst neu laden; die Automatik gilt ab der neuen Oberfläche.
 
 ## Wiederherstellung und Grenzen
 

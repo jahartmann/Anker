@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.2.3
+## 0.2.4
 
 - Die Weboberfläche lädt nach einem bestätigten Update automatisch neu, auch nach einem Seitenwechsel oder vorübergehendem Verbindungsabbruch. Fehlgeschlagene Updates erzeugen keine Reload-Schleife.
 - Laufende und wartende Aufträge sind getrennt vom Verlauf sichtbar, mit Host, tatsächlicher Laufzeit und Versuch. Aufträge und Sicherungen haben Filter und feste Seiten statt wachsender Listen.
