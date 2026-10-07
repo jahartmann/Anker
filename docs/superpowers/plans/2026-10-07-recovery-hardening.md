@@ -36,8 +36,10 @@
 - [x] SSH-/Plan-/Status-/Rollback-Kette einschließlich alter Hosthelfer und Dienstneustart verbinden; alte Helfer bis zur erneuten Anbindung sicher sperren.
 - [x] Terminal/CLI informieren über dieselben Schutzgrenzen und relevante Zuordnungen.
 - [x] Vollständige Go-/Python-/Browserprüfungen, Desktop-/Mobilprüfung und frische Codeprüfung durchführen.
-- [ ] Anleitung und tatsächlichen Unterstützungsstand aktualisieren; geprüften signierten Release veröffentlichen, öffentliche Downloads prüfen.
+- [x] Anleitung und tatsächlichen Unterstützungsstand aktualisieren; geprüften signierten Release veröffentlichen, öffentliche Downloads prüfen.
 
 Prüfschwerpunkte: Fremdänderung trotz gleicher Bytes/anderer Rechte; Antwortverlust nach Dateiaustausch; fehlende erforderliche Inventarabfrage; Portalias/VLAN/Bond; Storage-Abhängigkeiten; neu angeschlossener alter Helfer; falsche SSH-Identität; geringe Kapazität während Staging; keine Behauptung einer global atomaren Hosttransaktion.
 
-Lokale Abschlussprüfung: vollständige Go-Suite mit Race Detector, Vet, 53 Python-Helferprüfungen und 14 Installerprüfungen bestanden. Eingebettete Weboberfläche: 83 Browserfälle bestanden; nach zusätzlicher Fokus-/Kopfzeilenkorrektur 20 einschlägige Fälle erneut bestanden. Laptop 1280×720 und Mobil 390×844 visuell kontrolliert. Unabhängige Codeprüfung und Nachprüfung korrigierten Protokoll-, Zugangs-, Antwort-, Navigations- und Mappingfälle. Release-/Linuxprüfung folgt nach Commit.
+Lokale Abschlussprüfung: vollständige Go-Suite mit Race Detector, Vet, 53 Python-Helferprüfungen und 14 Installerprüfungen bestanden. Eingebettete Weboberfläche: 83 Browserfälle bestanden; nach zusätzlicher Fokus-/Kopfzeilenkorrektur 20 einschlägige Fälle erneut bestanden. Laptop 1280×720 und Mobil 390×844 visuell kontrolliert. Unabhängige Codeprüfung und Nachprüfung korrigierten Protokoll-, Zugangs-, Antwort-, Navigations- und Mappingfälle. GitHub Checks 37630894379 und Release 37630929952 am unveränderten Code 16b3a30b8596a0dfe63cf9fc837ef879a1ea87b1 bestanden, einschließlich Linux-/systemd-Installation und Update-Rückfall. Signierte amd64-/arm64-Pakete unabhängig geprüft und 0.2.8 veröffentlicht.
+
+Öffentlicher Updateweg: tatsächlicher Anker-Updater hat 0.2.8 und beide Binärdateien ohne Token mit offizieller Signaturprüfung abgerufen.
