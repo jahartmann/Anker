@@ -201,6 +201,8 @@ func TestRestorePlanAndExplicitApplyAgainstService(t *testing.T) {
 	m.form.fields[3].value = "etc/sysctl.d/99-anker.conf"
 	m, cmd = key(m, "ctrl+s")
 	m = complete(t, m, cmd)
+	m.form.focus = 10
+	m, _ = key(m, "etc/sysctl.d/99-anker.conf=backup")
 	m, _ = key(m, "ctrl+s")
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)

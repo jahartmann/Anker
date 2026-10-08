@@ -38,8 +38,11 @@ func (m Model) detailActions() []hotAction {
 		return m.listActions()
 	case "Wiederherstellungsplan":
 		p := object(m.data["preview"])
-		actions := []hotAction{{"x", "Export"}}
-		if str(p, "state") == "ready" {
+		actions := []hotAction{{"x", "Export"}, {"c", "Vergleich"}}
+		if len(list(p["tasks"])) > 0 {
+			actions = append(actions, hotAction{"d", "Prüfbeleg"})
+		}
+		if str(p, "state") == "ready" && number(p, "schema_version") == 2 {
 			actions = append(actions, hotAction{"a", "Ausführen"})
 		}
 		if recoveryMayHaveJournal(p) {
@@ -49,6 +52,8 @@ func (m Model) detailActions() []hotAction {
 			}
 		}
 		return actions
+	case "Dateivergleich":
+		return []hotAction{{"c", "Vergleich wählen"}}
 	case "Speicher":
 		if storageManual(object(m.data["storage"])) {
 			return []hotAction{{"r", "Erweiterungsstatus"}}
@@ -248,6 +253,14 @@ func (m *Model) detailKey(key string) teaCmd {
 	case "Wiederherstellungsplan":
 		p := object(m.data["preview"])
 		id := str(p, "id")
+		if key == "c" {
+			m.openForm("recoveryCompare", p)
+			return nil
+		}
+		if key == "d" && len(list(p["tasks"])) > 0 {
+			m.openForm("recoveryCheck", p)
+			return nil
+		}
 		if key == "x" {
 			m.openExport("plans/"+segment(id)+"/download", "anker-plan-"+id+".tar")
 		}
@@ -260,11 +273,15 @@ func (m *Model) detailKey(key string) teaCmd {
 		}
 		if key == "a" {
 			blockers, _ := p["blockers"].([]any)
-			if str(p, "state") != "ready" || len(blockers) > 0 {
+			if str(p, "state") != "ready" || number(p, "schema_version") != 2 || len(blockers) > 0 {
 				m.err = "Dieser Plan ist nicht ausführbar. Sperren und Zustand im Plan prüfen."
 				return nil
 			}
 			m.confirm(action{title: "Wiederherstellung ausführen", summary: planText(p, *m) + "\nDer Dienst prüft Quelle und Ziel erneut. Dateien auf dem Ziel werden geändert.", method: "POST", path: "plans/" + segment(id) + "/apply", input: map[string]string{"confirmation": id}, challenge: id, purpose: "apply"})
+		}
+	case "Dateivergleich":
+		if key == "c" {
+			m.openForm("recoveryCompare", object(m.data["preview"]))
 		}
 	case "Speicher":
 		if key == "r" {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -98,7 +99,7 @@ func (m *Model) openForm(kind string, v map[string]any) {
 		f.fields = []field{
 			choiceField("Sicherung", str(v, "backup_id"), backups...),
 			choiceField("Zielhost", str(v, "target_id"), hosts...),
-			choiceField("Szenario", defaultText(v, "scenario", "files"), "files", "standalone", "migration", "version", "cluster-node", "cluster-disaster", "topology"),
+			choiceField("Situation", defaultText(v, "scenario", "files"), "files", "host", "cluster-node", "cluster-disaster"),
 			textField("Dateien", str(v, "files"), "Relative Pfade, kommagetrennt (für files erforderlich)", false),
 			textField("Netzwerkports", str(v, "ports"), "Migration: eno1=ens3,eno2=ens4", false),
 			choiceField("Konsolenzugang bestätigt", "nein", "nein", "ja"),
@@ -106,7 +107,24 @@ func (m *Model) openForm(kind string, v map[string]any) {
 			textField("Storage (manuell)", "", "ID=Ziel oder ID=manual", false),
 			textField("Hostidentität (manuell)", "", "Gewünschter Hostname; keine automatische Configänderung", false),
 			textField("Adresse (manuell)", "", "Gewünschte Adresse; keine automatische Netzwerkaktivierung", false),
+			textField("Dateientscheidungen", str(v, "decisions"), "PATH=backup|prepared|keep|manual, kommagetrennt; leer bleibt manuell", false),
 		}
+	case "recoveryCompare":
+		paths := []string{}
+		for _, raw := range list(v["steps"]) {
+			paths = append(paths, str(object(raw), "path"))
+		}
+		f.title = "Gespeicherten Zielvergleich wählen"
+		f.fields = []field{choiceField("Datei", "", paths...), choiceField("Vergleichsbasis", "target", "target", "source", "source-target")}
+	case "recoveryCheck":
+		tasks := []string{}
+		for _, task := range orderedRecoveryTasks(list(v["tasks"])) {
+			if str(task, "state") != "user_confirmed" {
+				tasks = append(tasks, str(task, "id"))
+			}
+		}
+		f.title = "Prüfergebnis dokumentieren · vom Benutzer bestätigt"
+		f.fields = []field{choiceField("Aufgabe", "", tasks...), textField("Prüfbeleg", "", "Konkretes Ergebnis; kein maschineller Neustartnachweis", true)}
 	case "settings":
 		f.title = "Zeitplan & Aufbewahrung"
 		f.fields = []field{
@@ -173,6 +191,11 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 		m.nextFormField(-1)
 	case "ctrl+f":
 		return m.planFiles()
+	case "ctrl+r":
+		if f.kind == "plan" {
+			delete(f.original, "inspection_key")
+			return m.submitForm()
+		}
 	case "ctrl+e":
 		if f.focus < len(f.fields) && f.fields[f.focus].multi {
 			f.fields[f.focus].editing = !f.fields[f.focus].editing
@@ -379,10 +402,19 @@ func (m *Model) submitForm() tea.Cmd {
 		}
 		p.Mapping.Storage = storage
 		p.Mapping.Hostname, p.Mapping.Address = value(8), value(9)
+		if value(10) != "" {
+			p.Decisions, err = client.ParseRecoveryDecisions(strings.Split(value(10), ","))
+			if err != nil {
+				m.err = err.Error()
+				f.focus = 10
+				return nil
+			}
+		}
 		inspection := recoveryInspection(f)
 		if inspection == nil {
 			return m.request(action{title: "Ziel und benötigte Zuordnungen prüfen", method: "POST", path: "plans/inspect", input: p, purpose: recoveryPurpose(f)})
 		}
+		p.SnapshotID = str(inspection, "snapshot_id")
 		for _, raw := range list(inspection["ports"]) {
 			name := str(object(raw), "name")
 			if ports[name] == "" {
@@ -401,6 +433,7 @@ func (m *Model) submitForm() tea.Cmd {
 		}
 		a.title = "Wiederherstellungsplan erstellen"
 		a.summary = "Sicherung: " + p.BackupID + "\nZiel: " + m.hostName(p.TargetID) + "\nSzenario: " + restoreScenarioLabel(p.Scenario) + "\nDer Dienst erstellt und prüft die Vorschau. Zur Ausführung ist eine separate Bestätigung nötig."
+		a.summary += "\nZielaufnahme: " + p.SnapshotID + "\nDateientscheidungen: " + value(10)
 		if p.Scenario != "files" {
 			a.summary += "\nAuf realen Hosts manuell geführt: vorbereitete Dateien und Anleitung exportieren; keine automatische Gesamtausführung."
 		}
@@ -413,6 +446,16 @@ func (m *Model) submitForm() tea.Cmd {
 		a.path = "plans"
 		a.input = p
 		a.purpose = "plan"
+	case "recoveryCompare":
+		return m.request(action{title: "Gespeicherten Dateivergleich laden", method: "GET", path: "plans/" + segment(str(f.original, "id")) + "/comparison?basis=" + url.QueryEscape(value(1)) + "&path=" + url.QueryEscape(value(0)), purpose: "recoveryComparison:" + str(f.original, "id")})
+	case "recoveryCheck":
+		if len(value(1)) > 4096 {
+			m.err = "Prüfbeleg darf höchstens 4096 Bytes enthalten."
+			return nil
+		}
+		a.title, a.path, a.purpose = "Prüfergebnis dokumentieren", "plans/"+segment(str(f.original, "id"))+"/checks/"+segment(value(0)), "recoveryCheck"
+		a.input = map[string]string{"evidence": value(1)}
+		a.summary = "Aufgabe: " + value(0) + "\nPrüfbeleg: " + value(1) + "\nVom Benutzer bestätigt; kein maschineller Neustartnachweis. Der Dienst prüft Voraussetzungen."
 	case "export":
 		path, err := filepath.Abs(value(0))
 		if err != nil {

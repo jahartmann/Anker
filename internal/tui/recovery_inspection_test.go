@@ -83,6 +83,8 @@ func TestTerminalRecoveryStorageAndIdentityAreManualPlanDecisions(t *testing.T) 
 	m.form.fields[2].value = "migration"
 	purpose := recoveryPurpose(m.form)
 	m.handleResult(commandResult{purpose: purpose, data: map[string]any{"source": map[string]any{"hostname": "old"}, "target": map[string]any{"hostname": "new"}, "ports": []any{}, "storage": []any{map[string]any{"id": "local-zfs", "path": "rpool/data"}}, "target_storage": []any{}, "requires_source_offline": true, "manual": []any{"Storage bleibt manuell"}}})
+	// The suggested manual storage choice changes snapshot selection binding.
+	m.handleResult(commandResult{purpose: recoveryPurpose(m.form), data: map[string]any{"snapshot_id": "storage-bound", "ports": []any{}, "storage": []any{map[string]any{"id": "local-zfs"}}, "requires_source_offline": true}})
 	m.form.fields[6].value = "ja"
 	m, _ = key(m, "ctrl+s")
 	if m.pending == nil || m.pending.path != "plans" {
@@ -170,7 +172,7 @@ func TestTerminalRecoveryMouseWheelSkipsHiddenMappingFields(t *testing.T) {
 	m.form.focus = 3
 	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	m = next.(Model)
-	if m.form.focus != len(m.form.fields) {
+	if m.form.focus != 10 {
 		t.Fatalf("wheel reached hidden recovery field %d", m.form.focus)
 	}
 	m, _ = key(m, "eno1=ens3")

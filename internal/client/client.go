@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,36 @@ type Client struct {
 	HTTP *http.Client
 	Base string
 	Out  io.Writer
+}
+
+// ParseRecoveryDecisions validates explicit adapter input without deciding
+// whether a file may be applied; the service owns that policy.
+func ParseRecoveryDecisions(values []string) (map[string]anker.FileDecision, error) {
+	out := map[string]anker.FileDecision{}
+	for _, value := range values {
+		pair := strings.Split(value, "=")
+		if len(pair) != 2 {
+			return nil, errors.New("Dateientscheidung als PATH=backup|prepared|keep|manual angeben")
+		}
+		path := strings.TrimSpace(pair[0])
+		if path == "" {
+			return nil, errors.New("Dateientscheidung benötigt einen Pfad")
+		}
+		if err := anker.ValidPath(path); err != nil {
+			return nil, err
+		}
+		if _, exists := out[path]; exists {
+			return nil, fmt.Errorf("Dateientscheidung für %s mehrfach angegeben", path)
+		}
+		choice := anker.FileDecision(strings.TrimSpace(pair[1]))
+		switch choice {
+		case anker.DecisionBackup, anker.DecisionPrepared, anker.DecisionKeep, anker.DecisionManual:
+		default:
+			return nil, errors.New("Dateientscheidung muss backup, prepared, keep oder manual sein")
+		}
+		out[path] = choice
+	}
+	return out, nil
 }
 
 func New(socket string) *Client {
@@ -281,6 +312,38 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 				return errors.New("anker restore status PLAN")
 			}
 			return call("POST", "plans/"+args[2]+"/reconcile", map[string]any{})
+		case "compare", "check":
+			if len(args) < 3 || args[2] == "" {
+				return errors.New("Plan-ID fehlt")
+			}
+			f := fs("restore " + args[1])
+			if args[1] == "compare" {
+				path := f.String("path", "", "Ausgewählter relativer Dateipfad")
+				basis := f.String("basis", "target", "target|source|source-target")
+				if err := f.Parse(args[3:]); err != nil {
+					return err
+				}
+				if f.NArg() != 0 || *path == "" {
+					return errors.New("restore compare PLAN --path PATH --basis target|source|source-target")
+				}
+				if err := anker.ValidPath(*path); err != nil {
+					return err
+				}
+				if *basis != "target" && *basis != "source" && *basis != "source-target" {
+					return errors.New("Vergleichsbasis muss target, source oder source-target sein")
+				}
+				query := url.Values{"path": {*path}, "basis": {*basis}}
+				return call("GET", "plans/"+url.PathEscape(args[2])+"/comparison?"+query.Encode(), nil)
+			}
+			task := f.String("task", "", "Aufgaben-ID aus dem gespeicherten Plan")
+			evidence := f.String("evidence", "", "Konkretes Prüfergebnis; Benutzerbestätigung, kein maschineller Nachweis")
+			if err := f.Parse(args[3:]); err != nil {
+				return err
+			}
+			if f.NArg() != 0 || strings.TrimSpace(*task) == "" || strings.TrimSpace(*evidence) == "" || len(*evidence) > 4096 {
+				return errors.New("restore check PLAN --task ID --evidence TEXT (1–4096 Bytes) erforderlich")
+			}
+			return call("POST", "plans/"+url.PathEscape(args[2])+"/checks/"+url.PathEscape(*task), map[string]string{"evidence": *evidence})
 		case "rollback":
 			if len(args) < 3 {
 				return errors.New("Plan-ID fehlt")
@@ -297,6 +360,8 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 		case "plan", "inspect":
 			f := fs("restore " + args[1])
 			var p anker.PlanRequest
+			var decisions []string
+			f.Func("decision", "PATH=backup|prepared|keep|manual; je Pfad einmal wiederholbar, ohne Auswahl manuell", func(value string) error { decisions = append(decisions, value); return nil })
 			files := f.String("files", "", "Kommaliste")
 			ports := f.String("ports", "", "eno1=ens3,eno2=ens4")
 			storage := f.String("storage", "", "Storage-ID=Ziel-ID oder Storage-ID=manual; manuelle Entscheidung")
@@ -304,10 +369,18 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			f.StringVar(&p.Mapping.Address, "address", "", "Gewünschte Adresse; manuelle Entscheidung")
 			f.StringVar(&p.BackupID, "backup", "", "Backup-ID")
 			f.StringVar(&p.TargetID, "target", "", "Ziel-ID")
-			f.StringVar(&p.Scenario, "scenario", "files", "Szenario")
+			f.StringVar(&p.Scenario, "scenario", "files", "files|host|cluster-node|cluster-disaster; Legacy-Szenarien bleiben lesbar")
 			f.BoolVar(&p.ConsoleConfirmed, "console", false, "Konsolenzugang bestätigt")
 			f.BoolVar(&p.SourceOffline, "source-offline", false, "Quelle isoliert")
 			if err := f.Parse(args[2:]); err != nil {
+				return err
+			}
+			if f.NArg() != 0 {
+				return errors.New("Unerwartete Planargumente")
+			}
+			var err error
+			p.Decisions, err = ParseRecoveryDecisions(decisions)
+			if err != nil {
 				return err
 			}
 			if *files != "" {
@@ -342,6 +415,7 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			if err := c.Call(ctx, "POST", "plans/inspect", p, &inspection); err != nil {
 				return err
 			}
+			p.SnapshotID = inspection.SnapshotID
 			return call("POST", "plans", p)
 		}
 	case "jobs":
@@ -475,18 +549,23 @@ Hosts und Sicherungen
 Wiederherstellung und Aufträge
   anker restore list
   anker restore inspect --backup ID --target HOST --scenario files --files etc/test.conf
-  anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf
-  anker restore plan --backup ID --target HOST --scenario migration --ports eno1=ens3 --console --source-offline
+  anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf --decision etc/test.conf=backup
+  anker restore plan --backup ID --target HOST --scenario host --ports eno1=ens3 --console --source-offline
+  anker restore compare PLAN --path PATH --basis target|source|source-target
+  anker restore check PLAN --task ID --evidence TEXT
   anker restore apply PLAN --confirm PLAN
   anker restore status PLAN                 Hostprotokoll abgleichen, keine Übernahme wiederholen
   anker restore rollback PLAN --confirm PLAN Kontrollierte Rücksetzung nach Hostprüfung
   anker restore export PLAN ./plan.tar
   anker jobs
   anker job show ID | cancel ID | retry ID | remove ID
-  Ziel, Dateien und Plan prüfen; Migration braucht Konsole und isolierte Quelle.
+  Situationen: files, host, cluster-node, cluster-disaster; alte Szenarien bleiben lesbar.
+  Ziel, Dateien und Plan prüfen; Hostwechsel braucht Konsole und isolierte Quelle.
   Gesamtrecovery, neue Hardware und Cluster: auf echten Hosts manuell geführter Plan.
   Anleitung und Originaldateien mit restore export herunterladen.
-  Plan prüft das Ziel frisch; inspect zeigt nur benötigte Ports und logische Storage-IDs.
+  Plan bindet die frische Zielaufnahme; compare liest gespeicherte Belege ohne Schreibauftrag.
+  --decision PATH=backup|prepared|keep|manual je Pfad einmal; ohne Auswahl bleibt die Datei manuell.
+  check dokumentiert einen Benutzerbeleg mit Dienstidentität; kein maschineller Neustartnachweis.
   --storage ID=manual, --hostname NAME und --address IP dokumentieren manuelle Entscheidungen.
   Netzwerkdateien sind vorbereitet; Aktivierung bleibt manuell über Konsole.
   Wiederherstellungen werden nicht automatisch wiederholt.

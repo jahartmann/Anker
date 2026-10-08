@@ -202,7 +202,10 @@ gemeinsamen Zeitplan. Ein fester Versatz unter einer
 Stunde verteilt
 die Last. Verpasste frühere Tage werden nicht nachgeholt.
 .SH WIEDERHERSTELLUNG
-Die Terminalauswahl bietet alle Szenarien. Im Dateifeld wechselt
+Die Terminalauswahl bietet files (einzelne Dateien), host (Host),
+cluster-node (Ersatznode) und cluster-disaster (Clusterverlust).
+Alte standalone-, migration-, version- und topology-Pläne bleiben lesbar.
+Im Dateifeld wechselt
 Ctrl+E zwischen der Liste und direkter Eingabe relativer Pfade.
 Mehrere Pfade werden mit Komma getrennt.
 .PP
@@ -216,11 +219,14 @@ einen Plan erstellen:
 .PP
 .nf
   anker restore plan \-\-backup BACKUP \-\-target HOST \e
-    \-\-scenario files \-\-files etc/test.conf
+    \-\-scenario files \-\-files etc/test.conf \e
+    \-\-decision etc/test.conf=backup
   anker restore list
   anker restore inspect \-\-backup BACKUP \-\-target HOST \e
     \-\-scenario files \-\-files etc/test.conf
   anker restore export PLAN ./plan.tar
+  anker restore compare PLAN \-\-path PATH \-\-basis target
+  anker restore check PLAN \-\-task ID \-\-evidence TEXT
   anker restore apply PLAN \-\-confirm PLAN
   anker restore status PLAN
   anker restore rollback PLAN \-\-confirm PLAN
@@ -233,7 +239,7 @@ Beispiel:
 .PP
 .nf
   anker restore plan \-\-backup BACKUP \-\-target HOST \e
-    \-\-scenario migration \-\-ports eno1=ens3 \e
+    \-\-scenario host \-\-ports eno1=ens3 \e
     \-\-console \-\-source-offline
 .fi
 .PP
@@ -253,8 +259,35 @@ verändert keine Dateien und erstellt keinen Plan.
 Sie zeigt nur benötigte physische Ports und konfigurierte
 Storage-IDs. Auch
 .B restore plan
-prüft zuerst frisch. Im Terminal folgt nach der Prüfung
+prüft zuerst frisch und bindet den Plan an diese Zielaufnahme.
+Im Terminal folgt nach der Prüfung
 die getrennte Zuordnungs- und Planansicht.
+.PP
+Die wiederholbare Option
+.B \-\-decision PATH=backup|prepared|keep|manual
+wählt je Dateipfad einmal die Sicherung, die vorbereitete Fassung,
+das erhaltene Ziel oder eine manuelle Referenz. Fehlende Entscheidungen
+bleiben manuell. Identische Dateien werden erhalten; geschützte Dateien
+bleiben manuell. Der Dienst entscheidet über die Ausführbarkeit.
+Im Terminal prüft Ctrl+R das Ziel erneut und erhält den Entwurf.
+Geänderte Zielbelege löschen vorherige keep-/prepared-Entscheidungen;
+backup und manual bleiben erhalten. Geänderte Storage-Zuordnungen
+benötigen eine neue Zielaufnahme vor Planerstellung.
+.PP
+.B restore compare PLAN \-\-path PATH \-\-basis target|source|source-target
+liest verifizierte gespeicherte Belege, ohne Schreibauftrag oder erneute
+Hostabfrage. target (Standard) vergleicht Zielaufnahme und Vorbereitung,
+source Sicherung und Vorbereitung, source-target Sicherung und Zielaufnahme.
+Im Terminal öffnet c die Dateiauswahl und Vergleichsbasis; Esc kehrt zum Plan zurück.
+.PP
+.B restore check PLAN \-\-task ID \-\-evidence TEXT
+dokumentiert einen konkreten Beleg mit 1 bis 4096 Bytes.
+Der Dienst prüft Voraussetzungen und verwendet die authentifizierte
+Identität des geschützten lokalen Zugangs. Im Terminal zeigt der Plan
+geordnete Aufgaben und d öffnet die Belegeingabe. Eine Bestätigung ist
+als vom Benutzer bestätigt mit Identität und Zeitpunkt sichtbar;
+sie verändert weder den Ausführungszustand noch den maschinellen
+Neustartnachweis. Neue Ausführung alter Pläne verlangt einen neuen Plan.
 .PP
 Netzwerkdateien werden vorbereitet und exportiert; ihre Aktivierung bleibt
 manuell über Konsole. Gesamtrecovery und Clusterwiederaufbau bleiben

@@ -361,6 +361,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch v.String() {
 			case "esc":
 				if !m.busy {
+					if m.detailTitle == "Dateivergleich" {
+						m.showDetail("Wiederherstellungsplan", planText(object(m.data["preview"]), m))
+						return m, nil
+					}
 					m.detail = ""
 					m.detailOffset = 0
 				}

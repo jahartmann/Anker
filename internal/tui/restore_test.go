@@ -14,12 +14,9 @@ import (
 func TestRestoreScenariosReachableThroughKeyboard(t *testing.T) {
 	for _, tt := range []struct{ scenario, label string }{
 		{"files", "Einzelne Dateien"},
-		{"standalone", "Host nach Totalausfall"},
-		{"migration", "Andere Hardware"},
-		{"version", "Versionswechsel"},
+		{"host", "Host wiederherstellen"},
 		{"cluster-node", "Ersatznode im Cluster"},
 		{"cluster-disaster", "Vollständiger Clusterverlust"},
-		{"topology", "Standalone / Cluster wechseln"},
 	} {
 		t.Run(tt.scenario, func(t *testing.T) {
 			m := New(nil)
@@ -130,6 +127,8 @@ func TestDirectRestorePathCreatesReviewedPlanAgainstService(t *testing.T) {
 		t.Fatal("direct path must be inspected without redundant read-only approval")
 	}
 	m = complete(t, m, cmd)
+	m.form.focus = 10
+	m, _ = key(m, "etc/sysctl.d/99-anker.conf=backup")
 	m, _ = key(m, "ctrl+s")
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
@@ -161,12 +160,24 @@ func TestGuidedClusterRecoveryRemainsManualAgainstService(t *testing.T) {
 	m.form.fields[6].value = "ja"
 	m, cmd = key(m, "ctrl+s")
 	m = complete(t, m, cmd)
+	if recoveryInspection(m.form) == nil {
+		m, cmd = key(m, "ctrl+s")
+		m = complete(t, m, cmd)
+	}
 	inspection := recoveryInspection(m.form)
 	if ports := list(inspection["ports"]); len(ports) > 0 {
 		m.form.fields[4].value = str(object(ports[0]), "name") + "=" + str(object(list(inspection["target_ports"])[0]), "name")
 	}
 	m.form.fields[5].value, m.form.fields[6].value = "ja", "ja"
-	m, _ = key(m, "ctrl+s")
+	m, cmd = key(m, "ctrl+s")
+	if cmd != nil {
+		// Storage choices are part of the captured selection; re-inspect them.
+		m = complete(t, m, cmd)
+		m, _ = key(m, "ctrl+s")
+	}
+	if m.pending == nil {
+		t.Fatalf("manual cluster plan did not reach review: %s", m.err)
+	}
 	m, cmd = key(m, "y")
 	m = complete(t, m, cmd)
 	p := object(m.data["preview"])

@@ -28,7 +28,7 @@ func TestHelpProcess(t *testing.T) {
 }
 
 func TestHelpAliasesExitSuccessfullyWithoutDaemon(t *testing.T) {
-	for _, args := range [][]string{{"-h"}, {"-help"}, {"--help"}, {"help"}, {"status", "--help"}, {"host", "add", "-help"}, {"setup", "--help"}, {"update", "install", "--help"}, {"serve", "-h"}} {
+	for _, args := range [][]string{{"-h"}, {"-help"}, {"--help"}, {"help"}, {"status", "--help"}, {"host", "add", "-help"}, {"setup", "--help"}, {"update", "install", "--help"}, {"serve", "-h"}, {"restore", "compare", "--help"}, {"restore", "check", "--help"}, {"restore", "plan", "--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			root := filepath.Join(t.TempDir(), "unused")
 			command := exec.Command(os.Args[0], append([]string{"-test.run=^TestHelpProcess$", "--", "--data", root}, args...)...)
@@ -45,6 +45,11 @@ func TestHelpAliasesExitSuccessfullyWithoutDaemon(t *testing.T) {
 			}
 			if strings.Contains(string(output), "nicht erreichbar") || strings.Contains(string(output), "Anker: ") {
 				t.Fatalf("help reached service or reported an error: %s", output)
+			}
+			for _, usage := range []string{"--decision PATH=backup|prepared|keep|manual", "restore compare PLAN --path PATH --basis target|source|source-target", "restore check PLAN --task ID --evidence TEXT"} {
+				if !strings.Contains(string(output), usage) {
+					t.Fatalf("recovery usage missing: %s", usage)
+				}
 			}
 			if _, err := os.Stat(root); !os.IsNotExist(err) {
 				t.Fatalf("help touched data directory: %v", err)

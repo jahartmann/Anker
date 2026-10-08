@@ -141,6 +141,9 @@ func (m Model) View() string {
 				hint = "Netzwerk vorbereitet · Aktivierung manuell über Konsole; lokaler Rückfallwächter fehlt."
 			}
 		}
+		if f.kind == "plan" {
+			actions += " · Ctrl+R Ziel neu prüfen"
+		}
 		if f.kind == "plan" && f.fields[2].value != "files" {
 			hint = "Reale Hosts: manuell geführt · Export; keine automatische Gesamtausführung."
 		}
@@ -407,6 +410,7 @@ func restoreScenarioLabel(scenario string) string {
 
 var restoreScenarioLabels = map[string]string{
 	"files":            "Einzelne Dateien",
+	"host":             "Host wiederherstellen",
 	"standalone":       "Host nach Totalausfall",
 	"migration":        "Andere Hardware",
 	"version":          "Versionswechsel",
@@ -418,6 +422,10 @@ var restoreScenarioLabels = map[string]string{
 func planText(p map[string]any, m Model) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Plan-ID: %s\nZustand: %s\nSicherung: %s\nZiel: %s (%s)\nSzenario: %s\n", str(p, "id"), str(p, "state"), str(p, "backup_id"), m.hostName(str(p, "target_id")), str(p, "target_id"), restoreScenarioLabel(str(p, "scenario")))
+	fmt.Fprintf(&b, "Zielaufnahme: %s\n", str(p, "target_snapshot_id"))
+	if number(p, "schema_version") < 2 {
+		b.WriteString("Legacy-Plan: lesen/exportieren und vorhandene Rücksetzung; neue Ausführung benötigt einen neu erstellten Plan.\n")
+	}
 	if len(list(p["blockers"])) > 0 {
 		b.WriteString("\nGESPERRT – vor Ausführung beheben:\n")
 		for _, v := range list(p["blockers"]) {
@@ -428,6 +436,11 @@ func planText(p map[string]any, m Model) string {
 	}
 	if result := object(p["result"]); result != nil {
 		fmt.Fprintf(&b, "\nHostprotokoll: %s · Recovery-ID: %s\nRollbackpfad: %s\n%s\n", str(result, "state"), str(result, "operation_id"), str(result, "rollback_path"), str(result, "error"))
+		if boolean(result, "reboot_verified") {
+			b.WriteString("Maschineller Neustartnachweis: vorhanden.\n")
+		} else {
+			b.WriteString("Maschineller Neustartnachweis: fehlt; Benutzerbestätigungen ersetzen ihn nicht.\n")
+		}
 	}
 	if recoveryMayHaveJournal(p) {
 		b.WriteString("Hostprotokoll mit r abgleichen; keine Dateiübernahme wiederholen. Kontrollierte Rücksetzung mit b und ausdrücklicher Plan-ID. Dienste und Neustart bleiben separat zu prüfen.\n")
@@ -435,12 +448,26 @@ func planText(p map[string]any, m Model) string {
 	b.WriteString("\nGeplante Dateiänderungen:\n")
 	for _, raw := range list(p["steps"]) {
 		s := object(raw)
-		fmt.Fprintf(&b, "• %s · %s\n  %s\n", str(s, "path"), str(s, "action"), str(s, "reason"))
-		if str(s, "diff") != "" {
-			b.WriteString(clean(str(s, "diff")) + "\n")
+		fmt.Fprintf(&b, "• %s · %s · Auswahl: %s\n  Zielpfad: %s · Vergleich: %s\n  %s\n", str(s, "path"), str(s, "action"), str(s, "decision"), str(s, "destination"), str(s, "comparison_state"), str(s, "reason"))
+		for _, rawEffect := range list(s["effects"]) {
+			e := object(rawEffect)
+			fmt.Fprintf(&b, "  Anpassung %s/%s: %s → %s · %s\n", str(e, "path"), str(e, "field"), str(e, "before"), str(e, "after"), str(e, "reason"))
 		}
 		if boolean(s, "secret") {
 			b.WriteString("  Inhalt geschützt; keine Geheimnisse in der Vorschau.\n")
+		}
+	}
+	for _, raw := range list(p["preserved"]) {
+		v := object(raw)
+		fmt.Fprintf(&b, "Erhalten: %s · %s\n", str(v, "path"), str(v, "reason"))
+	}
+	if len(list(p["tasks"])) > 0 {
+		b.WriteString("\nGeordnete Aufgaben · d Prüfbeleg dokumentieren:\n")
+		for _, task := range orderedRecoveryTasks(list(p["tasks"])) {
+			fmt.Fprintf(&b, "• %s · %s · %s\n  %s\n  Voraussetzungen: %v\n", str(task, "id"), str(task, "title"), str(task, "state"), str(task, "instruction"), task["requires"])
+			if str(task, "state") == "user_confirmed" {
+				fmt.Fprintf(&b, "  Vom Benutzer bestätigt: %s · %s\n  Beleg: %s\n", str(task, "confirmed_by"), str(task, "confirmed_at"), str(task, "evidence"))
+			}
 		}
 	}
 	if len(list(p["manual"])) > 0 {

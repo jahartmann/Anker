@@ -173,6 +173,52 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
         pump(0.4)
         send(b'\x1b')
         pump(0.4)
+
+        # Recovery carries an explicit choice and captured target through review
+        # back/resize; comparing a saved plan is read-only and returns to it.
+        before_plans = len(status()['plans'])
+        before_restore_jobs = sum(j['kind'] == 'restore' for j in status()['jobs'])
+        send(b'3')
+        send(b'a')
+        wait_for('Wiederherstellung planen')
+        current = status()
+        backup_index = next(i for i, b in enumerate(current['backups']) if b['host_id'] != 'demo1')
+        target_index = next(i for i, h in enumerate(current['hosts']) if h['id'] == 'demo1')
+        send(b'\x1b[C' * backup_index)
+        send(b'\t')
+        send(b'\x1b[C' * target_index)
+        send(b'\t\t')
+        send(b'\x05')  # Ctrl+E switches loaded file picker to direct input.
+        send(b'etc/sysctl.d/99-anker.conf')
+        send(b'\x13')
+        wait_for('Dateientscheidungen')
+        choice = 'etc/sysctl.d/99-anker.conf=backup'
+        send(choice.encode())
+        send(b'\x12')  # Ctrl+R refreshes read evidence while preserving the draft.
+        wait_for('Dateientscheidungen')
+        assert choice in visible(recent), 'Fresh target capture lost explicit backup choice'
+        send(b'\x13')
+        wait_for('Wiederherstellungsplan erstellen')
+        assert len(status()['plans']) == before_plans, 'Plan saved before review approval'
+        send(b'\x1b')
+        fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 18, 48, 0, 0))
+        os.kill(child, signal.SIGWINCH)
+        pump(0.5)
+        assert choice in visible(recent), 'Narrow terminal/back lost explicit decision draft'
+        send(b'\x13')
+        send(b'y')
+        wait_state(lambda state: len(state['plans']) == before_plans + 1)
+        wait_for('Wiederherstellungsplan')
+        assert sum(j['kind'] == 'restore' for j in status()['jobs']) == before_restore_jobs, 'Preparing a plan executed it'
+        send(b'c')
+        wait_for('Gespeicherten Zielvergleich')
+        send(b'\x13')
+        wait_for('Dateivergleich')
+        assert 'Vorbereitet' in visible(recent), 'Comparison omitted actual prepared-side label'
+        assert sum(j['kind'] == 'restore' for j in status()['jobs']) == before_restore_jobs, 'Comparison created a write job'
+        send(b'\x1b')
+        wait_for('Wiederherstellungsplan')
+        send(b'\x1b')
         send(b'q')
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
@@ -183,7 +229,7 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
                 child = None
                 break
         assert child is None, 'TUI did not exit on q'
-        print('Guided TUI PTY passed: default TTY start, manual host approval, demo onboarding guard, resize, mouse, hidden passwords, clean exit.')
+        print('Guided TUI PTY passed: default TTY start, manual host approval, demo onboarding guard, resize, mouse, hidden passwords, explicit recovery choice, review-back, narrow target comparison, no implicit apply, clean exit.')
     finally:
         if child:
             try:
