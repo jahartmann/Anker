@@ -152,7 +152,7 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 				return
 			}
 		}
-		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/api/logout" && r.URL.Path != "/api/backups/diff" && !userAllows(u, "restore") {
+		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/api/logout" && r.URL.Path != "/api/backups/diff" && r.URL.Path != "/api/backups/compare" && r.URL.Path != "/api/backups/compare/file" && !userAllows(u, "restore") {
 			jsonError(w, fail(403, "Keine Schreibberechtigung"))
 			return
 		}
@@ -182,7 +182,7 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 			if w.started {
 				panic(http.ErrAbortHandler)
 			}
-			jsonError(w, err)
+			jsonError(w, publicRecoveryError(err))
 		}
 	})
 }
@@ -205,17 +205,12 @@ func require(u User, action string) error {
 	return nil
 }
 func redactPlan(p Plan, reveal bool) Plan {
-	if !reveal {
-		p.Steps = append([]Step(nil), p.Steps...)
-		for i := range p.Steps {
-			if p.Steps[i].Secret || isSecret(p.Steps[i].Path) {
-				p.Steps[i].Diff = "[Verdeckter Inhalt]"
-			}
-		}
-	}
-	return p
+	return publicPlan(p)
 }
 func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Request) error {
+	if handled, err := s.recoveryHTTP(u, w, r); handled {
+		return err
+	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	path := strings.Join(parts[1:], "/")
 	method := r.Method
@@ -283,7 +278,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				hosts[i].KnownHostsPath = ""
 			}
 		}
-		return jsonOut(w, map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth, "scheduler_health": schedulerHealth})
+		return jsonOut(w, redactRecovery(map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth, "scheduler_health": schedulerHealth}))
 	case "hosts":
 		if method == "GET" {
 			hosts, err := s.Hosts()
@@ -332,7 +327,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			return err
 		}
-		return jsonOut(w, inspection)
+		return jsonOut(w, redactRecovery(inspection))
 	case "plans":
 		if method == "GET" {
 			p, err := s.Plans()
@@ -430,13 +425,16 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return err
 		}
 		for i := range v {
-			if !v[i].Secret {
-				left, leftEntry, _ := s.ReadFile(in.From, v[i].Path)
-				right, rightEntry, _ := s.ReadFile(in.To, v[i].Path)
-				v[i].Secret = leftEntry.Secret || rightEntry.Secret
-				if !v[i].Secret {
-					v[i].Diff = lineDiff(string(left), string(right))
-				}
+			c, err := s.CompareBackupFile(in.From, in.To, v[i].Path, false)
+			if err != nil {
+				return err
+			}
+			if c.State == "unavailable" {
+				return errors.New("Datei konnte nicht sicher gelesen werden")
+			}
+			v[i].Secret = c.Masked
+			if !c.Masked {
+				v[i].Diff = legacyComparisonDiff(c)
 			}
 		}
 		return jsonOut(w, v)

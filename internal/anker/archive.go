@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -417,7 +416,7 @@ func (s *Service) DiffBackups(from, to, p string) ([]FileDiff, error) {
 		}
 		a, okA := left[path]
 		b, okB := right[path]
-		if okA && okB && a.SHA256 == b.SHA256 && a.Mode == b.Mode && a.Link == b.Link && a.UID == b.UID && a.GID == b.GID && a.Type == b.Type && a.MTime == b.MTime && reflect.DeepEqual(a.XAttrs, b.XAttrs) {
+		if okA && okB && a.SHA256 == b.SHA256 && len(comparisonMetadata(&a, &b)) == 0 {
 			continue
 		}
 		kind := "changed"
