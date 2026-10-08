@@ -7,6 +7,79 @@ test.beforeAll(async ({ request }) => {
   cookies = await demoCookies(request);
 });
 
+test("view actions remain reachable at narrow viewport", async ({ page }) => {
+  await page.context().addCookies(cookies);
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Übersicht", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const action = page.getByRole("button", { name: /^Host .* prüfen$/ }).first();
+  await expect(action).toBeVisible();
+  const hostName = (await action.getAttribute("aria-label"))!.slice(5, -7);
+  const box = await action.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  await action.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: hostName, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Verbindung prüfen", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Inventar", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: /Hostinventar|Noch kein Inventar|Inventarabfrage fehlgeschlagen/,
+    }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+});
+
+test("inventory distinguishes failed query from absence", async ({ page }) => {
+  await page.context().addCookies(cookies);
+  const base = await (await page.request.get("/api/status")).json();
+  const host = {
+    ...base.hosts[0],
+    inventory: {
+      ...base.hosts[0].inventory,
+      interfaces: [],
+      disks: [],
+      details: {
+        command_results: {
+          interfaces: { state: "failed", error: "ip timeout" },
+          disks: { state: "ok" },
+          zfs: { state: "not_applicable" },
+        },
+      },
+    },
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, hosts: [host] } }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await page.getByRole("button", { name: "Inventar", exact: true }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Netzwerkabfrage fehlgeschlagen" }),
+  ).toContainText("ip timeout");
+  await expect(
+    page.getByRole("heading", { name: "Keine Schnittstellen erfasst" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Keine Datenträger erfasst" }),
+  ).toBeVisible();
+  await page.getByText("Erfasste Details", { exact: true }).click();
+  await expect(
+    page.getByText("ZFS-Pools · Nicht anwendbar", { exact: true }),
+  ).toBeVisible();
+});
+
 test("browser identity is available before login and follows the current view", async ({
   page,
 }) => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
 import type { Settings as Values } from "../api";
-import { Field, Heading, LoadError } from "../components/shared";
+import { DetailSection, Field, Heading, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
 import Access from "./Access";
 import Updates from "./Updates";
@@ -27,6 +27,11 @@ export default function Settings({
   const [saved, setSaved] = useState("");
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [timezoneError, setTimezoneError] = useState("");
+  const [systemError, setSystemError] = useState("");
+  const [inspecting, setInspecting] = useState(false);
+  const [testError, setTestError] = useState("");
+  const [testing, setTesting] = useState(false);
   const [reload, setReload] = useState(0);
   const [archiveAfter, setArchiveAfter] = useState(90);
   const dirty = !!value && JSON.stringify(value) !== saved;
@@ -61,10 +66,28 @@ export default function Settings({
       active = false;
     };
   }, [notify, reload]);
-  const set = (key: keyof Values, v: unknown) =>
+  const set = (key: keyof Values, v: unknown) => {
+    if (key === "timezone") setTimezoneError("");
+    setSaveError("");
+    setTestError("");
     setValue((old) => (old ? { ...old, [key]: v } : old));
+  };
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (busy || !value) return;
+    try {
+      if (value.timezone !== "Local")
+        new Intl.DateTimeFormat("de-DE", { timeZone: value.timezone }).format();
+    } catch {
+      setTimezoneError(
+        "Gültige Zeitzone eingeben, zum Beispiel Europe/Berlin.",
+      );
+      if (tab !== "Sicherung") setTab("Sicherung");
+      (e.currentTarget as HTMLFormElement)
+        .querySelector<HTMLInputElement>('[name="timezone"]')
+        ?.focus();
+      return;
+    }
     setBusy(true);
     setSaveError("");
     try {
@@ -79,13 +102,36 @@ export default function Settings({
     }
   }
   async function inspect() {
+    setInspecting(true);
+    setSystemError("");
     try {
-      setDoctor(await api("doctor"));
-      setAudit(await api("audit"));
+      const [checked, events] = await Promise.all([
+        api("doctor"),
+        api<typeof audit>("audit"),
+      ]);
+      setDoctor(checked);
+      setAudit(events);
     } catch (e) {
-      notify((e as Error).message, true);
+      setSystemError((e as Error).message);
+    } finally {
+      setInspecting(false);
     }
   }
+  const saveControls = (
+    <footer className="form-footer">
+      {saveError && (
+        <p className="form-error" role="alert">
+          {saveError}
+        </p>
+      )}
+      <span className="save-state" role="status">
+        {dirty ? "Ungespeicherte Änderungen" : "Alle Änderungen gespeichert"}
+      </span>
+      <button disabled={busy || updating || !dirty}>
+        {busy ? "Speichert …" : "Einstellungen speichern"}
+      </button>
+    </footer>
+  );
   if (!value)
     return loadError ? (
       <LoadError message={loadError} retry={() => setReload((v) => v + 1)} />
@@ -99,6 +145,13 @@ export default function Settings({
       <Heading
         title="Einstellungen"
         description="Zeitplan, Aufbewahrung und Zugriff zentral verwalten."
+        action={
+          dirty || certificateDirty ? (
+            <span className="save-state" role="status">
+              Ungespeicherte Änderungen
+            </span>
+          ) : undefined
+        }
       />
       <div className="tabs">
         {[
@@ -124,6 +177,7 @@ export default function Settings({
       {tab === "Speicher" && <Storage notify={notify} />}
       {["Sicherung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
+          {saveControls}
           <fieldset className="form-fields" disabled={busy || updating}>
             {tab === "Sicherung" ? (
               <>
@@ -144,8 +198,9 @@ export default function Settings({
                         onChange={(e) => set("schedule", e.target.value)}
                       />
                     </Field>
-                    <Field label="Zeitzone">
+                    <Field label="Zeitzone" error={timezoneError}>
                       <input
+                        name="timezone"
                         required
                         value={value.timezone}
                         onChange={(e) => set("timezone", e.target.value)}
@@ -358,21 +413,30 @@ export default function Settings({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={dirty || busy}
+                    disabled={dirty || busy || testing}
                     title={
                       dirty ? "Zuerst die Änderungen speichern" : undefined
                     }
                     onClick={async () => {
+                      setTesting(true);
+                      setTestError("");
                       try {
                         await api("notifications/test", "POST", {});
                         notify("Testnachricht gesendet");
                       } catch (e) {
-                        notify((e as Error).message, true);
+                        setTestError((e as Error).message);
+                      } finally {
+                        setTesting(false);
                       }
                     }}
                   >
-                    Gespeicherte Verbindung testen
+                    {testing ? "Testet …" : "Gespeicherte Verbindung testen"}
                   </button>
+                  {testError && (
+                    <p className="form-error" role="alert">
+                      {testError}
+                    </p>
+                  )}
                   {dirty && (
                     <p className="field-hint">
                       Zum Testen zuerst die Änderungen speichern.
@@ -381,27 +445,13 @@ export default function Settings({
                 </section>
               </>
             )}
-            {saveError && (
-              <p className="notice warning" role="alert">
-                {saveError}
-              </p>
-            )}
-            <footer className="form-footer">
-              <span className="save-state" role="status">
-                {dirty
-                  ? "Ungespeicherte Änderungen"
-                  : "Alle Änderungen gespeichert"}
-              </span>
-              <button disabled={busy || !dirty}>
-                {busy ? "Speichert …" : "Einstellungen speichern"}
-              </button>
-            </footer>
           </fieldset>
         </form>
       )}
       {tab === "Zugriff" && (
         <div inert={updating}>
           <form className="settings-form access-policy" onSubmit={save}>
+            {saveControls}
             <section>
               <h3>Anmeldung</h3>
               <p className="muted">
@@ -436,21 +486,6 @@ export default function Settings({
                   onChange={(e) => set("password_min_length", +e.target.value)}
                 />
               </Field>
-              {saveError && (
-                <p className="notice warning" role="alert">
-                  {saveError}
-                </p>
-              )}
-              <footer className="form-footer">
-                <span className="save-state">
-                  {dirty
-                    ? "Ungespeicherte Änderungen"
-                    : "Alle Änderungen gespeichert"}
-                </span>
-                <button disabled={busy || !dirty}>
-                  {busy ? "Speichert …" : "Einstellungen speichern"}
-                </button>
-              </footer>
             </section>
           </form>
           <Access
@@ -466,44 +501,52 @@ export default function Settings({
           <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
         </div>
         <Updates canInstall={!dirty && !certificateDirty} />
-        <h3>Systemprüfung</h3>
-        <pre className="system-output">
-          {doctor ? JSON.stringify(doctor, null, 2) : "Wird geladen …"}
-        </pre>
-        <button
-          className="secondary"
-          onClick={async () => {
-            try {
-              const r = await api<{ indexed: number }>("reindex", "POST", {});
-              notify(r.indexed + " Sicherungen neu eingelesen");
-            } catch (e) {
-              notify((e as Error).message, true);
-            }
-          }}
-        >
-          Sicherungsindex neu einlesen
-        </button>
-        <h3>Aktivitätsprotokoll</h3>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Zeitpunkt</th>
-                <th>Aktion</th>
-                <th>Ziel</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audit.map((a, i) => (
-                <tr key={i}>
-                  <td className="date">{date(a.at)}</td>
-                  <td>{a.action}</td>
-                  <td className="mono">{a.object}</td>
+        <DetailSection title="Systemprüfung">
+          {systemError && <LoadError message={systemError} retry={inspect} />}
+          {inspecting && <p role="status">Systemdaten werden geladen …</p>}
+          <pre className="system-output">
+            {doctor
+              ? JSON.stringify(doctor, null, 2)
+              : systemError
+                ? "Keine aktuellen Prüfdaten verfügbar."
+                : "Wird geladen …"}
+          </pre>
+          <button
+            className="secondary"
+            onClick={async () => {
+              try {
+                const r = await api<{ indexed: number }>("reindex", "POST", {});
+                notify(r.indexed + " Sicherungen neu eingelesen");
+              } catch (e) {
+                notify((e as Error).message, true);
+              }
+            }}
+          >
+            Sicherungsindex neu einlesen
+          </button>
+        </DetailSection>
+        <DetailSection title="Aktivitätsprotokoll">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Zeitpunkt</th>
+                  <th>Aktion</th>
+                  <th>Ziel</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {audit.map((a, i) => (
+                  <tr key={i}>
+                    <td className="date">{date(a.at)}</td>
+                    <td>{a.action}</td>
+                    <td className="mono">{a.object}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DetailSection>
       </section>
     </>
   );

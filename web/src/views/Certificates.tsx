@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
-import { Dialog, Download, Field, LoadError } from "../components/shared";
+import {
+  DetailSection,
+  Dialog,
+  Download,
+  Field,
+  LoadError,
+  State,
+} from "../components/shared";
 import type { Notify } from "../components/shared";
 
 type CertificateStatus = {
@@ -126,6 +133,29 @@ export default function Certificates({
         )
       ) : (
         <>
+          <p className="section-state">
+            <State
+              value={
+                !status.enabled
+                  ? "manual"
+                  : status.days_remaining <= 0
+                    ? "failed"
+                    : "successful"
+              }
+              label={
+                !status.enabled
+                  ? "HTTPS nicht aktiv"
+                  : status.days_remaining <= 0
+                    ? "Zertifikat abgelaufen"
+                    : "Zertifikat gültig"
+              }
+            />
+            <span className="muted">
+              {status.managed
+                ? "Erneuerung verwalten oder jetzt erneuern."
+                : "Zertifikat wird außerhalb von Anker verwaltet."}
+            </span>
+          </p>
           {!status.enabled ? (
             <p className="muted">{status.message}</p>
           ) : (
@@ -153,10 +183,12 @@ export default function Certificates({
                   <dd>{date(status.last_renewed_at)}</dd>
                 </div>
               </dl>
-              <div className="certificate-fingerprint">
-                <span className="muted">Fingerprint · SHA256</span>
-                <code>{status.fingerprint}</code>
-              </div>
+              <DetailSection title="Zertifikatsdetails">
+                <div className="certificate-fingerprint">
+                  <span className="muted">Fingerprint · SHA256</span>
+                  <code>{status.fingerprint}</code>
+                </div>
+              </DetailSection>
               <p className="muted">{status.message}</p>
               <Download path="tls/certificate" notify={notify}>
                 Öffentliches Zertifikat herunterladen

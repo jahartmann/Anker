@@ -144,6 +144,7 @@ test("storage shows consumption and requires a fresh confirmed growth plan", asy
   await expect(
     page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
   ).toHaveAttribute("aria-valuenow", "71");
+  await page.getByText("Verlauf und Prognose", { exact: true }).click();
   await expect(page.getByText(/56 Tage/)).toBeVisible();
   await expect(
     page.getByRole("img", { name: /Belegungsverlauf/ }),
@@ -1621,6 +1622,7 @@ test("web certificate renewal confirms browser trust and keeps policy after fail
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByText("Zertifikatsdetails", { exact: true }).click();
   await expect(page.getByText("AA11", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText(
     "Speicherplatz reicht nicht aus",

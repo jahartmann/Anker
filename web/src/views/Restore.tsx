@@ -12,6 +12,7 @@ export default function Restore({
   status,
   initialBackup,
   initialFile,
+  initialPlan,
   user,
   notify,
   refresh,
@@ -21,6 +22,7 @@ export default function Restore({
   status: Status;
   initialBackup: string;
   initialFile?: string;
+  initialPlan?: { id: string; sequence: number } | null;
   user: User;
   notify: Notify;
   refresh: () => void;
@@ -68,6 +70,39 @@ export default function Restore({
   const [planPage, setPlanPage] = useState(1);
   const [formError, setFormError] = useState("");
   useEffect(() => {
+    if (!initialPlan || activeRequest.current) return;
+    let current = true;
+    activeRequest.current = true;
+    setBusy(true);
+    onBusyChange(true);
+    setWizard(false);
+    setPlan(null);
+    setFormError("");
+    api<Plan>("plans/" + initialPlan.id)
+      .then((opened) => {
+        if (!current) return;
+        if (opened.id !== initialPlan.id)
+          throw new Error("Planantwort passt nicht zur Auswahl.");
+        setPlan(opened);
+        setCanRevise(false);
+      })
+      .catch((e) => {
+        if (current) setFormError(e.message);
+      })
+      .finally(() => {
+        if (current) {
+          activeRequest.current = false;
+          setBusy(false);
+          onBusyChange(false);
+        }
+      });
+    return () => {
+      current = false;
+      activeRequest.current = false;
+      onBusyChange(false);
+    };
+  }, [initialPlan, onBusyChange]);
+  useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -102,6 +137,11 @@ export default function Restore({
     <>
       {!wizard && (
         <>
+          {formError && (
+            <p className="notice warning" role="alert">
+              {formError} Den Plan in der Liste erneut öffnen.
+            </p>
+          )}
           <Heading
             title="Wiederherstellung"
             description="Originale bewahren. Änderungen am Ziel zuerst prüfen."

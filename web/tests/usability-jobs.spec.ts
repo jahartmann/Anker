@@ -8,6 +8,60 @@ test.beforeAll(async ({ request }) => {
   cookies = await loginDemo(request);
 });
 
+test("recovery job result links to reconciliation", async ({ page }) => {
+  await page.context().addCookies(cookies);
+  const base = (await (await page.request.get("/api/status")).json()) as Status;
+  const plan = {
+    id: "recovery-job-plan",
+    state: "interrupted",
+    schema_version: 2,
+    backup_id: base.backups[0].id,
+    target_id: base.hosts[0].id,
+    scenario: "files",
+    created_at: new Date().toISOString(),
+    source: base.hosts[0].inventory!,
+    target: base.hosts[0].inventory!,
+    steps: [],
+    blockers: [],
+    manual: [],
+  };
+  const job = {
+    id: "recovery-job",
+    host_id: base.hosts[0].id,
+    kind: "restore",
+    state: "interrupted",
+    result_id: plan.id,
+    created_at: new Date().toISOString(),
+    attempts: 1,
+    error: "Antwort verloren",
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, demo: false, jobs: [job], plans: [plan] } }),
+  );
+  await page.route("**/api/jobs/recovery-job", (r) => r.fulfill({ json: job }));
+  await page.route("**/api/plans/recovery-job-plan", (r) =>
+    r.fulfill({ json: plan }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Aufträge", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Auftrag recovery-job ansehen" })
+    .click();
+  await page
+    .getByRole("button", { name: "Wiederherstellungsplan prüfen", exact: true })
+    .click();
+  await expect(page).toHaveTitle("Wiederherstellung · Anker");
+  await expect(
+    page.getByRole("dialog").getByRole("link", { name: "Plan herunterladen" }),
+  ).toHaveAttribute("href", `/api/plans/${plan.id}/download`);
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+});
+
 async function fixture(page: Page, includeActive = false) {
   await page.context().addCookies(cookies);
   const base = (await (await page.request.get("/api/status")).json()) as Status;
@@ -147,13 +201,11 @@ test("active jobs distinguish queued work from running attempts and retain open 
   await expect(active).toContainText("4 laufen");
   await expect(active).toContainText("6 warten");
   await expect(active.getByRole("listitem")).toHaveCount(4);
-  const running = active
-    .getByRole("listitem")
-    .filter({
-      has: page.getByRole("button", {
-        name: "Auftrag active-running-0 ansehen",
-      }),
-    });
+  const running = active.getByRole("listitem").filter({
+    has: page.getByRole("button", {
+      name: "Auftrag active-running-0 ansehen",
+    }),
+  });
   await expect(running).toContainText("Versuch 2");
   await expect(running).toContainText("Laufzeit 9 Min.");
   await expect(running).toContainText("Gestartet");

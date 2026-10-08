@@ -1,7 +1,16 @@
 import { useEffect, useId, useState } from "react";
 import { api, bytes, date } from "../api";
-import { Dialog, LoadError } from "../components/shared";
+import { ActionBar, Dialog, LoadError, State } from "../components/shared";
 import { beginUpdateReload, cancelUpdateReload } from "../useUpdateReload";
+const updateLabels: Record<string, string> = {
+  idle: "Bereit zur Prüfung",
+  unconfigured: "Updatequelle fehlt",
+  check_failed: "Prüfung fehlgeschlagen",
+  installing: "Installation läuft",
+  successful: "Update installiert",
+  failed: "Update fehlgeschlagen",
+  rolled_back: "Vorherige Version wiederhergestellt",
+};
 type UpdateState = {
   busy?: boolean;
   configured: boolean;
@@ -320,7 +329,7 @@ export default function Updates({
             bleiben erhalten.
           </p>
         </div>
-        <div className="update-actions">
+        <ActionBar label="Updateaktionen">
           <button
             type="button"
             className="secondary"
@@ -346,7 +355,7 @@ export default function Updates({
           >
             {busy && !confirm ? "Prüft …" : "Nach Updates suchen"}
           </button>
-        </div>
+        </ActionBar>
       </div>
       {!state ? (
         error ? (
@@ -358,6 +367,18 @@ export default function Updates({
         )
       ) : (
         <>
+          <p className="section-state">
+            <State value={state.status} label={updateLabels[state.status]} />{" "}
+            <span className="muted">
+              {installing
+                ? "Installation läuft; Startprüfung abwarten."
+                : state.available
+                  ? "Release ansehen und Installation bestätigen."
+                  : state.configured
+                    ? "Nach Updates suchen, um die Verfügbarkeit zu prüfen."
+                    : "Updatequelle einrichten, um signierte Releases zu prüfen."}
+            </span>
+          </p>
           <dl className="update-facts">
             <div>
               <dt>Installierte Version</dt>

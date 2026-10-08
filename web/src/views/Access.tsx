@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
 import type { User } from "../api";
-import { ActionMenu, Dialog, Field, LoadError } from "../components/shared";
+import {
+  ActionBar,
+  ActionMenu,
+  Dialog,
+  Field,
+  LoadError,
+} from "../components/shared";
 import type { Notify } from "../components/shared";
 
 export default function Access({
@@ -52,12 +58,14 @@ export default function Access({
             Sitzungen.
           </p>
         </div>
-        <button
-          className="secondary"
-          onClick={() => setDialog({ kind: "create" })}
-        >
-          Benutzer hinzufügen
-        </button>
+        <ActionBar label="Benutzeraktionen">
+          <button
+            className="secondary"
+            onClick={() => setDialog({ kind: "create" })}
+          >
+            Benutzer hinzufügen
+          </button>
+        </ActionBar>
       </div>
       {error ? (
         <LoadError message={error} retry={refresh} />
@@ -67,7 +75,7 @@ export default function Access({
         </p>
       ) : (
         <div className="table-scroll">
-          <table>
+          <table className="responsive-table" aria-label="Benutzerrechte">
             <thead>
               <tr>
                 <th>Name</th>
@@ -80,26 +88,28 @@ export default function Access({
             <tbody>
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td>
+                  <td data-label="Name">
                     <strong>{u.name}</strong>
                     {u.id === me && (
                       <small className="muted user-you">Du</small>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Rolle">
                     {u.role === "admin"
                       ? "Administrator"
                       : u.role === "restore"
                         ? "Wiederherstellung"
                         : "Lesen"}
                   </td>
-                  <td>{u.secrets ? "Freigegeben" : "Verdeckt"}</td>
-                  <td>
+                  <td data-label="Geschützte Inhalte">
+                    {u.secrets ? "Freigegeben" : "Verdeckt"}
+                  </td>
+                  <td data-label="Status">
                     <span className={u.disabled ? "muted" : ""}>
                       {u.disabled ? "Gesperrt" : "Aktiv"}
                     </span>
                   </td>
-                  <td className="right">
+                  <td className="right" data-label="Aktionen">
                     <ActionMenu
                       label={"Aktionen für " + u.name}
                       actions={[
@@ -134,8 +144,11 @@ export default function Access({
         </div>
       )}
       <p className="table-footnote">
-        Mindestens ein aktiver Administrator bleibt erhalten. Der eigene
-        Administratorzugang lässt sich nicht sperren oder löschen.
+        Die Rolle bestimmt die Aktionen; „Geschützte Inhalte“ gibt Dateiinhalte
+        und Exporte separat frei. Lesen erlaubt keine Hoständerungen.
+        Wiederherstellung erlaubt Planaktionen. Administratoren verwalten Hosts
+        und Zugänge. Mindestens ein aktiver Administrator bleibt erhalten. Der
+        eigene Administratorzugang lässt sich nicht sperren oder löschen.
       </p>
       {dialog && (
         <UserDialog

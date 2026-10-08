@@ -87,6 +87,11 @@ export default function ActiveJobs({
                   job.host_id}
               </strong>
               <span className="muted">{labels[job.kind] || job.kind}</span>
+              {job.kind === "restore" && (
+                <small className="muted">
+                  Ergebnis anschließend im Wiederherstellungsplan prüfen.
+                </small>
+              )}
             </div>
             <State
               value={job.state}

@@ -7,9 +7,11 @@ import { Empty, Pagination } from "./shared";
 export default function Inventory({
   inventory,
   collectedAt,
+  queryError,
 }: {
   inventory: HostInventory & { captured_at?: string };
   collectedAt?: string;
+  queryError?: string;
 }) {
   const [networkQuery, setNetworkQuery] = useState("");
   const [diskQuery, setDiskQuery] = useState("");
@@ -38,7 +40,33 @@ export default function Inventory({
     diskPage,
     Math.max(1, Math.ceil(disks.length / diskSize)),
   );
-  const details = Object.entries(inventory.details || {});
+  const results = (inventory.details?.command_results || {}) as Record<
+    string,
+    { state?: string; error?: string }
+  >;
+  const details = Object.entries(inventory.details || {}).filter(
+    ([name]) =>
+      ![
+        "command_results",
+        "capabilities",
+        "file_hashes",
+        "file_metadata",
+      ].includes(name),
+  );
+  const queryNotice = (name: string, title: string) =>
+    results[name]?.state === "failed" ? (
+      <p className="notice warning" role="alert">
+        {title}abfrage fehlgeschlagen:{" "}
+        {results[name].error || "Keine vollständigen Daten verfügbar."} Die
+        Anzeige belegt keine Abwesenheit.
+      </p>
+    ) : null;
+  const missingDetails = Object.entries(results).filter(
+    ([name, result]) =>
+      !details.some(([key]) => key === name) &&
+      !["interfaces", "disks"].includes(name) &&
+      result.state !== "ok",
+  );
   const detailLabels: Record<string, string> = {
     addresses: "IP-Adressen",
     routes: "Netzwerkrouten",
@@ -67,6 +95,20 @@ export default function Inventory({
           : undefined;
   return (
     <div className="inventory">
+      <h3>Hostinventar</h3>
+      {!Object.keys(results).length && (
+        <p className="notice">
+          Abfragestatus nicht übermittelt. Leere Listen belegen keine
+          Abwesenheit; bei fehlenden Daten die Hostprüfung und ihr Ergebnis
+          prüfen.
+        </p>
+      )}
+      {queryError && (
+        <p className="notice warning" role="alert">
+          Letzte Hostprüfung fehlgeschlagen: {queryError}. Angezeigt wird das
+          zuletzt erfasste Inventar.
+        </p>
+      )}
       <div className="inventory-heading">
         <span className="muted">{inventory.hostname || "Hostinventar"}</span>
         <span className="muted">
@@ -137,6 +179,7 @@ export default function Inventory({
             />
           </div>
         </div>
+        {queryNotice("interfaces", "Netzwerk")}
         {interfaces.length ? (
           <div className="table-scroll">
             <table className="inventory-network">
@@ -163,7 +206,7 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : results.interfaces?.state === "failed" ? null : (
           <Empty
             title={
               networkQuery
@@ -219,6 +262,7 @@ export default function Inventory({
             />
           </div>
         </div>
+        {queryNotice("disks", "Datenträger")}
         {disks.length ? (
           <div className="table-scroll">
             <table className="inventory-disks">
@@ -288,7 +332,7 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : results.disks?.state === "failed" ? null : (
           <Empty
             title={
               diskQuery
@@ -322,23 +366,44 @@ export default function Inventory({
           />
         </div>
       </section>
-      {details.length > 0 && (
+      {(details.length > 0 || missingDetails.length > 0) && (
         <details className="inventory-source">
           <summary>
             <span>Erfasste Details</span>{" "}
             <span className="count-badge">{details.length}</span>
           </summary>
           <p className="muted">Zusätzliche Daten aus der Hostprüfung.</p>
+          {missingDetails.map(([name, result]) => (
+            <p
+              key={name}
+              className={result.state === "failed" ? "notice warning" : "muted"}
+              role={result.state === "failed" ? "alert" : undefined}
+            >
+              {detailLabels[name] || name} ·{" "}
+              {result.state === "not_applicable"
+                ? "Nicht anwendbar"
+                : "Abfrage fehlgeschlagen"}
+              {result.error ? ": " + result.error : ""}
+            </p>
+          ))}
           {details.map(([name, value]) => (
             <details key={name} className="inventory-source-item">
               <summary>
                 <span>{detailLabels[name] || name}</span>
+                {results[name]?.state && results[name].state !== "ok" && (
+                  <span className="warning">
+                    {results[name].state === "not_applicable"
+                      ? "Nicht anwendbar"
+                      : "Abfrage fehlgeschlagen"}
+                  </span>
+                )}
                 {detailCount(value) !== undefined && (
                   <span className="count-badge">
                     {detailCount(value)} Einträge
                   </span>
                 )}
               </summary>
+              {queryNotice(name, detailLabels[name] || name)}
               <pre className="inventory-raw">
                 {typeof value === "string"
                   ? value

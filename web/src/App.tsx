@@ -104,6 +104,11 @@ export default function App() {
   const [pendingPage, setPendingPage] = useState("");
   const [file, setFile] = useState("");
   const [selectedJob, setSelectedJob] = useState("");
+  const [selectedHost, setSelectedHost] = useState("");
+  const [planRequest, setPlanRequest] = useState<{
+    id: string;
+    sequence: number;
+  } | null>(null);
   const [restoreRequest, setRestoreRequest] = useState<{
     id: string;
     file?: string;
@@ -150,6 +155,8 @@ export default function App() {
       setStatus(emptyStatus);
       setFile("");
       setRestoreRequest(null);
+      setPlanRequest(null);
+      setSelectedHost("");
       setConnectTarget(false);
       setRecoveryBusy(false);
       setPage("Hosts");
@@ -201,6 +208,7 @@ export default function App() {
   }
   function restore(id: string, file?: string) {
     if (recoveryBusy) return;
+    setPlanRequest(null);
     setRestoreRequest((old) => ({
       id,
       file,
@@ -227,6 +235,11 @@ export default function App() {
     canManage: user.role === "admin",
     canDownload: user.secrets,
     openBackup: setFile,
+    openPlan: (id: string) => {
+      if (recoveryBusy) return;
+      setPlanRequest((old) => ({ id, sequence: (old?.sequence || 0) + 1 }));
+      navigate("Wiederherstellung");
+    },
     openJob: (id: string) => {
       setSelectedJob(id);
       navigate("Aufträge");
@@ -293,6 +306,8 @@ export default function App() {
                   setUser(null);
                   setFile("");
                   setRestoreRequest(null);
+                  setPlanRequest(null);
+                  setSelectedHost("");
                   setConnectTarget(false);
                   setRecoveryBusy(false);
                   setStatus(emptyStatus);
@@ -361,6 +376,7 @@ export default function App() {
             {page === "Hosts" && (
               <Hosts
                 {...common}
+                initialHost={selectedHost}
                 canEdit={user.role === "admin"}
                 canOperate={user.role !== "reader"}
               />
@@ -372,6 +388,7 @@ export default function App() {
                 status={status}
                 initialBackup={restoreRequest?.id || ""}
                 initialFile={restoreRequest?.file}
+                initialPlan={planRequest}
                 user={user}
                 notify={notify}
                 refresh={refresh}
@@ -463,19 +480,25 @@ export default function App() {
                   </div>
                   {overdue.length ? (
                     <div className="table-scroll">
-                      <table>
+                      <table
+                        className="responsive-table"
+                        aria-label="Hosts mit Handlungsbedarf"
+                      >
                         <thead>
                           <tr>
                             <th>Host</th>
                             <th>Status</th>
                             <th>Letzter Stand</th>
+                            <th>
+                              <span className="sr-only">Aktion</span>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {overdue.slice(0, 8).map((h) => (
                             <tr key={h.id}>
-                              <td>{h.name}</td>
-                              <td>
+                              <td data-label="Host">{h.name}</td>
+                              <td data-label="Status">
                                 <span
                                   className={
                                     "state " + hostState(h, status).tone
@@ -484,8 +507,20 @@ export default function App() {
                                   {hostState(h, status).text}
                                 </span>
                               </td>
-                              <td>
+                              <td data-label="Letzter Stand">
                                 {date(hostState(h, status).backup?.created_at)}
+                              </td>
+                              <td data-label="Aktion">
+                                <button
+                                  className="text-button"
+                                  aria-label={`Host ${h.name} prüfen`}
+                                  onClick={() => {
+                                    setSelectedHost(h.id);
+                                    navigate("Hosts");
+                                  }}
+                                >
+                                  Host prüfen
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -531,6 +566,7 @@ export default function App() {
                     canEdit={user.role !== "reader"}
                     canManage={user.role === "admin"}
                     openBackup={setFile}
+                    openPlan={common.openPlan}
                     limit={5}
                   />
                 </section>
@@ -540,6 +576,7 @@ export default function App() {
               <>
                 <Heading
                   title="Aufträge"
+                  count={status.jobs.length}
                   description="Sicherungen, Hostprüfungen und Wiederherstellungen nachvollziehen."
                 />
                 <p className="hint">

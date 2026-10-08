@@ -14,6 +14,46 @@ test.beforeEach(async ({ page }) => {
   ).toBeVisible();
 });
 
+test("settings save reports local errors and dirty state", async ({ page }) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const timezone = page.getByLabel("Zeitzone", { exact: true });
+  await timezone.fill("Invalid/Zone");
+  const save = page.getByRole("button", {
+    name: "Einstellungen speichern",
+    exact: true,
+  });
+  await expect(
+    page.getByText("Ungespeicherte Änderungen", { exact: true }).first(),
+  ).toBeVisible();
+  await save.click();
+  await expect(timezone).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Gültige Zeitzone" }),
+  ).toBeVisible();
+  await timezone.fill("Europe/Berlin");
+  await page.route("**/api/settings", (r) =>
+    r.request().method() === "PUT"
+      ? r.fulfill({
+          status: 500,
+          json: { error: "Speichern vorübergehend nicht möglich" },
+        })
+      : r.continue(),
+  );
+  await page.getByLabel("Tagesstände", { exact: true }).fill("8");
+  await save.click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Speichern vorübergehend" }),
+  ).toBeVisible();
+  await expect(save).toBeEnabled();
+  await expect(
+    page.getByText("Ungespeicherte Änderungen", { exact: true }).first(),
+  ).toBeVisible();
+});
+
 test("completed update reloads assets once even after leaving settings and temporary downtime", async ({
   page,
 }) => {

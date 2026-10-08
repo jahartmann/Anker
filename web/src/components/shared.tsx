@@ -92,19 +92,51 @@ export function Heading({
   title,
   description,
   action,
+  count,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  count?: number;
 }) {
   return (
     <header className="page-heading">
       <div>
         <h1>{title}</h1>
+        {count !== undefined && (
+          <span className="collection-count">{count} Ergebnisse</span>
+        )}
         {description && <p>{description}</p>}
       </div>
       {action && <div className="heading-action">{action}</div>}
     </header>
+  );
+}
+export function ActionBar({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="action-bar" role="group" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+export function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="detail-disclosure">
+      <summary>{title}</summary>
+      {children}
+    </details>
   );
 }
 export function Empty({
@@ -287,23 +319,51 @@ export function ActionMenu({
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 }) {
   const id = useId();
+  const [nativeError, setNativeError] = useState("");
+  const message = error || nativeError;
   return (
-    <div className="field">
+    <div
+      className="field"
+      onChangeCapture={() => setNativeError("")}
+      onInvalidCapture={(e) => {
+        if (
+          e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLSelectElement ||
+          e.target instanceof HTMLTextAreaElement
+        )
+          setNativeError(e.target.validationMessage);
+      }}
+    >
       <label htmlFor={id}>{label}</label>
-      {isValidElement<{ id?: string; "aria-describedby"?: string }>(children)
+      {isValidElement<{
+        id?: string;
+        "aria-describedby"?: string;
+        "aria-invalid"?: boolean;
+      }>(children)
         ? cloneElement(children, {
             id,
-            "aria-describedby": hint ? id + "-hint" : undefined,
+            "aria-describedby":
+              [hint && id + "-hint", message && id + "-error"]
+                .filter(Boolean)
+                .join(" ") || undefined,
+            "aria-invalid": message ? true : undefined,
           })
         : children}
       {hint && <small id={id + "-hint"}>{hint}</small>}
+      {message && (
+        <small className="form-error" id={id + "-error"} role="alert">
+          {message}
+        </small>
+      )}
     </div>
   );
 }

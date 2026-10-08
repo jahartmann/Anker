@@ -228,31 +228,34 @@ function VolumeRow({
           >
             <span style={{ width: `${usage}%` }} />
           </div>
-          <div className="storage-forecast">
-            {v.available === 0 ? (
-              <strong>Kein verfügbarer Speicher mehr.</strong>
-            ) : v.forecast.days_to_full !== undefined ? (
-              <strong>
-                Rechnerisch noch etwa {v.forecast.days_to_full} Tage · bis{" "}
-                {date(v.forecast.full_at)}
-              </strong>
-            ) : (
-              <strong>
-                {v.forecast.status === "learning"
-                  ? "Prognose lernt den Verlauf"
-                  : v.forecast.status === "stable"
-                    ? "Aktuell kein anhaltender Zuwachs"
-                    : "Noch keine belastbare Terminprognose"}
-              </strong>
-            )}
-            <p className="muted">
-              {v.forecast.message}
-              {v.forecast.growth_per_day > 0
-                ? ` Nettozuwachs: ${bytes(v.forecast.growth_per_day)}/Tag.`
-                : ""}
-            </p>
-          </div>
-          <History volume={v} />
+          <details className="detail-disclosure storage-trend">
+            <summary>Verlauf und Prognose</summary>
+            <div className="storage-forecast">
+              {v.available === 0 ? (
+                <strong>Kein verfügbarer Speicher mehr.</strong>
+              ) : v.forecast.days_to_full !== undefined ? (
+                <strong>
+                  Rechnerisch noch etwa {v.forecast.days_to_full} Tage · bis{" "}
+                  {date(v.forecast.full_at)}
+                </strong>
+              ) : (
+                <strong>
+                  {v.forecast.status === "learning"
+                    ? "Prognose lernt den Verlauf"
+                    : v.forecast.status === "stable"
+                      ? "Aktuell kein anhaltender Zuwachs"
+                      : "Noch keine belastbare Terminprognose"}
+                </strong>
+              )}
+              <p className="muted">
+                {v.forecast.message}
+                {v.forecast.growth_per_day > 0
+                  ? ` Nettozuwachs: ${bytes(v.forecast.growth_per_day)}/Tag.`
+                  : ""}
+              </p>
+            </div>
+            <History volume={v} />
+          </details>
           {inodeUsage >= 85 && (
             <p className="notice warning" role="alert">
               {inodeUsage}% der Inodes sind belegt. Auch mit freien Gigabytes

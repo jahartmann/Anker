@@ -596,6 +596,7 @@ export default function Hosts({
   openBackup,
   openJob,
   onRestore,
+  initialHost = "",
 }: {
   status: Status;
   notify: Notify;
@@ -606,12 +607,13 @@ export default function Hosts({
   openBackup: (id: string) => void;
   openJob?: (id: string) => void;
   onRestore: (id: string) => void;
+  initialHost?: string;
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
   const [stateFilter, setStateFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(initialHost);
   const [tab, setTab] = useState("Übersicht");
   const [form, setForm] = useState<Host | "new" | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -728,7 +730,7 @@ export default function Hosts({
           {tab === "Übersicht" && (
             <div className="detail-section">
               <dl className="properties">
-                <dt>Status</dt>
+                <dt>Sicherungsstatus</dt>
                 <dd className={hostState(host, status).tone}>
                   {hostState(host, status).text}
                 </dd>
@@ -750,9 +752,25 @@ export default function Hosts({
                 </dd>
                 <dt>Letzte Hostprüfung</dt>
                 <dd>{date(host.last_probe)}</dd>
+                <dt>Verbindung</dt>
+                <dd>
+                  {host.probe_error
+                    ? "Letzte Prüfung fehlgeschlagen"
+                    : host.last_probe
+                      ? "Letzte Prüfung erfolgreich"
+                      : "Noch nicht geprüft"}
+                </dd>
+                <dt>Inventar</dt>
+                <dd>
+                  {host.inventory
+                    ? "Erfasste Daten vorhanden"
+                    : "Noch nicht erfasst"}
+                </dd>
               </dl>
               {host.probe_error && (
-                <p className="notice warning">{host.probe_error}</p>
+                <p className="notice warning" role="alert">
+                  {host.probe_error}
+                </p>
               )}
               <div className="section-rule" />
               <h3>Wiederherstellung vorbereiten</h3>
@@ -794,9 +812,21 @@ export default function Hosts({
                 key={host.id}
                 inventory={host.inventory}
                 collectedAt={host.last_probe}
+                queryError={host.probe_error}
               />
             ) : (
-              <Empty title="Noch kein Inventar">
+              <Empty
+                title={
+                  host.probe_error
+                    ? "Inventarabfrage fehlgeschlagen"
+                    : "Noch kein Inventar"
+                }
+              >
+                {host.probe_error && (
+                  <span className="warning" role="alert">
+                    {host.probe_error}{" "}
+                  </span>
+                )}
                 Mit „Verbindung prüfen“ liest Anker den aktuellen Hostzustand.
               </Empty>
             ))}
@@ -844,6 +874,7 @@ export default function Hosts({
         <>
           <Heading
             title="Hosts"
+            count={hosts.length}
             description="Konfigurationen sichern und wiederherstellen."
             action={
               canEdit && (

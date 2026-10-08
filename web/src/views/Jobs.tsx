@@ -29,6 +29,7 @@ export default function Jobs({
   canEdit,
   canManage,
   openBackup,
+  openPlan,
   limit,
   initialJob,
   onJobClose,
@@ -39,6 +40,7 @@ export default function Jobs({
   canEdit: boolean;
   canManage: boolean;
   openBackup: (id: string) => void;
+  openPlan?: (id: string) => void;
   limit?: number;
   initialJob?: string;
   onJobClose?: () => void;
@@ -430,12 +432,27 @@ export default function Jobs({
                 {selected.error && (
                   <p className="notice warning">{selected.error}</p>
                 )}
-                {selected.kind === "restore" && finished(selected) && (
+                {selected.kind === "restore" && (
                   <p className="hint">
-                    Für eine erneute Wiederherstellung einen neuen Plan prüfen
-                    und bestätigen.
+                    Das Auftragsergebnis ist kein Rebootnachweis. Im Plan das
+                    Hostjournal und offene Prüfungen ansehen, bevor ein weiterer
+                    Lauf vorbereitet wird.
                   </p>
                 )}
+                {selected.kind === "restore" &&
+                  selected.result_id &&
+                  openPlan && (
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        closeDetail();
+                        openPlan(selected.result_id!);
+                      }}
+                    >
+                      Wiederherstellungsplan prüfen
+                    </button>
+                  )}
                 {selected.result_id &&
                   selected.kind === "backup" &&
                   (status.backups.some((b) => b.id === selected.result_id) ? (
