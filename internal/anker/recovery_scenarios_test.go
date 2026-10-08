@@ -99,10 +99,10 @@ func TestLegacyRecoverySituationsAndSelectionValidation(t *testing.T) {
 }
 
 func TestFreshHostPreservesBootAndAccessIdentity(t *testing.T) {
-	for _, scenario := range []string{"host", "standalone", "migration", "version", "topology", "cluster-disaster"} {
+	for _, scenario := range []string{"host", "standalone", "migration", "version", "topology", "cluster-node", "cluster-disaster"} {
 		t.Run(scenario, func(t *testing.T) {
 			m := scenarioManifest()
-			for _, p := range []string{"etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/machine-id", "var/lib/dbus/machine-id", "etc/crypttab", "etc/default/grub", "etc/kernel/cmdline", "boot/efi/EFI/proxmox/grubx64.efi", "root/.ssh/authorized_keys", "etc/sudoers.d/anker-restore", "etc/anker-host.json", "usr/local/lib/anker/anker-host", "etc/pam.d/sshd", "etc/nsswitch.conf"} {
+			for _, p := range []string{"etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/machine-id", "var/lib/dbus/machine-id", "etc/crypttab", "etc/default/grub", "etc/kernel/cmdline", "etc/modules", "etc/modules-load.d/driver.conf", "boot/efi/EFI/proxmox/grubx64.efi", "root/.ssh/authorized_keys", "etc/sudoers.d/anker-restore", "etc/anker-host.json", "usr/local/lib/anker/anker-host", "etc/pam.d/sshd", "etc/nsswitch.conf"} {
 				m.Entries = append(m.Entries, Entry{Path: p, Type: "file"})
 			}
 			selected, err := recoverySelection(m, PlanRequest{Scenario: scenario})
@@ -216,7 +216,7 @@ func TestClusterNodePlanKeepsSharedStateAndLocalFilesManual(t *testing.T) {
 func TestFreshHostPlanPreservesIdentityWithoutAutomaticApproval(t *testing.T) {
 	source := Inventory{PVEVersion: "8.4", Details: map[string]json.RawMessage{"users": json.RawMessage(`{"0":"root"}`), "groups": json.RawMessage(`{"0":"root"}`)}}
 	target := Inventory{PVEVersion: "8.4", Details: map[string]json.RawMessage{"users": json.RawMessage(`{"0":"root"}`), "groups": json.RawMessage(`{"0":"root"}`), "file_hashes": json.RawMessage(`{}`), "file_metadata": json.RawMessage(`{}`)}}
-	s, b := recoverySetup(t, map[string]string{"etc/fstab": "UUID=source / ext4 defaults 0 1\n", "etc/sysctl.d/a.conf": "vm.swappiness=10\n"}, source, target)
+	s, b := recoverySetup(t, map[string]string{"etc/fstab": "UUID=source / ext4 defaults 0 1\n", "etc/modules": "source_driver\n", "etc/modules-load.d/driver.conf": "source_storage_driver\n", "etc/sysctl.d/a.conf": "vm.swappiness=10\n"}, source, target)
 	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: b.ID, TargetID: "target", Scenario: "host", SourceOffline: true})
 	if err != nil {
 		t.Fatal(err)
@@ -229,5 +229,10 @@ func TestFreshHostPlanPreservesIdentityWithoutAutomaticApproval(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(p.Manual, "\n"), "etc/fstab") {
 		t.Fatal("preservation reason missing from legacy plan guidance")
+	}
+	for _, path := range []string{"etc/modules", "etc/modules-load.d/driver.conf"} {
+		if !strings.Contains(strings.Join(p.Manual, "\n"), path) {
+			t.Errorf("target driver preservation reason missing: %s", path)
+		}
 	}
 }

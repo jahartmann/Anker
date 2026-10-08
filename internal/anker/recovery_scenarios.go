@@ -72,8 +72,10 @@ func scenarioPreservation(p, sourceNode, scenario string, situation RecoverySitu
 		return "Root-/Boot-/Swap-Zuordnung und Maschinenidentität der Zielinstallation erhalten"
 	case "etc/sudoers", "etc/anker-host.json", "etc/nsswitch.conf":
 		return "Funktionierenden SSH- und Wiederherstellungszugang der Zielinstallation erhalten"
+	case "etc/modules":
+		return "Bootloader, Zieltreiber und gerätespezifische Zielkonfiguration erhalten"
 	}
-	for _, prefix := range []string{"boot/", "etc/default/grub", "etc/grub.d/", "etc/kernel/", "etc/initramfs-tools/", "etc/modprobe.d/", "etc/udev/", "etc/zfs/"} {
+	for _, prefix := range []string{"boot/", "etc/default/grub", "etc/grub.d/", "etc/kernel/", "etc/initramfs-tools/", "etc/modprobe.d/", "etc/modules-load.d/", "etc/udev/", "etc/zfs/"} {
 		if strings.HasPrefix(p, prefix) {
 			return "Bootloader, Zieltreiber und gerätespezifische Zielkonfiguration erhalten"
 		}
