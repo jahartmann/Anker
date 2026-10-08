@@ -249,7 +249,9 @@ def recovery_storage_volumes(storage_id,deadline):
   for line in lines[1:]:
    if not line.strip():continue
    fields=line.split()
-   if len(fields)!=5 or not fields[0].startswith(storage_id+':') or not fields[0][len(storage_id)+1:] or not fields[3].isdigit() or not fields[4].isdigit():raise ValueError('invalid storage listing row')
+   # pvesm omits VMID for non-guest volumes; size may be unknown or approximate.
+   if len(fields) not in (4,5) or not fields[0].startswith(storage_id+':') or not fields[0][len(storage_id)+1:]:raise ValueError('invalid storage listing row')
+   if not re.fullmatch(r'(?:-|~?[0-9]+)',fields[3]) or (len(fields)==5 and not re.fullmatch(r'[0-9]+',fields[4])):raise ValueError('invalid storage listing row')
    volumes.append(fields[0])
   return {'state':'ok','volumes':sorted(set(volumes))}
  except subprocess.TimeoutExpired:return {'state':'failed','error':'storage listing timed out'}

@@ -135,4 +135,23 @@ class RecoveryReadTests(unittest.TestCase):
   with patch.object(h.os,'listxattr',return_value=['user.large'],create=True),patch.object(h.os,'getxattr',return_value=b'x'*(64*1024+1),create=True):entry=self.read(['etc/a'])['files'][0]
   self.assertEqual(entry['state'],'limit');self.assertNotIn('content',entry)
 
+ def test_storage_official_optional_vmid_and_size_forms(self):
+  real_popen=subprocess.Popen
+  fixtures=[
+   ('local:iso/debian.iso iso iso 123', ['local:iso/debian.iso']),
+   ('local:100/vm-100-disk-0.qcow2 qcow2 images - 100', ['local:100/vm-100-disk-0.qcow2']),
+   ('local:100/vm-100-disk-0.qcow2 qcow2 images ~123 100', ['local:100/vm-100-disk-0.qcow2']),
+   ('local:100/vm-100-disk-0.qcow2 qcow2 images 123 100\nlocal:iso/debian.iso iso iso -\nlocal:vztmpl/debian.tar.zst tgz vztmpl ~456', ['local:100/vm-100-disk-0.qcow2','local:iso/debian.iso','local:vztmpl/debian.tar.zst']),
+  ]
+  for rows,volumes in fixtures:
+   output='Volid Format Type Size VMID\n'+rows+'\n'
+   with self.subTest(rows=rows),patch.object(h.subprocess,'Popen',side_effect=lambda args,**kw:real_popen([h.sys.executable,'-c','print('+repr(output)+',end="")'],**kw)):
+    self.assertEqual(self.read([],['local'])['storage_volumes']['local'],{'state':'ok','volumes':volumes})
+ def test_storage_malformed_row_discards_complete_listing(self):
+  real_popen=subprocess.Popen
+  for row in ('other:iso/debian.iso iso iso 123','local: iso iso 123','local:iso/debian.iso iso iso','local:iso/debian.iso iso iso ~','local:iso/debian.iso iso iso -123','local:iso/debian.iso iso iso ~1x','local:iso/debian.iso iso iso 123 guest','local:iso/debian.iso iso iso 123 100 extra'):
+   output='Volid Format Type Size VMID\nlocal:100/vm-100-disk-0.qcow2 qcow2 images 123 100\n'+row+'\n'
+   with self.subTest(row=row),patch.object(h.subprocess,'Popen',side_effect=lambda args,**kw:real_popen([h.sys.executable,'-c','print('+repr(output)+',end="")'],**kw)):
+    entry=self.read([],['local'])['storage_volumes']['local'];self.assertEqual(entry['state'],'failed');self.assertNotIn('volumes',entry)
+
 if __name__=='__main__':unittest.main()
