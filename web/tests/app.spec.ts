@@ -1200,9 +1200,9 @@ test("backup queue and changed-file comparison use the service", async ({
   await page.getByLabel("Vergleich von").selectOption(backups[0].id);
   await page.getByLabel("Vergleich bis").selectOption(backups[1].id);
   await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "etc/sysctl.d/99-anker.conf",
-  );
+  await expect(
+    page.getByRole("region", { name: "Sicherungsvergleich" }),
+  ).toContainText("etc/sysctl.d/99-anker.conf");
 });
 
 test("removing a test host requires its name and keeps backups", async ({

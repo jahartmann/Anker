@@ -354,7 +354,7 @@ export default function App() {
                 canOperate={user.role !== "reader"}
               />
             )}{" "}
-            {page === "Sicherungen" && <Backups {...common} />}{" "}
+            {page === "Sicherungen" && <Backups {...common} user={user} />}{" "}
             {page === "Wiederherstellung" && (
               <Restore
                 key={restoreRequest?.sequence || "restore"}

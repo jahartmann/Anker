@@ -14,6 +14,8 @@ import {
 import { ChevronRight, File, Folder, Link, Search } from "lucide-react";
 import type { Notify } from "../components/shared";
 import ActiveJobs from "../components/ActiveJobs";
+import BackupComparison from "../components/BackupComparison";
+import type { ComparisonSelection } from "../components/BackupComparison";
 export function BackupTable({
   backups,
   notify,
@@ -23,6 +25,7 @@ export function BackupTable({
   canDownload = false,
   onRestore,
   filterKey = "",
+  onCompare,
 }: {
   backups: Backup[];
   notify: Notify;
@@ -32,6 +35,7 @@ export function BackupTable({
   canDownload?: boolean;
   onRestore: (id: string) => void;
   filterKey?: string;
+  onCompare?: (side: "from" | "to", id: string) => void;
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -131,6 +135,26 @@ export function BackupTable({
                       >
                         Dateien
                       </button>
+                      {onCompare && !canEdit && (
+                        <ActionMenu
+                          label={
+                            "Vergleich für " +
+                            b.host_name +
+                            " · " +
+                            date(b.created_at)
+                          }
+                          actions={[
+                            {
+                              label: "Als Ausgangsstand",
+                              run: () => onCompare("from", b.id),
+                            },
+                            {
+                              label: "Als Vergleichsstand",
+                              run: () => onCompare("to", b.id),
+                            },
+                          ]}
+                        />
+                      )}
                       {canEdit && (
                         <ActionMenu
                           label={
@@ -155,6 +179,18 @@ export function BackupTable({
                                 : "Stand schützen",
                               run: () => act(b, "pin"),
                             },
+                            ...(onCompare
+                              ? [
+                                  {
+                                    label: "Als Ausgangsstand",
+                                    run: () => onCompare("from", b.id),
+                                  },
+                                  {
+                                    label: "Als Vergleichsstand",
+                                    run: () => onCompare("to", b.id),
+                                  },
+                                ]
+                              : []),
                             ...(!b.archived
                               ? [
                                   {
@@ -203,9 +239,11 @@ export function BackupTable({
 export default function Backups({
   status,
   openJob,
+  user,
   ...props
 }: {
   status: Status;
+  user: User;
   notify: Notify;
   refresh: () => void;
   openBackup: (id: string) => void;
@@ -218,22 +256,8 @@ export default function Backups({
   const [query, setQuery] = useState("");
   const [state, setState] = useState("");
   const [protection, setProtection] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [diff, setDiff] = useState<
-    { path: string; change: string; secret: boolean; diff: string }[] | null
-  >(null);
-  const [busy, setBusy] = useState(false);
-  async function compare() {
-    setBusy(true);
-    try {
-      setDiff(await api("backups/diff", "POST", { from, to, path: "" }));
-    } catch (e) {
-      props.notify((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [comparisonSelection, setComparisonSelection] =
+    useState<ComparisonSelection>();
   const hostBackups = status.backups
     .filter((b) => !host || b.host_id === host)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -275,8 +299,6 @@ export default function Backups({
           value={host}
           onChange={(e) => {
             setHost(e.target.value);
-            setFrom("");
-            setTo("");
           }}
         >
           <option value="">Alle Hosts</option>
@@ -324,89 +346,27 @@ export default function Backups({
         </Empty>
       ) : (
         <BackupTable
+          onCompare={(side, id) =>
+            setComparisonSelection((current) => ({
+              side,
+              id,
+              sequence: (current?.sequence || 0) + 1,
+            }))
+          }
           filterKey={[host, query, state, protection].join("|")}
           backups={backups}
           {...props}
         />
       )}
-      <section className="detail-section">
-        <h3>Stände vergleichen</h3>
-        <p className="muted">
-          Dateiänderungen ansehen, bevor ein älterer Stand übernommen wird.
-        </p>
-        <div className="inline-form">
-          <select
-            aria-label="Vergleich von"
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              if (e.target.value === to) setTo("");
-            }}
-          >
-            <option value="">Älterer Stand</option>
-            {hostBackups.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.host_name} · {date(b.created_at)}
-              </option>
-            ))}
-          </select>
-          <span className="muted">→</span>
-          <select
-            aria-label="Vergleich bis"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          >
-            <option value="">Neuerer Stand</option>
-            {hostBackups
-              .filter((b) => b.id !== from)
-              .map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.host_name} · {date(b.created_at)}
-                </option>
-              ))}
-          </select>
-          <button
-            className="secondary"
-            disabled={!from || !to || from === to || busy}
-            onClick={compare}
-          >
-            {busy ? "Vergleicht …" : "Vergleichen"}
-          </button>
-        </div>
-      </section>
-      {diff && (
-        <Dialog
-          title="Änderungen zwischen den Ständen"
-          wide
-          onClose={() => setDiff(null)}
-        >
-          {diff.length ? (
-            diff.map((d) => (
-              <details className="file-diff" key={d.path}>
-                <summary>
-                  <span className="mono">{d.path}</span>
-                  <span className="muted">
-                    {{
-                      added: "Hinzugefügt",
-                      changed: "Geändert",
-                      removed: "Entfernt",
-                    }[d.change] || d.change}
-                  </span>
-                </summary>
-                <pre>
-                  {d.secret
-                    ? "Geschützter Inhalt"
-                    : d.diff || "Metadaten geändert"}
-                </pre>
-              </details>
-            ))
-          ) : (
-            <Empty title="Keine Unterschiede">
-              Die ausgewählten Dateien stimmen überein.
-            </Empty>
-          )}
-        </Dialog>
-      )}
+      <BackupComparison
+        backups={[...status.backups].sort((a, b) =>
+          b.created_at.localeCompare(a.created_at),
+        )}
+        user={user}
+        notify={props.notify}
+        onRestore={props.onRestore}
+        selection={comparisonSelection}
+      />
     </>
   );
 }

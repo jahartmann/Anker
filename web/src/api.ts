@@ -81,6 +81,50 @@ export interface Entry {
   secret: boolean;
   link?: string;
 }
+export interface FileDiff {
+  path: string;
+  change: "added" | "removed" | "changed";
+  secret: boolean;
+  content_changed: boolean;
+  metadata_changed: boolean;
+  mtime_changed: boolean;
+  mtime_only: boolean;
+}
+export interface MetadataChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+export interface DiffLine {
+  kind: "context" | "add" | "remove";
+  text: string;
+  before_line?: number;
+  after_line?: number;
+}
+export interface DiffHunk {
+  before_start: number;
+  after_start: number;
+  lines: DiffLine[];
+}
+export interface FileComparison {
+  path: string;
+  before_label: string;
+  after_label: string;
+  state:
+    | "identical"
+    | "different"
+    | "missing_before"
+    | "missing_after"
+    | "unavailable"
+    | "binary"
+    | "too_large"
+    | "masked";
+  content_changed: boolean;
+  metadata_changes: MetadataChange[];
+  hunks: DiffHunk[];
+  error?: string;
+  masked: boolean;
+}
 export interface Job {
   started_at?: string;
   trigger?: string;
