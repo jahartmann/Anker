@@ -130,11 +130,39 @@ type Job struct {
 	Error        string `json:"error,omitempty"`
 	Attempts     int    `json:"attempts"`
 }
+type RecoveryNetworkMapping struct {
+	AddressCIDR string   `json:"address_cidr"`
+	Gateway     string   `json:"gateway"`
+	DNSServers  []string `json:"dns_servers"`
+}
+type RecoveryEffect struct {
+	Path   string `json:"path"`
+	Field  string `json:"field"`
+	Before string `json:"before"`
+	After  string `json:"after"`
+	Reason string `json:"reason"`
+}
+type RecoveryTask struct {
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Title       string   `json:"title"`
+	Instruction string   `json:"instruction"`
+	Requires    []string `json:"requires"`
+	State       string   `json:"state"`
+	Evidence    string   `json:"evidence"`
+}
+type PreparedRecoveryFile struct {
+	Content     []byte           `json:"-"`
+	Destination string           `json:"destination"`
+	Effects     []RecoveryEffect `json:"effects"`
+	ManualTasks []RecoveryTask   `json:"manual_tasks"`
+}
 type Mapping struct {
-	Interfaces map[string]string `json:"interfaces"`
-	Storage    map[string]string `json:"storage"`
-	Hostname   string            `json:"hostname"`
-	Address    string            `json:"address"`
+	Network    map[string]RecoveryNetworkMapping `json:"network,omitempty"`
+	Interfaces map[string]string                 `json:"interfaces"`
+	Storage    map[string]string                 `json:"storage"`
+	Hostname   string                            `json:"hostname"`
+	Address    string                            `json:"address"`
 }
 type RecoverySituation string
 

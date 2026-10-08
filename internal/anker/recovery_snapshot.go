@@ -14,18 +14,20 @@ import (
 )
 
 type RecoverySnapshot struct {
-	ID             string                          `json:"id"`
-	BackupID       string                          `json:"backup_id"`
-	TargetID       string                          `json:"target_id"`
-	Situation      RecoverySituation               `json:"situation"`
-	Scenario       string                          `json:"scenario"`
-	SelectionHash  string                          `json:"selection_hash"`
-	CapturedAt     string                          `json:"captured_at"`
-	ExpiresAt      string                          `json:"expires_at"`
-	Target         Inventory                       `json:"target"`
-	ConnectionSHA  string                          `json:"connection_sha"`
-	Files          []RecoveryReadFile              `json:"files"`
-	StorageVolumes map[string]RecoveryVolumeResult `json:"storage_volumes"`
+	Source              Inventory                       `json:"-"`
+	SourceStorageConfig []byte                          `json:"-"`
+	ID                  string                          `json:"id"`
+	BackupID            string                          `json:"backup_id"`
+	TargetID            string                          `json:"target_id"`
+	Situation           RecoverySituation               `json:"situation"`
+	Scenario            string                          `json:"scenario"`
+	SelectionHash       string                          `json:"selection_hash"`
+	CapturedAt          string                          `json:"captured_at"`
+	ExpiresAt           string                          `json:"expires_at"`
+	Target              Inventory                       `json:"target"`
+	ConnectionSHA       string                          `json:"connection_sha"`
+	Files               []RecoveryReadFile              `json:"files"`
+	StorageVolumes      map[string]RecoveryVolumeResult `json:"storage_volumes"`
 }
 type recoverySnapshotRecord struct {
 	ID        string `json:"id"`
@@ -416,6 +418,17 @@ func readSnapshotBytes(path string, limit int64) ([]byte, error) {
 	return bytes, nil
 }
 func (s *Service) LoadRecoverySnapshot(id string, r PlanRequest) (RecoverySnapshot, error) {
+	release, err := s.readableLease(r.BackupID)
+	if err != nil {
+		return RecoverySnapshot{}, err
+	}
+	defer release()
+	return s.loadRecoverySnapshotUnlocked(id, r)
+}
+
+// loadRecoverySnapshotUnlocked requires the caller's readable backup lease.
+// Source context is reloaded from the immutable verified backup, never JSON input.
+func (s *Service) loadRecoverySnapshotUnlocked(id string, r PlanRequest) (RecoverySnapshot, error) {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
 	snapshot, err := s.loadRecoverySnapshotLocked(id)
@@ -424,6 +437,9 @@ func (s *Service) LoadRecoverySnapshot(id string, r PlanRequest) (RecoverySnapsh
 	}
 	if snapshot.BackupID != r.BackupID || snapshot.TargetID != r.TargetID || snapshot.Scenario != r.Scenario {
 		return RecoverySnapshot{}, errors.New("Aufnahme gehört zu anderem Wiederherstellungskontext")
+	}
+	if err = s.checkBackupUnlocked(r.BackupID); err != nil {
+		return RecoverySnapshot{}, err
 	}
 	m, err := s.Manifest(r.BackupID)
 	if err != nil {
@@ -435,6 +451,21 @@ func (s *Service) LoadRecoverySnapshot(id string, r PlanRequest) (RecoverySnapsh
 	}
 	if snapshot.SelectionHash != selectionSHA(selection, r) {
 		return RecoverySnapshot{}, errors.New("Dateiauswahl wurde geändert; Vergleich wiederholen")
+	}
+	snapshot.Source = m.Inventory
+	for _, e := range m.Entries {
+		if e.Path != "etc/pve/storage.cfg" {
+			continue
+		}
+		if e.Type != "file" {
+			break
+		}
+		content, _, readErr := s.readFileUnlocked(r.BackupID, e.Path, 64<<20)
+		if readErr != nil {
+			return RecoverySnapshot{}, readErr
+		}
+		snapshot.SourceStorageConfig = append([]byte{}, content...)
+		break
 	}
 	return snapshot, nil
 }

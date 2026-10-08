@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -17,12 +18,26 @@ type RecoveryPort struct {
 	Reason    string `json:"reason"`
 	Suggested string `json:"suggested"`
 }
+type RecoveryStorageBacking struct {
+	Path      string `json:"path,omitempty"`
+	Pool      string `json:"pool,omitempty"`
+	VG        string `json:"vg,omitempty"`
+	ThinPool  string `json:"thin_pool,omitempty"`
+	Server    string `json:"server,omitempty"`
+	Export    string `json:"export,omitempty"`
+	Datastore string `json:"datastore,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
 type RecoveryStorage struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Path      string `json:"path"`
-	Reason    string `json:"reason"`
-	Suggested string `json:"suggested"`
+	Backing   RecoveryStorageBacking `json:"backing"`
+	Content   []string               `json:"content,omitempty"`
+	Nodes     []string               `json:"nodes,omitempty"`
+	Verified  bool                   `json:"verified"`
+	ID        string                 `json:"id"`
+	Kind      string                 `json:"kind"`
+	Path      string                 `json:"path"`
+	Reason    string                 `json:"reason"`
+	Suggested string                 `json:"suggested"`
 }
 type RecoveryInspection struct {
 	Files                 []RecoveryReadFile              `json:"files"`
@@ -152,7 +167,7 @@ func networkReferences(files map[string]string, source Inventory) ([]string, []s
 				for _, n := range f[1:] {
 					refs[n] = true
 				}
-			case "bridge-ports", "bond-slaves", "bond-ports", "vlan-raw-device":
+			case "bridge-ports", "bond-slaves", "bond-ports", "bond-primary", "vlan-raw-device":
 				for _, n := range f[1:] {
 					if n != "none" {
 						refs[n] = true
@@ -216,34 +231,112 @@ func networkReferences(files map[string]string, source Inventory) ([]string, []s
 	sort.Strings(issues)
 	return names, issues
 }
+
+// Only explicit backend fields establish identity; display Path is never evidence.
 func storageDefinitions(data string) []RecoveryStorage {
 	out := []RecoveryStorage{}
 	var cur *RecoveryStorage
+	seen := map[string]bool{}
+	properties := map[string]bool{}
 	for _, line := range strings.Split(data, "\n") {
-		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
-		f := strings.Fields(line)
-		if len(f) == 0 {
+		code, _ := codeComment(line)
+		fields := strings.Fields(code)
+		if len(fields) == 0 {
 			continue
 		}
-		if strings.HasSuffix(f[0], ":") && len(f) == 2 {
-			out = append(out, RecoveryStorage{ID: f[1], Kind: strings.TrimSuffix(f[0], ":"), Reason: "Konfigurierte Storage-ID; Bestand und Zugriff manuell prüfen"})
+		if len(fields) == 2 && strings.HasSuffix(fields[0], ":") {
+			id := fields[1]
+			out = append(out, RecoveryStorage{ID: id, Kind: strings.TrimSuffix(fields[0], ":"), Verified: recoveryStorageID.MatchString(id) && !seen[id], Reason: "Konfigurierte Storage-ID; Backing und konkreten Bestand getrennt prüfen"})
 			cur = &out[len(out)-1]
+			if seen[id] {
+				for i := range out {
+					if out[i].ID == id {
+						out[i].Verified = false
+					}
+				}
+			}
+			seen[id] = true
+			properties = map[string]bool{}
 			continue
 		}
-		if cur != nil && len(f) > 1 {
-			switch f[0] {
-			case "path", "pool", "vgname", "server", "monhost":
-				if cur.Path != "" {
-					cur.Path += "; "
-				}
-				cur.Path += strings.Join(f[1:], " ")
+		if cur == nil {
+			continue
+		}
+		if len(fields) < 2 || properties[fields[0]] {
+			cur.Verified = false
+			continue
+		}
+		properties[fields[0]] = true
+		value := strings.Join(fields[1:], " ")
+		switch fields[0] {
+		case "path":
+			cur.Backing.Path = value
+		case "pool":
+			cur.Backing.Pool = value
+		case "vgname":
+			cur.Backing.VG = value
+		case "thinpool":
+			cur.Backing.ThinPool = value
+		case "server":
+			cur.Backing.Server = value
+		case "export":
+			cur.Backing.Export = value
+		case "datastore":
+			cur.Backing.Datastore = value
+		case "namespace":
+			cur.Backing.Namespace = value
+		case "content":
+			cur.Content = splitStorageList(value)
+		case "nodes":
+			cur.Nodes = splitStorageList(value)
+		case "disable":
+			if value != "0" {
+				cur.Verified = false
+			}
+		case "shared", "sparse", "is_mountpoint", "maxfiles", "prune-backups", "options", "username", "fingerprint", "encryption-key", "master-pubkey", "password", "format", "bwlimit", "preallocation", "mkdir", "comkr", "krbd":
+			// Operational/access options are not a backing identity. Secrets stay out of this summary.
+		default:
+			cur.Verified = false
+		}
+	}
+	for i := range out {
+		d := &out[i]
+		parts := []string{}
+		for _, v := range []string{d.Backing.Path, d.Backing.Pool, d.Backing.VG, d.Backing.Server} {
+			if v != "" {
+				parts = append(parts, v)
 			}
 		}
+		d.Path = strings.Join(parts, "; ")
+		d.Verified = d.Verified && completeStorageBacking(*d)
 	}
 	return out
 }
-
-var volumeReference = regexp.MustCompile(`(?:^|[\s,=])([a-zA-Z][a-zA-Z0-9_.-]*):[^\s,]+`)
+func splitStorageList(value string) []string {
+	values := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	sort.Strings(values)
+	return values
+}
+func completeStorageBacking(d RecoveryStorage) bool {
+	switch d.Kind {
+	case "dir":
+		return d.Backing.Path != ""
+	case "zfspool":
+		return d.Backing.Pool != ""
+	case "lvm":
+		return d.Backing.VG != ""
+	case "lvmthin":
+		return d.Backing.VG != "" && d.Backing.ThinPool != ""
+	case "nfs":
+		return d.Backing.Server != "" && d.Backing.Export != ""
+	case "pbs":
+		return d.Backing.Server != "" && d.Backing.Datastore != ""
+	}
+	return false
+}
+func matchingStorageBacking(a, b RecoveryStorage) bool {
+	return a.Verified && b.Verified && a.Kind == b.Kind && reflect.DeepEqual(a.Backing, b.Backing)
+}
 
 func targetStorages(i Inventory) []RecoveryStorage {
 	var definitions []RecoveryStorage
@@ -390,8 +483,8 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 				selectedStorage = true
 			}
 			if strings.Contains(e.Path, "/qemu-server/") || strings.Contains(e.Path, "/lxc/") {
-				for _, match := range volumeReference.FindAllStringSubmatch(string(data), -1) {
-					usedStorage[match[1]] = e.Path
+				for _, id := range guestStorageReferences(string(data)) {
+					usedStorage[id] = e.Path
 				}
 			}
 			if e.Path == "etc/fstab" {
@@ -506,16 +599,26 @@ func validateRecoveryMapping(i RecoveryInspection, r PlanRequest) (map[string]st
 			blockers = append(blockers, "Nicht benötigte oder unbekannte Netzwerkzuordnung: "+name)
 		}
 	}
+	targetStorage := map[string]bool{}
+	for _, d := range i.TargetStorage {
+		targetStorage[d.ID] = true
+	}
 	storage := map[string]bool{}
 	for _, d := range i.Storage {
 		storage[d.ID] = true
 	}
 	for id, value := range r.Mapping.Storage {
-		if !storage[id] || strings.TrimSpace(value) == "" {
+		if !storage[id] || strings.TrimSpace(value) == "" || (value != "manual" && !targetStorage[value]) {
 			blockers = append(blockers, "Unbekannte oder leere Storage-Entscheidung: "+id)
 			continue
 		}
 		manual = append(manual, fmt.Sprintf("Storage %s → %s: manuelle Entscheidung; wird nicht automatisch umgesetzt", id, value))
+	}
+	for key, value := range r.Mapping.Network {
+		if err := validateNetworkValue(value); err != nil {
+			blockers = append(blockers, "Netzwerk-Stanza "+key+": "+err.Error())
+		}
+		manual = append(manual, "Netzwerk-Stanza "+key+": gezielt vorbereiten und über Konsole prüfen")
 	}
 	if r.Mapping.Hostname != "" {
 		manual = append(manual, "Hostidentität "+i.Source.Hostname+" → "+r.Mapping.Hostname+": manuelle Entscheidung; Configs und Clusteridentität gezielt prüfen und manuell umsetzen")

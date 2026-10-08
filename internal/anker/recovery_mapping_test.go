@@ -318,3 +318,14 @@ func TestNetworkMappingDoesNotRewriteDNSCommentsOrHookCommands(t *testing.T) {
 		t.Fatal("port references not prepared")
 	}
 }
+
+func TestGuestReferenceAnalysisIgnoresForeignText(t *testing.T) {
+	s, b := recoverySetup(t, map[string]string{"etc/pve/storage.cfg": "dir: old\n path /srv/data\n", "etc/pve/qemu-server/100.conf": "description: fake:example\n# comment: other:value\nscsi0: old:vm-100-disk-0,size=8G\n"}, Inventory{PVEVersion: "8.4"}, Inventory{PVEVersion: "8.4"})
+	i, err := s.InspectRecovery(t.Context(), PlanRequest{BackupID: b.ID, TargetID: "target", Scenario: "files", Files: []string{"etc/pve/qemu-server/100.conf"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(i.Storage) != 1 || i.Storage[0].ID != "old" {
+		t.Fatalf("foreign text created storage requirements: %+v", i.Storage)
+	}
+}

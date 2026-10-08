@@ -398,3 +398,74 @@ func TestRecoverySnapshotInspectionExposesStatesWithoutContents(t *testing.T) {
 		}
 	}
 }
+
+func TestRecoverySnapshotSourceContextVerifiedAndPrivate(t *testing.T) {
+	s, api, r := snapshotSetup(t)
+	i, err := api.CaptureRecovery(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := api.LoadRecoverySnapshot(i.SnapshotID, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Source.PVEVersion != "8.4" || snap.SourceStorageConfig != nil {
+		t.Fatalf("missing source context or absent config invented: %+v", snap.Source)
+	}
+	snap.Source.Hostname = "private-source-hostname"
+	snap.SourceStorageConfig = []byte("private-source-storage")
+	raw, _ := json.Marshal(snap)
+	if strings.Contains(string(raw), "private-source-") {
+		t.Fatal("ephemeral source context serialized")
+	}
+	b, err := s.Backup(r.BackupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(s.backupDir(b), "files", r.Files[0]), []byte("tampered"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = api.LoadRecoverySnapshot(i.SnapshotID, r); err == nil {
+		t.Fatal("tampered source backup accepted for preparation")
+	}
+}
+
+func TestRecoverySnapshotLoadsAuthoritativeSourceStorage(t *testing.T) {
+	for _, config := range []string{"", "dir: source\n path /srv/source\n password private-source-secret\n"} {
+		t.Run(map[bool]string{true: "empty", false: "present"}[config == ""], func(t *testing.T) {
+			s, _, r := snapshotSetup(t)
+			target := s.Collector.(snapshotCollector)
+			s.Collector = recoveryFixture{content: map[string]string{r.Files[0]: "new\n", "etc/pve/storage.cfg": config}, source: Inventory{Hostname: "source", PVEVersion: "8.4"}}
+			b, err := s.CreateBackup(t.Context(), "host1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.BackupID = b.ID
+			s.Collector = target
+			i, err := s.CaptureRecovery(t.Context(), r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap, err := s.LoadRecoverySnapshot(i.SnapshotID, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if snap.SourceStorageConfig == nil || string(snap.SourceStorageConfig) != config || snap.Source.Hostname != "source" {
+				t.Fatal("authoritative source config not loaded (empty must differ from absent)")
+			}
+			raw, err := os.ReadFile(filepath.Join(s.Root, "recovery-inspections", i.SnapshotID, "snapshot.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), "private-source-secret") {
+				t.Fatal("source credentials in snapshot metadata")
+			}
+			if err = os.WriteFile(filepath.Join(s.backupDir(b), "files/etc/pve/storage.cfg"), []byte("changed"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.LoadRecoverySnapshot(i.SnapshotID, r); err == nil {
+				t.Fatal("tampered source storage accepted")
+			}
+		})
+	}
+}
