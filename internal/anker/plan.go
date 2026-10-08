@@ -128,17 +128,72 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if _, err := recoverySituation(r.Scenario); err != nil {
 		return Plan{}, err
 	}
+	selection, err := scenarioSelection(m, r)
+	if err != nil {
+		return Plan{}, err
+	}
+	var snapshot RecoverySnapshot
+	if r.SnapshotID == "" {
+		captured, captureErr := s.captureRecoveryUnlocked(ctx, r)
+		if captureErr != nil {
+			return Plan{}, captureErr
+		}
+		r.SnapshotID = captured.SnapshotID
+	}
+	if r.SnapshotID != "" {
+		snapshot, err = s.loadRecoverySnapshotUnlocked(r.SnapshotID, r)
+		if err != nil {
+			return Plan{}, err
+		}
+	} else {
+		snapshot.Source = m.Inventory
+	}
 	target, err := s.Collector.Probe(ctx, h)
 	if err != nil {
 		return Plan{}, err
 	}
 	target.Fingerprint = Fingerprint(target)
-	inspection, err := s.analyzeRecovery(b, m, target, r)
-	if err != nil {
-		return Plan{}, err
+	if snapshot.ID == "" {
+		snapshot.Target = target
 	}
-	resolvedPorts, mappingBlockers, mappingManual := validateRecoveryMapping(inspection, r)
-	p := Plan{ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	evidencePaths, evidenceDecisions := planEvidenceSelection(snapshot, r, selection)
+	if snapshot.ID != "" && recoveryPlanFingerprint(target, evidencePaths, evidenceDecisions) != recoveryPlanFingerprint(snapshot.Target, evidencePaths, evidenceDecisions) {
+		return Plan{}, errors.New("Ziel hat sich seit dem Vergleich geändert; Vergleich wiederholen")
+	}
+	if snapshot.ID != "" {
+		current, hostErr := s.Host(r.TargetID)
+		if hostErr != nil {
+			return Plan{}, hostErr
+		}
+		connection, connectionErr := s.recoveryConnectionSHA(current)
+		if connectionErr != nil {
+			return Plan{}, connectionErr
+		}
+		if connection != snapshot.ConnectionSHA {
+			return Plan{}, errors.New("Zielverbindung während Planung geändert")
+		}
+	}
+	analysisRequest := r
+	analysisRequest.Files = []string{}
+	for _, path := range selection.Paths {
+		if r.Decisions[path] != DecisionKeep {
+			analysisRequest.Files = append(analysisRequest.Files, path)
+		}
+	}
+	inspection := RecoveryInspection{Source: m.Inventory, Target: target}
+	if len(analysisRequest.Files) > 0 {
+		inspection, err = s.analyzeRecovery(b, m, target, analysisRequest)
+		if err != nil {
+			return Plan{}, err
+		}
+	} else {
+		analysisRequest.Mapping = Mapping{}
+	}
+	resolvedPorts, mappingBlockers, mappingManual := validateRecoveryMapping(inspection, analysisRequest)
+	p := Plan{SchemaVersion: 2, TargetSnapshotID: snapshot.ID, Decisions: map[string]FileDecision{}, Tasks: []RecoveryTask{}, ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	if snapshot.ID != "" {
+		p.Target = snapshot.Target
+	}
 	p.Blockers = append(p.Blockers, inspection.Blockers...)
 	p.Blockers = append(p.Blockers, mappingBlockers...)
 	p.Manual = append(p.Manual, inspection.Manual...)
@@ -172,9 +227,20 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	case "version":
 		p.Manual = append(p.Manual, "Versionsmigration und In-place-Upgrade sind unterschiedliche Abläufe; den offiziell unterstützten Pfad und Vorprüfungen verwenden.")
 	}
-	selected, err := recoverySelection(m, r)
-	if err != nil {
-		return p, err
+	p.Preserved = append([]RecoveryPreservation{}, selection.Preserved...)
+	selected := map[string]bool{}
+	for _, path := range selection.Paths {
+		selected[path] = true
+	}
+	for path, decision := range r.Decisions {
+		if !selected[path] {
+			return p, errors.New("Entscheidung für nicht ausgewählte oder zu erhaltende Datei")
+		}
+		switch decision {
+		case DecisionBackup, DecisionPrepared, DecisionKeep, DecisionManual:
+		default:
+			return p, errors.New("unbekannte Dateientscheidung")
+		}
 	}
 	root := filepath.Join(s.Root, "plans", p.ID)
 	if err = os.MkdirAll(filepath.Join(root, "prepared-files"), 0700); err != nil {
@@ -186,7 +252,17 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 			os.RemoveAll(root)
 		}
 	}()
-	targetHashes := fileHashes(target)
+	if snapshot.ID != "" {
+		p.TargetSnapshotSHA, err = copyPlanSnapshot(root, snapshot)
+		if err != nil {
+			return p, err
+		}
+	}
+	beforeFiles := map[string]RecoveryReadFile{}
+	for _, f := range snapshot.Files {
+		beforeFiles[f.Path] = f
+	}
+
 	count := 0
 	targetData, _ := json.Marshal(target)
 	requestBytes := len(targetData) + (1 << 20)
@@ -198,49 +274,75 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 			continue
 		}
 		delete(selected, e.Path)
-		step := Step{Path: e.Path, Action: "apply", Secret: e.Secret}
-		data, fileEntry, readErr := s.readFileUnlocked(b.ID, e.Path, 64<<20)
-		if readErr != nil {
-			return p, readErr
+		decision := r.Decisions[e.Path]
+		if decision == "" {
+			decision = DecisionManual
 		}
-		step.Secret = step.Secret || fileEntry.Secret
-		prepared := data
-		if reason := fileManualReason(e, m.Inventory, target); reason != "" {
-			step.Action = "manual"
-			step.Reason = reason
+		before := beforeFiles[e.Path]
+		step := Step{Path: e.Path, Destination: e.Path, Decision: decision, Action: "manual", Secret: e.Secret || isSecret(e.Path), ComparisonState: "unavailable"}
+		if before.Metadata != nil {
+			step.Secret = step.Secret || before.Metadata.Secret || secretContent(before.Content)
 		}
-		if strings.HasPrefix(e.Path, "etc/network/") {
-			mapped, missing := mapNetwork(string(data), m.Inventory, target, Mapping{Interfaces: resolvedPorts})
-			prepared = []byte(mapped)
-			p.Blockers = append(p.Blockers, missing...)
-			if !r.ConsoleConfirmed {
-				p.Blockers = append(p.Blockers, "Für Netzwerkänderungen Konsolenzugang bestätigen")
+		if decision == DecisionKeep {
+			original, _, readErr := s.readFileUnlocked(b.ID, e.Path, 64<<20)
+			if readErr != nil {
+				return p, readErr
 			}
-			step.Action = "manual"
-			step.Reason = "Netzwerkdatei vorbereitet; Aktivierung manuell über Konsole, lokaler Rückfallwächter fehlt"
+			step.ComparisonState = planComparisonState(e, original, before)
+			step.Action, step.Reason = "keep", "Ziel behalten; ausdrücklich keine Übernahme"
+		} else {
+			data, fileEntry, readErr := s.readFileUnlocked(b.ID, e.Path, 64<<20)
+			if readErr != nil {
+				return p, readErr
+			}
+			step.Secret = step.Secret || fileEntry.Secret
+			prepared := PreparedRecoveryFile{Content: data, Destination: e.Path}
+			if decision != DecisionBackup {
+				prepared, err = prepareRecoveryFile(e, data, snapshot, p.Mapping, r.Scenario)
+				if err != nil {
+					return p, err
+				}
+			}
+			step.Destination, step.Effects = prepared.Destination, prepared.Effects
+			step.ComparisonState = planComparisonState(e, prepared.Content, before)
+			if step.ComparisonState == "identical" {
+				step.Action, step.Decision, step.Reason = "keep", DecisionKeep, "Inhalt und Metadaten identisch; Ziel behalten"
+			} else {
+				p.Tasks = append(p.Tasks, prepared.ManualTasks...)
+				step.Reason = fileManualReason(e, m.Inventory, target)
+				if step.Reason == "" && decision != DecisionManual && snapshot.ID != "" && (before.State == "read" || before.State == "missing") && len(prepared.ManualTasks) == 0 {
+					step.Action = "apply"
+					step.BeforeSHA = before.SHA256
+					if before.State == "missing" {
+						step.BeforeSHA = "missing"
+					}
+					count++
+					requestBytes += 4*((len(prepared.Content)+2)/3) + 4096
+				} else if step.Reason == "" {
+					step.Reason = "Manuelle Entscheidung oder ungeprüfte Voraussetzungen; keine automatische Übernahme"
+				}
+				if e.Type == "file" {
+					step.PreparedSHA = Hash(prepared.Content)
+					full, joinErr := safeJoin(filepath.Join(root, "prepared-files"), e.Path)
+					if joinErr != nil {
+						return p, joinErr
+					}
+					if err = atomicWrite(full, prepared.Content, 0600); err != nil {
+						return p, err
+					}
+				}
+			}
 		}
-		if step.Action == "apply" {
-			requestBytes += 4*((len(prepared)+2)/3) + 4096
-			if target.Details["file_hashes"] == nil {
-				p.Blockers = append(p.Blockers, "Ziel liefert keine Dateiprüfsummen für sichere Vorbedingungen")
-			}
-			step.BeforeSHA = targetHashes[e.Path]
-			if step.BeforeSHA == "" {
-				step.BeforeSHA = "missing"
-			}
-			count++
+		if step.Action == "keep" {
+			p.Preserved = append(p.Preserved, RecoveryPreservation{Path: e.Path, Reason: step.Reason})
 		}
-		if e.Type == "file" {
-			step.PreparedSHA = Hash(prepared)
-			step.Diff = lineDiff(string(data), string(prepared))
-			full, err := safeJoin(filepath.Join(root, "prepared-files"), e.Path)
-			if err != nil {
-				return p, err
-			}
-			if err = atomicWrite(full, prepared, 0600); err != nil {
-				return p, err
+		if step.Secret {
+			for i := range step.Effects {
+				step.Effects[i].Before = "[Verdeckter Inhalt]"
+				step.Effects[i].After = "[Verdeckter Inhalt]"
 			}
 		}
+		p.Decisions[e.Path] = step.Decision
 		p.Steps = append(p.Steps, step)
 	}
 	if len(selected) > 0 {
@@ -249,6 +351,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if requestBytes > 32<<20 {
 		p.Blockers = append(p.Blockers, "Dateiauswahl überschreitet das 32-MiB-Limit des Hostprotokolls. Kleinere Einzeldateipläne erstellen oder Dateien manuell herunterladen und übernehmen.")
 	}
+	p.Tasks = append(p.Tasks, operationRecoveryTasks(p.Tasks)...)
 	sort.Slice(p.Steps, func(i, j int) bool { return p.Steps[i].Path < p.Steps[j].Path })
 	if count == 0 {
 		p.State = "manual"
@@ -294,6 +397,20 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	return p, nil
 }
 func (s *Service) savePlan(p Plan) error {
+	if p.SchemaVersion == 2 {
+		root := filepath.Join(s.Root, "plans", p.ID)
+		raw, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+		if err != nil {
+			return err
+		}
+		var m Manifest
+		if err = json.Unmarshal(raw, &m); err != nil {
+			return err
+		}
+		if err = atomicWrite(filepath.Join(root, "WIEDERHERSTELLUNG.md"), []byte(planGuide(p, m)), 0600); err != nil {
+			return err
+		}
+	}
 	if err := writeJSON(filepath.Join(s.Root, "plans", p.ID, "plan.json"), p); err != nil {
 		return err
 	}
@@ -302,7 +419,7 @@ func (s *Service) savePlan(p Plan) error {
 func planGuide(p Plan, m Manifest) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# Zielbezogene Wiederherstellung\n\nPlan %s · Szenario %s · Status %s\n\nQuelle %s (%s) → Ziel %s (%s)\n\n", p.ID, p.Scenario, p.State, p.Source.Hostname, p.Source.PVEVersion, p.Target.Hostname, p.Target.PVEVersion))
-	b.WriteString("Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Ausführung und Rücksetzung\n\nBetroffene Dienste und fremde Schreiber vor Übernahme anhalten. Der Host speichert journal.json unter /var/lib/anker-host/rollback/" + p.ID + "/. Nach Abbruch Hostzustand abgleichen und nicht blind erneut anwenden. Rücksetzung benötigt eine separate Plan-ID-Bestätigung und erhält Fremdänderungen. Netzwerkdateien nur manuell mit Konsolenzugang und geprüftem Rückweg übernehmen.\n\n## Haltepunkte\n\n")
+	b.WriteString("target-before/ enthält ausschließlich private Zielnachweise; target-snapshot.json dokumentiert deren Metadaten und Prüfsummen. Ausgeschlossene Quellconfigs sind ausschließlich Originalreferenzen im original/-Export und keine Übernahmeempfehlung. Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Ausführung und Rücksetzung\n\nBetroffene Dienste und fremde Schreiber vor Übernahme anhalten. Der Host speichert journal.json unter /var/lib/anker-host/rollback/" + p.ID + "/. Nach Abbruch Hostzustand abgleichen und nicht blind erneut anwenden. Rücksetzung benötigt eine separate Plan-ID-Bestätigung und erhält Fremdänderungen. Netzwerkdateien nur manuell mit Konsolenzugang und geprüftem Rückweg übernehmen.\n\n## Haltepunkte\n\n")
 	for _, x := range p.Blockers {
 		b.WriteString("- " + x + "\n")
 	}
@@ -312,6 +429,18 @@ func planGuide(p Plan, m Manifest) string {
 	b.WriteString("\n## Dateien\n\n")
 	for _, x := range p.Steps {
 		b.WriteString(fmt.Sprintf("- %s: %s. %s\n", x.Path, x.Action, x.Reason))
+	}
+	b.WriteString("\n## Erhaltene Zielbestandteile\n\n")
+	for _, x := range p.Preserved {
+		b.WriteString("- " + x.Path + ": " + x.Reason + "\n")
+	}
+	b.WriteString("\n## Geordnete Aufgaben\n\n")
+	for _, task := range p.Tasks {
+		state := task.State
+		if task.State == "user_confirmed" {
+			state = fmt.Sprintf("vom Benutzer bestätigt: %s, %s", task.ConfirmedBy, task.ConfirmedAt)
+		}
+		b.WriteString(fmt.Sprintf("- %s [%s]: %s. Voraussetzungen: %s. %s\n", task.ID, state, task.Title, strings.Join(task.Requires, ", "), task.Instruction))
 	}
 	b.WriteString("\nDie folgende Anleitung bezieht sich auf original/: dort checksums.sha256 prüfen und original-files/ für Dateien mit Originalmetadaten verwenden.\n\n" + recoveryGuide(m))
 	return b.String()
@@ -345,7 +474,7 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	}
 	tw := tar.NewWriter(w)
 	root := filepath.Join(s.Root, "plans", id)
-	if err = tarTree(tw, root); err != nil {
+	if err = tarPlanTree(tw, root); err != nil {
 		tw.Close()
 		return err
 	}
@@ -382,6 +511,11 @@ func (s *Service) verifyPlanFiles(p Plan) error {
 	}
 	if Hash(manifest) != b.ManifestSHA {
 		return errors.New("Planmanifest wurde verändert")
+	}
+	if p.SchemaVersion == 2 {
+		if _, err = s.loadPlanSnapshot(p); err != nil {
+			return err
+		}
 	}
 	for _, step := range p.Steps {
 		if step.PreparedSHA == "" {

@@ -36,7 +36,10 @@ func TestExplicitDemoStillSupportsReviewedOrdinaryFileRestore(t *testing.T) {
 			break
 		}
 	}
-	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: backup.ID, TargetID: "demo1", Scenario: "files", Files: []string{"etc/sysctl.d/99-anker.conf"}})
+	if err = os.WriteFile(filepath.Join(root, "demo-hosts", "demo1", "files/etc/sysctl.d/99-anker.conf"), []byte("vm.swappiness=9\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: backup.ID, TargetID: "demo1", Scenario: "files", Files: []string{"etc/sysctl.d/99-anker.conf"}, Decisions: map[string]FileDecision{"etc/sysctl.d/99-anker.conf": DecisionBackup}})
 	if err != nil || p.State != "ready" {
 		t.Fatalf("demo plan no longer usable: %s manual=%v err=%v", p.State, p.Manual, err)
 	}

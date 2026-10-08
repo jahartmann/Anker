@@ -221,8 +221,8 @@ func TestFreshHostPlanPreservesIdentityWithoutAutomaticApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Steps) != 1 || p.Steps[0].Path != "etc/sysctl.d/a.conf" || p.Steps[0].Action != "apply" {
-		t.Fatalf("preserved identity selected or ordinary file lacks write prerequisites: %+v", p.Steps)
+	if len(p.Steps) != 1 || p.Steps[0].Path != "etc/sysctl.d/a.conf" || p.Steps[0].Action != "manual" {
+		t.Fatalf("preserved identity selected or missing comparison/decision escalated: %+v", p.Steps)
 	}
 	if p.State != "manual" {
 		t.Fatalf("whole-host production scenario lacks manual approval guard: %s", p.State)

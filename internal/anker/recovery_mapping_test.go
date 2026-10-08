@@ -159,8 +159,8 @@ func TestRecoveryIdentityMetadataAndFingerprint(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if p.State != "ready" || p.Steps[0].Action != "apply" {
-		t.Fatalf("valid safe ordinary file not ready: %+v", p)
+	if p.State != "manual" || p.Steps[0].Action != "manual" {
+		t.Fatalf("file approved without content comparison/decision: %+v", p)
 	}
 	before := Fingerprint(target)
 	target.Details["file_metadata"] = json.RawMessage(`{"etc/sysctl.d/a.conf":{"type":"file","uid":99,"gid":0,"mode":384,"xattrs":{}}}`)

@@ -150,7 +150,12 @@ func (s *Service) CaptureRecovery(ctx context.Context, r PlanRequest) (RecoveryI
 		return RecoveryInspection{}, err
 	}
 	defer release()
-	if err = s.checkBackupUnlocked(r.BackupID); err != nil {
+	return s.captureRecoveryUnlocked(ctx, r)
+}
+
+// captureRecoveryUnlocked requires a readable backup lease.
+func (s *Service) captureRecoveryUnlocked(ctx context.Context, r PlanRequest) (RecoveryInspection, error) {
+	if err := s.checkBackupUnlocked(r.BackupID); err != nil {
 		return RecoveryInspection{}, err
 	}
 	b, err := s.Backup(r.BackupID)

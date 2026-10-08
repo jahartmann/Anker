@@ -20,15 +20,23 @@ type recoveryResultCollector struct {
 
 func recoveryTestInventory() Inventory {
 	return Inventory{Hostname: "pve-test", PVEVersion: "8.4", Details: map[string]json.RawMessage{
-		"file_hashes":   json.RawMessage(`{}`),
-		"file_metadata": json.RawMessage(`{}`),
-		"users":         json.RawMessage(`{"0":"root"}`),
-		"groups":        json.RawMessage(`{"0":"root"}`),
-		"capabilities":  json.RawMessage(`{"restore_protocol":2,"journal":true}`),
+		"file_hashes":     json.RawMessage(`{}`),
+		"file_metadata":   json.RawMessage(`{}`),
+		"users":           json.RawMessage(`{"0":"root"}`),
+		"groups":          json.RawMessage(`{"0":"root"}`),
+		"command_results": json.RawMessage(`{"file_inventory":{"state":"ok"},"pve_version":{"state":"ok"}}`),
+		"capabilities":    json.RawMessage(`{"restore_protocol":2,"journal":true}`),
 	}}
 }
 func (c *recoveryResultCollector) Probe(context.Context, Host) (Inventory, error) {
 	return recoveryTestInventory(), nil
+}
+func (c *recoveryResultCollector) ReadRecoveryFiles(_ context.Context, _ Host, paths, ids []string) (RecoveryReadResult, error) {
+	result := RecoveryReadResult{Files: []RecoveryReadFile{}, StorageVolumes: map[string]RecoveryVolumeResult{}}
+	for _, path := range paths {
+		result.Files = append(result.Files, RecoveryReadFile{Path: path, State: "missing"})
+	}
+	return result, nil
 }
 func (c *recoveryResultCollector) Collect(ctx context.Context, h Host, dest string) (Collection, error) {
 	if err := os.MkdirAll(filepath.Join(dest, "files/etc"), 0700); err != nil {
@@ -57,7 +65,7 @@ func recoveryReadyPlan(t *testing.T, c *recoveryResultCollector) (*Service, Plan
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: b.ID, TargetID: "host1", Scenario: "files", Files: []string{"etc/app.conf"}})
+	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: b.ID, TargetID: "host1", Scenario: "files", Files: []string{"etc/app.conf"}, Decisions: map[string]FileDecision{"etc/app.conf": DecisionBackup}})
 	if err != nil || p.State != "ready" {
 		t.Fatalf("plan: %+v %v", p, err)
 	}
@@ -130,7 +138,7 @@ func TestRestorePreservesHostEvidenceOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: b.ID, TargetID: "host1", Scenario: "files", Files: []string{"etc/app.conf"}})
+	p, err := s.CreatePlan(context.Background(), PlanRequest{BackupID: b.ID, TargetID: "host1", Scenario: "files", Files: []string{"etc/app.conf"}, Decisions: map[string]FileDecision{"etc/app.conf": DecisionBackup}})
 	if err != nil || p.State != "ready" {
 		t.Fatalf("ready plan: %s %v", p.State, err)
 	}

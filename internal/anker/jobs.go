@@ -138,7 +138,7 @@ func (s *Service) QueueApply(id, confirmation string) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	if p.State != "ready" || confirmation != id {
+	if p.SchemaVersion != 2 || len(p.Blockers) > 0 || p.State != "ready" || confirmation != id {
 		return Job{}, errors.New("geprüften Plan mit seiner ID bestätigen")
 	}
 	return s.queue(p.TargetID, "restore", func(ctx context.Context) (string, error) {

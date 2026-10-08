@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type recoveryJournalCollector interface {
@@ -176,4 +177,85 @@ func (s *Service) QueueRollback(id, confirmation string) (Job, error) {
 		p, err := s.RollbackPlan(ctx, id, confirmation)
 		return p.ID, err
 	})
+}
+
+// recoveryActorKey cannot be set by deserializing a request. HTTP/CLI adapters
+// supply their authenticated principal, never a caller-controlled actor field.
+type recoveryActorKey struct{}
+
+func WithRecoveryActor(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, recoveryActorKey{}, userID)
+}
+
+func operationRecoveryTasks(prerequisites []RecoveryTask) []RecoveryTask {
+	requires := []string{}
+	for _, task := range prerequisites {
+		requires = append(requires, task.ID)
+	}
+	return []RecoveryTask{
+		{ID: "check-services", Kind: "manual-check", Title: "Dienste prüfen", Instruction: "Übernommene Dateien und betroffene Dienste am Ziel prüfen; Ergebnis dokumentieren.", Requires: requires, State: "pending"},
+		{ID: "check-reachability", Kind: "manual-check", Title: "Erreichbarkeit prüfen", Instruction: "Den vorgesehenen Zielendpunkt und die unabhängig geprüfte Hostidentität prüfen.", Requires: []string{"check-services"}, State: "pending"},
+		{ID: "check-reboot", Kind: "manual-check", Title: "Neustart prüfen", Instruction: "Nach kontrolliertem Neustart Netzwerk, Storage und Gäste prüfen. Diese Benutzerbestätigung ist kein maschineller Neustartnachweis.", Requires: []string{"check-reachability"}, State: "pending"},
+	}
+}
+
+func (s *Service) ConfirmRecoveryTask(ctx context.Context, planID, taskID, userID, evidence string) (Plan, error) {
+	lock := s.planLock(planID)
+	lock.Lock()
+	defer lock.Unlock()
+	p, err := s.Plan(planID)
+	if err != nil {
+		return p, err
+	}
+	actor, _ := ctx.Value(recoveryActorKey{}).(string)
+	if actor == "" || actor != userID {
+		return p, errors.New("authentifizierte Benutzeridentität erforderlich")
+	}
+	if p.SchemaVersion != 2 || len(p.Blockers) > 0 {
+		return p, errors.New("Blocker oder alter Plan erlauben keine Aufgabenbestätigung")
+	}
+	if len(strings.TrimSpace(evidence)) == 0 || len(evidence) > 4096 {
+		return p, errors.New("konkreten Prüfnachweis bis 4096 Zeichen angeben")
+	}
+	if err = s.verifyPlanFiles(p); err != nil {
+		return p, err
+	}
+	index := -1
+	tasks := map[string]RecoveryTask{}
+	for i, task := range p.Tasks {
+		tasks[task.ID] = task
+		if task.ID == taskID {
+			index = i
+		}
+	}
+	if index < 0 {
+		return p, errors.New("unbekannte Wiederherstellungsaufgabe")
+	}
+	task := p.Tasks[index]
+	if task.State != "pending" {
+		return p, errors.New("Aufgabe bereits bestätigt oder nicht manuell bestätigbar")
+	}
+	// Machine evidence is never user-confirmable. Preparation tasks and explicit
+	// operational checks are manual attestations only.
+	switch task.Kind {
+	case "manual-check":
+		if p.State == "ready" || p.State == "applying" || p.State == "interrupted" || p.State == "failed" || p.State == "rolling_back" || p.State == "rollback_conflict" {
+			return p, errors.New("Dateiübernahme und Hostzustand zuerst klären")
+		}
+	case "backing", "bridge", "cluster", "file-type", "guest-collision", "guest-inventory", "guest-mac", "guest-node", "guest-syntax", "guest-volume", "hook", "hostname", "hostname-identity", "legacy-address", "mount", "network", "network-activation", "network-ambiguous", "network-field", "network-method", "network-netmask", "network-port-collision", "network-stanza", "network-syntax", "network-topology", "network-value", "pbs", "pci", "storage", "storage-content", "storage-nodes", "volume":
+	default:
+		return p, errors.New("Aufgabe ist nicht als manuelle Prüfung freigegeben")
+	}
+	for _, id := range task.Requires {
+		dependency, ok := tasks[id]
+		if !ok || dependency.State != "user_confirmed" {
+			return p, errors.New("Voraussetzungen zuerst prüfen und bestätigen")
+		}
+	}
+	p.Tasks[index].State = "user_confirmed"
+	p.Tasks[index].ConfirmedBy = actor
+	p.Tasks[index].ConfirmedAt = now()
+	p.Tasks[index].Evidence = evidence
+	// Preserve State/Result: human statements cannot grant apply or reboot proof.
+	return p, s.savePlan(p)
 }

@@ -19,6 +19,12 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	if confirmation != id {
 		return p, errors.New("Plan-ID als ausdrückliche Bestätigung erforderlich")
 	}
+	if p.SchemaVersion != 2 {
+		return p, errors.New("Alter Plan bleibt lesbar; für eine neue Übernahme Vergleich und Plan neu erstellen")
+	}
+	if len(p.Blockers) > 0 {
+		return p, errors.New("Plan hat ungeklärte Blocker")
+	}
 	if p.State != "ready" {
 		return p, errors.New("Plan ist nicht zur automatischen Ausführung freigegeben")
 	}
@@ -36,12 +42,39 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	if err != nil {
 		return p, err
 	}
+	snapshot, err := s.loadPlanSnapshot(p)
+	if err != nil {
+		return p, err
+	}
+	connection, err := s.recoveryConnectionSHA(h)
+	if err != nil {
+		return p, err
+	}
+	if connection != snapshot.ConnectionSHA {
+		return p, errors.New("Zielverbindung wurde geändert; Vergleich wiederholen")
+	}
 	inv, err := s.Collector.Probe(ctx, h)
 	if err != nil {
 		return p, err
 	}
-	if Fingerprint(inv) != p.Target.Fingerprint {
+	activePaths := []string{}
+	for _, step := range p.Steps {
+		if step.Action == "apply" {
+			activePaths = append(activePaths, step.Path)
+		}
+	}
+	if len(activePaths) == 0 {
+		return p, errors.New("Plan enthält keine freigegebenen Schreibaktionen")
+	}
+	if recoveryPlanFingerprint(inv, activePaths, nil) != recoveryPlanFingerprint(p.Target, activePaths, nil) {
 		return p, errors.New("Ziel hat sich seit der Planung geändert; Plan neu erstellen")
+	}
+	manifest, err := s.Manifest(p.BackupID)
+	if err != nil {
+		return p, err
+	}
+	if err = validateDecisionSteps(p, manifest, snapshot, inv); err != nil {
+		return p, err
 	}
 	if _, real := s.Collector.(SSHCollector); real {
 		var capability struct {
@@ -85,11 +118,25 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 			return p, errors.New("vorbereitete Datei wurde verändert")
 		}
 	}
+	current, err := s.Host(p.TargetID)
+	if err != nil {
+		return p, err
+	}
+	currentConnection, err := s.recoveryConnectionSHA(current)
+	if err != nil {
+		return p, err
+	}
+	if currentConnection != snapshot.ConnectionSHA {
+		return p, errors.New("Zielverbindung während Vorprüfung geändert; Vergleich wiederholen")
+	}
 	p.State = "applying"
 	if err = s.savePlan(p); err != nil {
 		return p, err
 	}
-	result, err := s.Collector.Apply(ctx, h, p, filepath.Join(s.Root, "plans", id))
+	helperPlan := p
+	helperPlan.Target = inv
+	helperPlan.Target.Fingerprint = Fingerprint(inv)
+	result, err := s.Collector.Apply(ctx, h, helperPlan, filepath.Join(s.Root, "plans", id))
 	if _, real := s.Collector.(SSHCollector); real && result.OperationID != "" {
 		if validationErr := validateHostResult(p, result); validationErr != nil {
 			result = ApplyResult{State: "interrupted", OperationID: p.ID, Error: validationErr.Error()}
