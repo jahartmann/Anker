@@ -2,7 +2,7 @@
 """Anker host envelope v1, hardened restore protocol v2. Install root-owned; stdin JSON, stdout JSON or tar.
 No daemon, no user-supplied commands, no shell interpolation.
 """
-import contextlib, fcntl, pwd, grp, re, errno, base64, hashlib, json, os, pathlib, shutil, socket, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
+import contextlib, fcntl, pwd, grp, re, errno, base64, hashlib, json, os, pathlib, shutil, socket, selectors, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_REQUEST = 32 * 1024 * 1024
@@ -61,7 +61,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
   'storage':run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
   'guests':run('guests',['qm','list']), 'containers':run('containers',['pct','list']), 'cluster':cluster,
   'pci':run('pci',['lspci','-nn']), 'boot':run('boot',['proxmox-boot-tool','status']),
-  'capabilities':{'restore_protocol':2,'journal':True}}
+  'capabilities':{'restore_protocol':2,'journal':True,'recovery_read_protocol':1}}
  if (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
  else:details['ceph']='';results['ceph']={'state':'not_applicable'}
  hashes={};metas={};walk_errors=[]
@@ -118,6 +118,173 @@ def entry_meta(p,rel):
  except (OSError,AttributeError) as exc:
   if not isinstance(exc,OSError) or exc.errno not in (errno.ENOTSUP,errno.EOPNOTSUPP):e['metadata_warning']=str(exc)
  return e
+
+RECOVERY_MAX_PATHS = 4096
+RECOVERY_MAX_FILE = 1024 * 1024
+RECOVERY_MAX_TOTAL = 8 * 1024 * 1024
+RECOVERY_MAX_METADATA = 8 * 1024 * 1024
+RECOVERY_MAX_STORAGE_IDS = 32
+RECOVERY_STORAGE_TIMEOUT = 20
+RECOVERY_MAX_STORAGE_OUTPUT = 1024 * 1024
+
+class RecoveryLimit(ValueError):
+ pass
+
+@contextlib.contextmanager
+def recovery_open(root_fd,path):
+ """Walk every component relative to pinned directories; never follow links."""
+ relative(path);fds=[];parent=root_fd
+ try:
+  parts=path.split('/')
+  for i,part in enumerate(parts):
+   flags=os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK
+   if i<len(parts)-1:flags|=os.O_DIRECTORY
+   parent=os.open(part,flags,dir_fd=parent);fds.append(parent)
+  yield parent
+ finally:
+  for fd in reversed(fds):os.close(fd)
+
+def recovery_stat(st):
+ return (st.st_dev,st.st_ino,st.st_mode,st.st_uid,st.st_gid,st.st_size,st.st_mtime_ns,st.st_ctime_ns,st.st_nlink)
+
+def recovery_metadata(fd,path):
+ st=os.fstat(fd);attrs={};size=0
+ try:
+  names=os.listxattr(fd)
+  if len(names)>256:raise RecoveryLimit('extended metadata limit exceeded')
+  for name in names:
+   value=os.getxattr(fd,name);size+=len(name.encode())+len(value)
+   if size>64*1024:raise RecoveryLimit('extended metadata limit exceeded')
+   attrs[name]=base64.b64encode(value).decode()
+ except OSError as exc:
+  if exc.errno not in (errno.ENOTSUP,errno.EOPNOTSUPP):raise
+ return {'path':path,'type':'file','mode':stat.S_IMODE(st.st_mode),'uid':st.st_uid,'gid':st.st_gid,'mtime':int(st.st_mtime),'size':st.st_size,'xattrs':attrs}
+
+def recovery_content(fd,limit):
+ chunks=[];size=0
+ while True:
+  data=os.read(fd,min(64*1024,limit+1-size))
+  if not data:return b''.join(chunks)
+  size+=len(data)
+  if size>limit:return None
+  chunks.append(data)
+
+def validate_host_profile(paths):
+ if not isinstance(paths,list):raise ValueError('invalid host profile paths')
+ normalized=[]
+ for path in paths:
+  if not isinstance(path,str) or not path.startswith('/') or '..' in path or path in ('/','/proc','/sys','/dev','/var/lib'):raise ValueError('invalid host profile path')
+  path=pathlib.PurePosixPath(path).as_posix()
+  if path in ('/','/proc','/sys','/dev','/var/lib'):raise ValueError('invalid host profile path')
+  relative(path[1:]);normalized.append(path)
+ return normalized
+
+def load_host_profile(root):
+ """Both collection and recovery read use this root-owned authority file."""
+ with contextlib.ExitStack() as stack:
+  root_fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);stack.callback(os.close,root_fd)
+  try:fd=stack.enter_context(recovery_open(root_fd,'etc/anker-host.json'))
+  except FileNotFoundError:return ['/etc','/usr/local']
+  before=os.fstat(fd)
+  if not stat.S_ISREG(before.st_mode) or before.st_uid!=0 or stat.S_IMODE(before.st_mode)&0o022:raise ValueError('host profile must be root-owned and not writable by others')
+  raw=recovery_content(fd,64*1024)
+  if raw is None:raise ValueError('host profile too large')
+  if recovery_stat(before)!=recovery_stat(os.fstat(fd)):raise ValueError('host profile changed during read')
+  cfg=json.loads(raw)
+  if not isinstance(cfg,dict):raise ValueError('invalid host profile')
+  return validate_host_profile(cfg.get('paths',['/etc','/usr/local']))
+
+def read_recovery_file(root_fd,path,remaining):
+ result={'path':path};opened=False
+ try:
+  with recovery_open(root_fd,path) as fd:
+   opened=True
+   before=os.fstat(fd)
+   if not stat.S_ISREG(before.st_mode):return dict(result,state='unsupported',error='regular file required')
+   if before.st_size>RECOVERY_MAX_FILE:return dict(result,state='too_large',error='file exceeds 1 MiB limit')
+   if before.st_size>remaining:return dict(result,state='limit',error='total content exceeds 8 MiB limit')
+   meta=recovery_metadata(fd,path);limit=min(RECOVERY_MAX_FILE,remaining);content=recovery_content(fd,limit)
+   if content is None:return dict(result,state='too_large' if limit==RECOVERY_MAX_FILE else 'limit',error='content limit exceeded')
+   os.lseek(fd,0,os.SEEK_SET);verify=recovery_content(fd,limit)
+   after=os.fstat(fd);after_meta=recovery_metadata(fd,path)
+   if recovery_stat(before)!=recovery_stat(after) or meta!=after_meta or content!=verify or len(content)!=before.st_size:
+    return dict(result,state='changed',error='file changed during read')
+   # Re-open the whole namespace to detect parent/target replacements while reading.
+   try:
+    with recovery_open(root_fd,path) as current:
+     if recovery_stat(before)!=recovery_stat(os.fstat(current)):return dict(result,state='changed',error='file path changed during read')
+   except OSError:return dict(result,state='changed',error='file path changed during read')
+   sha=digest(content);meta['sha256']=sha
+   return dict(result,state='read',sha256=sha,metadata=meta,content=base64.b64encode(content).decode())
+ except FileNotFoundError:return dict(result,state='unreadable',error='file cannot be read') if opened else dict(result,state='missing')
+ except OSError as exc:
+  state='unsupported' if exc.errno in (errno.ELOOP,errno.ENOTDIR,errno.ENXIO,errno.ENODEV) else 'unreadable'
+  return dict(result,state=state,error='path cannot be safely opened' if state=='unsupported' else 'file or metadata cannot be read')
+ except RecoveryLimit:return dict(result,state='limit',error='extended metadata limit exceeded')
+ except (ValueError,AttributeError):return dict(result,state='unreadable',error='file metadata cannot be read completely')
+
+def recovery_storage_volumes(storage_id,deadline):
+ """Only pvesm list with a validated ID; cap bytes while consuming its pipe."""
+ if time.monotonic()>=deadline:return {'state':'failed','error':'storage listing timed out'}
+ try:
+  with subprocess.Popen(['pvesm','list',storage_id],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL) as process:
+   with selectors.DefaultSelector() as selector:
+    selector.register(process.stdout,selectors.EVENT_READ);chunks=[];size=0
+    try:
+     while True:
+      left=deadline-time.monotonic()
+      if left<=0 or not selector.select(left):raise subprocess.TimeoutExpired(process.args,RECOVERY_STORAGE_TIMEOUT)
+      data=os.read(process.stdout.fileno(),64*1024)
+      if not data:break
+      size+=len(data)
+      if size>RECOVERY_MAX_STORAGE_OUTPUT:
+       process.kill();process.wait();return {'state':'limit','error':'storage listing exceeds output limit'}
+      chunks.append(data)
+     if process.wait(timeout=max(0,deadline-time.monotonic()))!=0:return {'state':'failed','error':'storage listing command failed'}
+    except BaseException:
+     process.kill();process.wait();raise
+   lines=b''.join(chunks).decode('utf-8').splitlines()
+  if not lines or lines[0].split()!=['Volid','Format','Type','Size','VMID']:raise ValueError('invalid storage listing header')
+  volumes=[]
+  for line in lines[1:]:
+   if not line.strip():continue
+   fields=line.split()
+   if len(fields)!=5 or not fields[0].startswith(storage_id+':') or not fields[0][len(storage_id)+1:] or not fields[3].isdigit() or not fields[4].isdigit():raise ValueError('invalid storage listing row')
+   volumes.append(fields[0])
+  return {'state':'ok','volumes':sorted(set(volumes))}
+ except subprocess.TimeoutExpired:return {'state':'failed','error':'storage listing timed out'}
+ except FileNotFoundError:return {'state':'unknown','error':'storage listing command unavailable'}
+ except (OSError,ValueError):return {'state':'failed','error':'storage listing could not be read completely'}
+
+def read_recovery_files(root,paths,storage_ids,profile_paths):
+ profile_paths=validate_host_profile(profile_paths)
+ if not isinstance(paths,list) or not isinstance(storage_ids,list):raise ValueError('paths and storage IDs must be lists')
+ for path in paths:
+  if not isinstance(path,str) or len(path.encode())>4096:raise ValueError('invalid recovery path')
+  relative(path)
+  # config.db decoding is an implicit part of collection even with a custom profile.
+  if not any(path==p[1:] or path.startswith(p[1:]+'/') for p in profile_paths+['/etc/pve']):raise ValueError('recovery path outside host profile')
+ for ident in storage_ids:
+  if not isinstance(ident,str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}',ident):raise ValueError('invalid storage ID')
+ paths=list(dict.fromkeys(paths));unique_storage=list(dict.fromkeys(storage_ids));files=[]
+ if len(paths)>RECOVERY_MAX_PATHS:files=[{'path':p,'state':'limit','error':'request exceeds 4096 unique paths'} for p in paths]
+ else:
+  root_fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+  try:
+   remaining=RECOVERY_MAX_TOTAL;metadata_remaining=RECOVERY_MAX_METADATA
+   for path in paths:
+    entry=read_recovery_file(root_fd,path,remaining)
+    if entry['state']=='read':
+     metadata_size=len(json.dumps(entry['metadata']).encode())
+     if metadata_size>metadata_remaining:entry={'path':path,'state':'limit','error':'total metadata limit exceeded'}
+     else:remaining-=entry['metadata']['size'];metadata_remaining-=metadata_size
+    files.append(entry)
+  finally:os.close(root_fd)
+ if len(storage_ids)>RECOVERY_MAX_STORAGE_IDS:volumes={ident:{'state':'limit','error':'request exceeds 32 storage IDs'} for ident in unique_storage}
+ else:
+  deadline=time.monotonic()+RECOVERY_STORAGE_TIMEOUT
+  volumes={ident:recovery_storage_volumes(ident,deadline) for ident in unique_storage}
+ return {'files':files,'storage_volumes':volumes}
 
 def snapshot_db(src,out):
  source=sqlite3.connect('file:'+str(src)+'?mode=ro',uri=True,timeout=5)
@@ -530,7 +697,7 @@ def sync_directory(path):
  finally:os.close(fd)
 
 def authorize(operation,read_only=False):
- if operation not in ("probe","collect","apply","restore-status","rollback"):raise ValueError("unknown operation")
+ if operation not in ("probe","collect","read-recovery","apply","restore-status","rollback"):raise ValueError("unknown operation")
  if read_only and operation in ("apply","restore-status","rollback"):raise ValueError("read-only backup authority cannot restore")
 
 def main(root=None):
@@ -545,16 +712,12 @@ def main(root=None):
  root=pathlib.Path('/') if root is None else pathlib.Path(root)
  if op=='probe':print(json.dumps(probe()))
  elif op=='collect':
-  configpath=pathlib.Path('/etc/anker-host.json')
-  cfg=json.loads(configpath.read_text()) if configpath.exists() else {'paths':['/etc','/usr/local']}
-  if configpath.exists() and (configpath.stat().st_uid!=0 or stat.S_IMODE(configpath.stat().st_mode)&0o022):raise ValueError('host profile must be root-owned and not writable by others')
-  paths=cfg.get('paths',['/etc','/usr/local'])
-  for p in paths:
-   if not isinstance(p,str) or not p.startswith('/') or '..' in p or p in ('/','/proc','/sys','/dev','/var/lib'):raise ValueError('invalid host profile path')
+  paths=load_host_profile(root)
   with tempfile.TemporaryDirectory(prefix='anker-host-') as d:
    out=pathlib.Path(d);c=collect(root,out,paths);(out/'collection.json').write_text(json.dumps(c))
    with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as t:
     for p in sorted(out.rglob('*')):t.add(p,arcname=p.relative_to(out).as_posix(),recursive=False)
+ elif op=='read-recovery':print(json.dumps(read_recovery_files(root,request.get('paths',[]),request.get('storage_ids',[]),load_host_profile(root))))
  elif op=='restore-status':print(json.dumps(restore_status(root,request['plan_id'])))
  elif op=='rollback':print(json.dumps(rollback_files(root,request['plan_id'],request.get('confirm'))))
  elif op=='apply':
