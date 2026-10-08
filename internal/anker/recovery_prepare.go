@@ -94,6 +94,39 @@ func guestStorageReferences(data string) []string {
 	sort.Strings(refs)
 	return refs
 }
+
+// Guest disk ownership must agree in every supported component. ISO/snippets
+// are shared content and are handled separately by their selected field kind.
+func guestVolumeOwner(backend, volume string) (string, bool) {
+	parts := strings.Split(volume, "/")
+	directory := ""
+	switch backend {
+	case "dir", "nfs":
+		if len(parts) == 2 {
+			directory = parts[0]
+			if directory == "" || strings.Trim(directory, "0123456789") != "" {
+				return "", false
+			}
+		} else if len(parts) != 1 {
+			return "", false
+		}
+	case "zfspool", "lvm", "lvmthin":
+		if len(parts) != 1 {
+			return "", false
+		}
+	default:
+		return "", false
+	}
+	owner := guestOwnedVolume.FindStringSubmatch(parts[len(parts)-1])
+	if len(owner) != 2 {
+		return "", false
+	}
+	if directory != "" && directory != owner[1] {
+		return "", false
+	}
+	return owner[1], true
+}
+
 func snapshotStorage(s RecoverySnapshot) []RecoveryStorage {
 	for _, f := range s.Files {
 		if f.Path == "etc/pve/storage.cfg" && f.State == "read" && Hash(f.Content) == f.SHA256 {
@@ -192,10 +225,7 @@ func prepareGuest(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 			p.task("volume", key, "Geräte-/Bind-Mount- oder unbekannte Volumereferenz in "+key+" am Ziel manuell prüfen.")
 			continue
 		}
-		if owner := guestOwnedVolume.FindStringSubmatch(volume); len(owner) > 1 && owner[1] != guestID {
-			p.task("guest-volume", key, "Volume gehört zu Gast-ID "+owner[1]+" statt "+guestID+"; Kollision bzw. beabsichtigte Freigabe manuell prüfen.")
-			continue
-		}
+
 		targetID := m.Storage[id]
 		if targetID == "manual" {
 			p.task("storage", key, "Storage "+id+" wurde als manuelle Entscheidung markiert.")
@@ -227,6 +257,13 @@ func prepareGuest(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 		}
 		if key == "hookscript" {
 			required = "snippets"
+		}
+		if required == "images" || required == "rootdir" {
+			owner, known := guestVolumeOwner(dst.Kind, volume)
+			if !known || owner != guestID {
+				p.task("guest-volume", key, "Volume "+volume+" gehört nicht nachweislich zu Gast-ID "+guestID+"; unbekannte oder widersprüchliche Eigentümerangaben und Kollisionen manuell prüfen.")
+				continue
+			}
 		}
 		if !containsString(dst.Content, required) {
 			p.task("storage-content", key, "Ziel-Storage belegt den benötigten Content "+required+" nicht.")
@@ -308,6 +345,7 @@ func prepareNetwork(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 	if len(blockers) == 0 {
 		mapped, _ = mapNetwork(original, s.Source, s.Target, m)
 	}
+	checkTargetNetworkTopology(p, s, mapped)
 	beforeLines, lines := strings.Split(original, "\n"), strings.Split(mapped, "\n")
 	for i := range lines {
 		if lines[i] != beforeLines[i] {
@@ -422,6 +460,9 @@ func prepareNetwork(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 				}
 				tokens := interfaceToken.FindAllStringIndex(c, -1)
 				before := strings.Join(f[1:], " ")
+				if before == value {
+					continue
+				}
 				lines[i] = c[:tokens[1][0]] + value + c[tokens[len(tokens)-1][1]:] + comment
 				p.effect(key+"."+field, before, value, "Explizit ausgewählte Netzwerk-Stanza")
 			}
@@ -521,4 +562,120 @@ func prepareHostname(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 		p.Content = []byte(strings.Join(lines, "\n"))
 	}
 	p.task("hostname-identity", p.Destination, "DNS und lokale Hostidentität manuell prüfen; Clusteridentität separat behandeln.")
+}
+
+// networkEvidencePath is intentionally narrower than arbitrary ifupdown include
+// paths. Other includes must be examined manually; they never broaden read authority.
+func networkEvidencePath(name string) bool {
+	return name == "etc/network/interfaces" || strings.HasPrefix(name, "etc/network/interfaces.d/")
+}
+
+type networkMembership struct{ member, parent, kind, file string }
+
+func networkMemberships(files map[string]string) []networkMembership {
+	out := []networkMembership{}
+	names := []string{}
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		current := ""
+		for _, line := range strings.Split(files[name], "\n") {
+			code, _ := codeComment(line)
+			f := strings.Fields(code)
+			if len(f) == 0 {
+				continue
+			}
+			if f[0] == "iface" {
+				current = ""
+				if len(f) != 4 {
+					continue
+				}
+				current = f[1]
+				if dot := strings.LastIndex(current, "."); dot > 0 && strings.Trim(current[dot+1:], "0123456789") == "" {
+					out = append(out, networkMembership{current[:dot], current, "vlan", name})
+				}
+				continue
+			}
+			if f[0] == "auto" || strings.HasPrefix(f[0], "allow-") || f[0] == "source" || f[0] == "source-directory" {
+				current = ""
+				continue
+			}
+			if current == "" {
+				continue
+			}
+			kind := ""
+			switch f[0] {
+			case "bridge-ports":
+				kind = "bridge"
+			case "bond-slaves", "bond-ports", "bond-primary":
+				kind = "bond"
+			case "vlan-raw-device":
+				kind = "vlan"
+			}
+			if kind == "" {
+				continue
+			}
+			for _, member := range f[1:] {
+				if member != "none" {
+					out = append(out, networkMembership{member, current, kind, name})
+				}
+			}
+		}
+	}
+	return out
+}
+func networkBasePort(name string) string {
+	if at := strings.IndexAny(name, ".:"); at > 0 {
+		return name[:at]
+	}
+	return name
+}
+func checkTargetNetworkTopology(p *PreparedRecoveryFile, s RecoverySnapshot, prepared string) {
+	if !inventoryComplete(s.Target) {
+		p.task("network-topology", p.Destination, "Zielinventar der Netzwerkdateien ist unvollständig; bestehende Bridge-/Bond-/VLAN-Zuordnungen manuell prüfen.")
+	}
+	expected := []string{"etc/network/interfaces"}
+	for name := range fileHashes(s.Target) {
+		if networkEvidencePath(name) {
+			expected = appendUnique(expected, name)
+		}
+	}
+	sort.Strings(expected)
+	captured := map[string]RecoveryReadFile{}
+	for _, f := range s.Files {
+		captured[f.Path] = f
+	}
+	targetFiles := map[string]string{}
+	for _, name := range expected {
+		f, ok := captured[name]
+		if !ok || f.State != "read" || Hash(f.Content) != f.SHA256 || fileHashes(s.Target)[name] != f.SHA256 {
+			p.task("network-topology", name, "Ziel-Netzwerkdatei "+name+" fehlt oder ist nicht vollständig lesbar und geprüft; bestehende Portmitgliedschaften manuell ermitteln.")
+			continue
+		}
+		targetFiles[name] = string(f.Content)
+	}
+	_, issues := networkReferences(targetFiles, s.Target)
+	for _, issue := range issues {
+		p.task("network-topology", p.Destination, "Zieltopologie: "+issue)
+	}
+	proposed := networkMemberships(map[string]string{p.Destination: prepared})
+	existing := networkMemberships(targetFiles)
+	for _, a := range proposed {
+		for _, b := range existing {
+			if a.parent == b.parent || a.member == b.parent || b.member == a.parent || a.kind == "vlan" && b.kind == "vlan" {
+				continue
+			}
+			shared := a.member == b.member
+			// A physical port already enslaved to a bond/bridge also constrains VLANs
+			// created directly on that port. Distinct VLANs alone are not a collision.
+			if !shared && networkBasePort(a.member) == networkBasePort(b.member) && (a.member == networkBasePort(a.member) || b.member == networkBasePort(b.member)) {
+				shared = true
+			}
+			if shared {
+				p.task("network-port-collision", a.member+":"+a.parent+":"+b.parent, "Port/Abhängigkeit "+a.member+" soll "+a.parent+" zugeordnet werden, ist im Ziel aber bereits "+b.parent+" zugeordnet ("+b.file+"). Bestehende "+b.kind+"-Topologie und geplante Änderung über Konsole manuell auflösen.")
+			}
+		}
+	}
 }

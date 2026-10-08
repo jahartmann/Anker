@@ -469,3 +469,84 @@ func TestRecoverySnapshotLoadsAuthoritativeSourceStorage(t *testing.T) {
 		})
 	}
 }
+
+func TestRecoverySnapshotCapturesUnselectedNetworkTopology(t *testing.T) {
+	sourcePath := "etc/network/interfaces.d/selected"
+	source := "iface vmbr1 inet manual\n bridge-ports eno1\n"
+	targetFiles := map[string]string{"etc/network/interfaces": "auto lo\niface lo inet loopback\n", "etc/network/interfaces.d/existing": "iface vmbr0 inet manual\n bridge-ports ens3\n"}
+	hashes := map[string]string{}
+	metadata := map[string]any{}
+	read := []RecoveryReadFile{{Path: sourcePath, State: "missing"}, {Path: "etc/pve/storage.cfg", State: "missing"}}
+	for name, content := range targetFiles {
+		hashes[name] = Hash([]byte(content))
+		meta := Entry{Path: name, Type: "file", Mode: 0644, Size: int64(len(content)), SHA256: hashes[name], XAttrs: map[string]string{}}
+		metadata[name] = map[string]any{"type": "file", "mode": 0644, "uid": 0, "gid": 0, "xattrs": map[string]string{}}
+		read = append(read, RecoveryReadFile{Path: name, State: "read", SHA256: hashes[name], Content: []byte(content), Metadata: &meta})
+	}
+	hashJSON, _ := json.Marshal(hashes)
+	metaJSON, _ := json.Marshal(metadata)
+	target := Inventory{Hostname: "target", PVEVersion: "8.4", Interfaces: []Interface{{Name: "ens3", Type: "physical"}}, Details: map[string]json.RawMessage{"file_hashes": hashJSON, "file_metadata": metaJSON, "command_results": json.RawMessage(`{"file_inventory":{"state":"ok"}}`)}}
+	s, b := recoverySetup(t, map[string]string{sourcePath: source}, Inventory{Hostname: "source", PVEVersion: "8.4", Interfaces: []Interface{{Name: "eno1", Type: "physical"}}}, target)
+	s.Collector = snapshotCollector{targetCollector: targetCollector{inv: target}, result: RecoveryReadResult{Files: read, StorageVolumes: map[string]RecoveryVolumeResult{}}}
+	request := PlanRequest{BackupID: b.ID, TargetID: "target", Scenario: "files", Files: []string{sourcePath}, Mapping: Mapping{Interfaces: map[string]string{"eno1": "ens3"}}}
+	inspection, err := s.CaptureRecovery(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := s.LoadRecoverySnapshot(inspection.SnapshotID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := prepareForTest(t, sourcePath, source, snapshot, request.Mapping)
+	if !hasPreparationTask(p, "network-port-collision") || !hasPreparationTask(p, "etc/network/interfaces.d/existing") {
+		t.Fatalf("captured target conflict not exposed: %+v", p.ManualTasks)
+	}
+	if len(snapshot.Files) != 4 {
+		t.Fatalf("unselected topology not retained: %+v", snapshot.Files)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Root, "recovery-inspections", inspection.SnapshotID, "snapshot.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "bridge-ports") {
+		t.Fatal("network content leaked to snapshot metadata")
+	}
+	if err = os.WriteFile(filepath.Join(s.Root, "recovery-inspections", inspection.SnapshotID, "files/etc/network/interfaces.d/existing"), []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.LoadRecoverySnapshot(inspection.SnapshotID, request); err == nil {
+		t.Fatal("tampered unselected topology accepted")
+	}
+}
+func TestRecoverySnapshotLoadRejectsExtraEvidencePaths(t *testing.T) {
+	s, api, r := snapshotSetup(t)
+	inspection, err := api.CaptureRecovery(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a service-produced catalog/manifest with a valid integrity hash but
+	// a file outside this selection's evidence set. Binding the set must reject it.
+	file := filepath.Join(s.Root, "recovery-inspections", inspection.SnapshotID, "snapshot.json")
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snap RecoverySnapshot
+	if err = json.Unmarshal(raw, &snap); err != nil {
+		t.Fatal(err)
+	}
+	snap.Files = append(snap.Files, RecoveryReadFile{Path: "etc/network/interfaces.d/injected", State: "missing"})
+	raw, err = json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(file, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Store.Put("recovery-inspections", snap.ID, recoverySnapshotRecord{ID: snap.ID, SHA256: Hash(raw), ExpiresAt: snap.ExpiresAt}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = api.LoadRecoverySnapshot(snap.ID, r); err == nil {
+		t.Fatal("extra evidence file accepted outside bound request")
+	}
+}

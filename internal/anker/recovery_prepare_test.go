@@ -212,3 +212,109 @@ func TestPreparationNodeQualifiedGuestDestinationRemainsExplicit(t *testing.T) {
 		t.Fatal("node relocation silently inferred or ignored")
 	}
 }
+
+func TestGuestDirectoryVolumeOwnership(t *testing.T) {
+	for _, backend := range []string{"dir", "nfs"} {
+		for _, tc := range []struct {
+			volume  string
+			allowed bool
+		}{
+			{"200/vm-200-disk-0.qcow2", false},
+			{"100/vm-100-disk-0.qcow2", true},
+			{"100/vm-200-disk-0.qcow2", false},
+			{"200/vm-100-disk-0.raw", false},
+			{"100/unidentified.raw", false},
+			{"unidentified.raw", false},
+		} {
+			t.Run(backend+"/"+tc.volume, func(t *testing.T) {
+				s := preparationSnapshot()
+				props := " path /srv/data\n content images\n"
+				if backend == "nfs" {
+					props = " server nas\n export /data\n content images\n"
+				}
+				s.SourceStorageConfig = []byte(backend + ": old\n" + props)
+				s.Files[0].Content = []byte(backend + ": new\n" + props)
+				s.Files[0].SHA256 = Hash(s.Files[0].Content)
+				s.StorageVolumes["new"] = RecoveryVolumeResult{State: "ok", Volumes: []string{"new:" + tc.volume}}
+				input := "scsi0: old:" + tc.volume + ",size=8G\n"
+				p := prepareForTest(t, "etc/pve/qemu-server/100.conf", input, s, Mapping{Storage: map[string]string{"old": "new"}})
+				if tc.allowed {
+					if string(p.Content) != "scsi0: new:"+tc.volume+",size=8G\n" || hasPreparationTask(p, "guest-volume") {
+						t.Fatalf("valid directory owner not prepared: %+v", p)
+					}
+				} else if string(p.Content) != input || !hasPreparationTask(p, "guest-volume") {
+					t.Fatalf("unproven owner prepared: %+v", p)
+				}
+			})
+		}
+	}
+}
+func targetNetworkSnapshot(files map[string]string) RecoverySnapshot {
+	s := preparationSnapshot()
+	hashes := map[string]string{}
+	for name, data := range files {
+		hashes[name] = Hash([]byte(data))
+		s.Files = append(s.Files, RecoveryReadFile{Path: name, State: "read", SHA256: hashes[name], Content: []byte(data)})
+	}
+	s.Target.Details["file_hashes"], _ = json.Marshal(hashes)
+	return s
+}
+func TestNetworkPreparationTargetTopologyCollision(t *testing.T) {
+	for _, tc := range []struct{ name, target, source string }{
+		{"bridge", "iface vmbr0 inet manual\n bridge-ports ens3\n", "iface vmbr1 inet manual\n bridge-ports eno1\n"},
+		{"bond", "iface bond0 inet manual\n bond-slaves ens3\n", "iface bond1 inet manual\n bond-slaves eno1\n"},
+		{"vlan", "iface vmbr0 inet manual\n bridge-ports ens3.100\n", "iface vmbr1 inet manual\n bridge-ports eno1.100\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := targetNetworkSnapshot(map[string]string{"etc/network/interfaces": "auto lo\niface lo inet loopback\n", "etc/network/interfaces.d/existing": tc.target})
+			p := prepareForTest(t, "etc/network/interfaces.d/selected", tc.source, s, Mapping{Interfaces: map[string]string{"eno1": "ens3"}})
+			if !hasPreparationTask(p, "network-port-collision") || !hasPreparationTask(p, "ens3") {
+				t.Fatalf("target membership conflict invisible: %+v", p.ManualTasks)
+			}
+		})
+	}
+}
+func TestNetworkPreparationMissingTargetTopology(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		alter func(*RecoverySnapshot)
+	}{
+		{"missing contents", func(s *RecoverySnapshot) { s.Files = nil }},
+		{"incomplete inventory", func(s *RecoverySnapshot) {
+			s.Target.Details["command_results"] = json.RawMessage(`{"file_inventory":{"state":"failed"}}`)
+		}},
+		{"unreadable", func(s *RecoverySnapshot) { s.Files[1].State = "unreadable"; s.Files[1].Content = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := targetNetworkSnapshot(map[string]string{"etc/network/interfaces": "iface vmbr0 inet manual\n bridge-ports ens3\n"})
+			tc.alter(&s)
+			p := prepareForTest(t, "etc/network/interfaces.d/selected", "iface vmbr1 inet manual\n bridge-ports eno1\n", s, Mapping{Interfaces: map[string]string{"eno1": "ens3"}})
+			if !hasPreparationTask(p, "network-topology") {
+				t.Fatalf("unknown topology accepted: %+v", p.ManualTasks)
+			}
+		})
+	}
+}
+func TestNetworkPreparationPreservesSemanticDNSNoop(t *testing.T) {
+	input := "iface vmbr0 inet static\n dns-nameservers 192.0.2.53\t198.51.100.53\n"
+	p := prepareForTest(t, "etc/network/interfaces", input, preparationSnapshot(), Mapping{Network: map[string]RecoveryNetworkMapping{"vmbr0": {DNSServers: []string{"192.0.2.53", "198.51.100.53"}}}})
+	if string(p.Content) != input || len(p.Effects) != 0 {
+		t.Fatalf("semantic no-op changed bytes/effects: %q %+v", p.Content, p.Effects)
+	}
+}
+
+func TestNetworkPreparationAllowsProvenCompatibleMemberships(t *testing.T) {
+	for _, tc := range []struct{ name, target, source string }{
+		{"same bridge", "iface vmbr0 inet manual\n bridge-ports ens3\n", "iface vmbr0 inet manual\n bridge-ports eno1\n"},
+		{"existing VLAN parent", "iface ens3.100 inet manual\n vlan-raw-device ens3\n", "iface vmbr1 inet manual\n bridge-ports eno1.100\n"},
+		{"distinct VLANs", "iface ens3.100 inet manual\n vlan-raw-device ens3\n", "iface eno1.200 inet manual\n vlan-raw-device eno1\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := targetNetworkSnapshot(map[string]string{"etc/network/interfaces": tc.target})
+			p := prepareForTest(t, "etc/network/interfaces.d/selected", tc.source, s, Mapping{Interfaces: map[string]string{"eno1": "ens3"}})
+			if hasPreparationTask(p, "network-port-collision") || hasPreparationTask(p, "network-topology") {
+				t.Fatalf("compatible proven topology claimed collision/unknown: %+v", p.ManualTasks)
+			}
+		})
+	}
+}

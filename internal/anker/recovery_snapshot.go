@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -103,6 +104,46 @@ func validateSnapshotProbe(i Inventory, result RecoveryReadResult) error {
 	}
 	return nil
 }
+
+// recoveryEvidencePaths derives evidence from the selected restore files and the
+// target's captured inventory. It never broadens the host reader's authority.
+func recoveryEvidencePaths(selection RecoverySelection, target Inventory) []string {
+	paths := append([]string{}, selection.Paths...)
+	paths = appendUnique(paths, "etc/pve/storage.cfg")
+	for _, name := range selection.Paths {
+		if strings.HasPrefix(name, "etc/network/") {
+			paths = appendUnique(paths, "etc/network/interfaces")
+			for targetPath := range fileHashes(target) {
+				if networkEvidencePath(targetPath) {
+					paths = appendUnique(paths, targetPath)
+				}
+			}
+			break
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// validateSnapshotEvidenceSet can also validate a privately copied plan snapshot
+// against its bound selection. Content/hash validation remains mandatory too.
+func validateSnapshotEvidenceSet(snapshot RecoverySnapshot, selection RecoverySelection) error {
+	expected := map[string]bool{}
+	for _, name := range recoveryEvidencePaths(selection, snapshot.Target) {
+		expected[name] = true
+	}
+	if len(expected) != len(snapshot.Files) {
+		return errors.New("Aufnahme enthält nicht die gebundene Dateiauswahl samt erforderlichen Nachweisen")
+	}
+	for _, f := range snapshot.Files {
+		if !expected[f.Path] {
+			return errors.New("unerwarteter oder doppelter Nachweispfad in Zielaufnahme")
+		}
+		delete(expected, f.Path)
+	}
+	return nil
+}
+
 func (s *Service) CaptureRecovery(ctx context.Context, r PlanRequest) (RecoveryInspection, error) {
 	release, err := s.readableLease(r.BackupID)
 	if err != nil {
@@ -165,10 +206,7 @@ func (s *Service) CaptureRecovery(ctx context.Context, r PlanRequest) (RecoveryI
 			return unavailable()
 		}
 	}
-	paths := append([]string{}, selection.Paths...)
-	// Storage configuration is independent evidence even when not selected for restore.
-	paths = appendUnique(paths, "etc/pve/storage.cfg")
-	sort.Strings(paths)
+	paths := recoveryEvidencePaths(selection, target)
 	ids := []string{}
 	for _, storage := range inspection.Storage {
 		id := storage.ID
@@ -451,6 +489,9 @@ func (s *Service) loadRecoverySnapshotUnlocked(id string, r PlanRequest) (Recove
 	}
 	if snapshot.SelectionHash != selectionSHA(selection, r) {
 		return RecoverySnapshot{}, errors.New("Dateiauswahl wurde geändert; Vergleich wiederholen")
+	}
+	if err = validateSnapshotEvidenceSet(snapshot, selection); err != nil {
+		return RecoverySnapshot{}, err
 	}
 	snapshot.Source = m.Inventory
 	for _, e := range m.Entries {
