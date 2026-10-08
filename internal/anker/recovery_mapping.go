@@ -25,19 +25,23 @@ type RecoveryStorage struct {
 	Suggested string `json:"suggested"`
 }
 type RecoveryInspection struct {
-	Preserved             []RecoveryPreservation `json:"preserved"`
-	Source                Inventory              `json:"source"`
-	Target                Inventory              `json:"target"`
-	Ports                 []RecoveryPort         `json:"ports"`
-	TargetPorts           []Interface            `json:"target_ports"`
-	Storage               []RecoveryStorage      `json:"storage"`
-	TargetStorage         []RecoveryStorage      `json:"target_storage"`
-	Blockers              []string               `json:"blockers"`
-	Warnings              []string               `json:"warnings"`
-	Manual                []string               `json:"manual"`
-	RequiresConsole       bool                   `json:"requires_console"`
-	RequiresSourceOffline bool                   `json:"requires_source_offline"`
-	Automatic             bool                   `json:"automatic"`
+	Files                 []RecoveryReadFile              `json:"files"`
+	StorageVolumes        map[string]RecoveryVolumeResult `json:"storage_volumes"`
+	SnapshotID            string                          `json:"snapshot_id,omitempty"`
+	ComparisonComplete    bool                            `json:"comparison_complete"`
+	Preserved             []RecoveryPreservation          `json:"preserved"`
+	Source                Inventory                       `json:"source"`
+	Target                Inventory                       `json:"target"`
+	Ports                 []RecoveryPort                  `json:"ports"`
+	TargetPorts           []Interface                     `json:"target_ports"`
+	Storage               []RecoveryStorage               `json:"storage"`
+	TargetStorage         []RecoveryStorage               `json:"target_storage"`
+	Blockers              []string                        `json:"blockers"`
+	Warnings              []string                        `json:"warnings"`
+	Manual                []string                        `json:"manual"`
+	RequiresConsole       bool                            `json:"requires_console"`
+	RequiresSourceOffline bool                            `json:"requires_source_offline"`
+	Automatic             bool                            `json:"automatic"`
 }
 
 func recoverySelection(m Manifest, r PlanRequest) (map[string]bool, error) {
@@ -52,35 +56,7 @@ func recoverySelection(m Manifest, r PlanRequest) (map[string]bool, error) {
 	return selected, nil
 }
 func (s *Service) InspectRecovery(ctx context.Context, r PlanRequest) (RecoveryInspection, error) {
-	release, err := s.readableLease(r.BackupID)
-	if err != nil {
-		return RecoveryInspection{}, err
-	}
-	defer release()
-	if err = s.checkBackupUnlocked(r.BackupID); err != nil {
-		return RecoveryInspection{}, err
-	}
-	b, err := s.Backup(r.BackupID)
-	if err != nil {
-		return RecoveryInspection{}, err
-	}
-	m, err := s.Manifest(b.ID)
-	if err != nil {
-		return RecoveryInspection{}, err
-	}
-	if _, err = recoverySelection(m, r); err != nil {
-		return RecoveryInspection{}, err
-	}
-	h, err := s.Host(r.TargetID)
-	if err != nil {
-		return RecoveryInspection{}, err
-	}
-	target, err := s.Collector.Probe(ctx, h)
-	if err != nil {
-		return RecoveryInspection{}, err
-	}
-	target.Fingerprint = Fingerprint(target)
-	return s.analyzeRecovery(b, m, target, r)
+	return s.CaptureRecovery(ctx, r)
 }
 
 var physicalName = regexp.MustCompile(`^(?:eth[0-9]+|en[a-zA-Z0-9_-]+)$`)
@@ -270,6 +246,10 @@ func storageDefinitions(data string) []RecoveryStorage {
 var volumeReference = regexp.MustCompile(`(?:^|[\s,=])([a-zA-Z][a-zA-Z0-9_.-]*):[^\s,]+`)
 
 func targetStorages(i Inventory) []RecoveryStorage {
+	var definitions []RecoveryStorage
+	if json.Unmarshal(i.Details["storage_definitions"], &definitions) == nil {
+		return definitions
+	}
 	out := []RecoveryStorage{}
 	var text string
 	if json.Unmarshal(i.Details["storage_config"], &text) == nil {

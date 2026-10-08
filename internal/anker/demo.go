@@ -1,13 +1,16 @@
 package anker
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 type DemoCollector struct{ Root string }
@@ -69,7 +72,7 @@ func (c DemoCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 	inv.Details["file_metadata"], _ = json.Marshal(metadata)
 	inv.Details["users"] = json.RawMessage(`{"0":"root"}`)
 	inv.Details["groups"] = json.RawMessage(`{"0":"root"}`)
-	inv.Details["capabilities"] = json.RawMessage(`{"restore_protocol":2,"journal":true}`)
+	inv.Details["capabilities"] = json.RawMessage(`{"restore_protocol":2,"recovery_read_protocol":1,"journal":true}`)
 	results := map[string]any{}
 	for _, name := range []string{"pve_version", "interfaces", "disks", "addresses", "routes", "packages", "storage", "file_inventory", "users", "groups"} {
 		results[name] = map[string]string{"state": "ok"}
@@ -283,4 +286,127 @@ func (s *Service) SeedDemo(a *Auth) error {
 		}
 	}
 	return nil
+}
+
+// Demo evidence comes only from the explicit local fixture tree, never SSH.
+func (c DemoCollector) ReadRecoveryFiles(ctx context.Context, h Host, paths, ids []string) (RecoveryReadResult, error) {
+	if err := validateRecoveryRequest(paths, ids); err != nil {
+		return RecoveryReadResult{}, err
+	}
+	root, err := c.root(h)
+	if err != nil {
+		return RecoveryReadResult{}, err
+	}
+	result := RecoveryReadResult{Files: []RecoveryReadFile{}, StorageVolumes: map[string]RecoveryVolumeResult{}}
+	remaining := 8 << 20
+	for _, path := range paths {
+		if err = ctx.Err(); err != nil {
+			return RecoveryReadResult{}, err
+		}
+		file := RecoveryReadFile{Path: path, State: "limit"}
+		if len(paths) <= 4096 {
+			file = readDemoRecoveryFile(filepath.Join(root, "files"), path, remaining)
+		}
+		if file.State == "read" {
+			remaining -= len(file.Content)
+		}
+		result.Files = append(result.Files, file)
+	}
+	// Explicit local volume fixtures can model success; absence is unknown, not empty.
+	var inv Inventory
+	raw, err := os.ReadFile(filepath.Join(root, "inventory.json"))
+	if err != nil {
+		return RecoveryReadResult{}, err
+	}
+	if err = json.Unmarshal(raw, &inv); err != nil {
+		return RecoveryReadResult{}, err
+	}
+	var volumes map[string]RecoveryVolumeResult
+	if inv.Details["storage_volumes"] != nil {
+		if err = json.Unmarshal(inv.Details["storage_volumes"], &volumes); err != nil {
+			return RecoveryReadResult{}, err
+		}
+	}
+	for _, id := range ids {
+		v, ok := volumes[id]
+		if !ok {
+			v = RecoveryVolumeResult{State: "unknown", Error: "Kein lokaler Demo-Volumenbestand erfasst"}
+		}
+		if len(ids) > 32 {
+			v = RecoveryVolumeResult{State: "limit"}
+		}
+		result.StorageVolumes[id] = v
+	}
+	if err = validateRecoveryRead(result, paths, ids); err != nil {
+		return RecoveryReadResult{}, err
+	}
+	return result, nil
+}
+func readDemoRecoveryFile(root, path string, remaining int) RecoveryReadFile {
+	failure := func(state string) RecoveryReadFile { return RecoveryReadFile{Path: path, State: state} }
+	full, err := safeJoin(root, path)
+	if err != nil {
+		return failure("unsupported")
+	}
+	before, err := os.Lstat(full)
+	if os.IsNotExist(err) {
+		return failure("missing")
+	}
+	if err != nil {
+		return failure("unreadable")
+	}
+	if !before.Mode().IsRegular() {
+		return failure("unsupported")
+	}
+	if before.Size() > 1<<20 {
+		return failure("too_large")
+	}
+	if before.Size() > int64(remaining) {
+		return failure("limit")
+	}
+	confined, err := os.OpenRoot(root)
+	if err != nil {
+		return failure("unreadable")
+	}
+	defer confined.Close()
+	file, err := confined.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return failure("unreadable")
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return failure("changed")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil {
+		return failure("unreadable")
+	}
+	if len(data) > 1<<20 {
+		return failure("too_large")
+	}
+	if len(data) > remaining {
+		return failure("limit")
+	}
+	after, err := file.Stat()
+	if err != nil {
+		return failure("unreadable")
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		return failure("unreadable")
+	}
+	verify, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil {
+		return failure("unreadable")
+	}
+	current, err := os.Lstat(full)
+	if err != nil || !os.SameFile(before, current) || !before.ModTime().Equal(after.ModTime()) || before.Size() != after.Size() || before.Mode() != after.Mode() || before.Size() != int64(len(data)) || !bytes.Equal(data, verify) {
+		return failure("changed")
+	}
+	mode := uint32(0644)
+	if isSecret(path) {
+		mode = 0600
+	}
+	hash := Hash(data)
+	return RecoveryReadFile{Path: path, State: "read", SHA256: hash, Content: data, Metadata: &Entry{Path: path, Type: "file", Mode: mode, UID: 0, GID: 0, Size: int64(len(data)), MTime: before.ModTime().Unix(), SHA256: hash, XAttrs: map[string]string{}}}
 }

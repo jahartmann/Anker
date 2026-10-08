@@ -147,6 +147,7 @@ type RecoverySelection struct {
 	Preserved []RecoveryPreservation `json:"preserved"`
 }
 type PlanRequest struct {
+	SnapshotID       string   `json:"snapshot_id,omitempty"`
 	BackupID         string   `json:"backup_id"`
 	TargetID         string   `json:"target_id"`
 	Scenario         string   `json:"scenario"`
@@ -165,19 +166,20 @@ type Step struct {
 	Diff        string `json:"diff,omitempty"`
 }
 type Plan struct {
-	ID        string       `json:"id"`
-	BackupID  string       `json:"backup_id"`
-	TargetID  string       `json:"target_id"`
-	Scenario  string       `json:"scenario"`
-	CreatedAt string       `json:"created_at"`
-	State     string       `json:"state"`
-	Source    Inventory    `json:"source"`
-	Target    Inventory    `json:"target"`
-	Mapping   Mapping      `json:"mapping"`
-	Steps     []Step       `json:"steps"`
-	Blockers  []string     `json:"blockers"`
-	Manual    []string     `json:"manual"`
-	Result    *ApplyResult `json:"result,omitempty"`
+	TargetSnapshotID string       `json:"target_snapshot_id,omitempty"`
+	ID               string       `json:"id"`
+	BackupID         string       `json:"backup_id"`
+	TargetID         string       `json:"target_id"`
+	Scenario         string       `json:"scenario"`
+	CreatedAt        string       `json:"created_at"`
+	State            string       `json:"state"`
+	Source           Inventory    `json:"source"`
+	Target           Inventory    `json:"target"`
+	Mapping          Mapping      `json:"mapping"`
+	Steps            []Step       `json:"steps"`
+	Blockers         []string     `json:"blockers"`
+	Manual           []string     `json:"manual"`
+	Result           *ApplyResult `json:"result,omitempty"`
 }
 type ApplyResult struct {
 	State          string   `json:"state,omitempty"`
@@ -228,6 +230,7 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
+	snapshotMu       sync.Mutex
 	backupLocks      map[string]*sync.RWMutex
 	planLocks        map[string]*sync.RWMutex
 	hostMu           sync.Mutex
