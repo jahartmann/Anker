@@ -1,6 +1,7 @@
 package anker
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestComparisonMetadataOnly(t *testing.T) {
 		{"gid", func(e *Entry) { e.GID = 15 }},
 		{"mtime", func(e *Entry) { e.MTime = 123 }},
 		{"link", func(e *Entry) { e.Link = "target2" }},
-		{"xattrs", func(e *Entry) { e.XAttrs = map[string]string{"user.a": "b"} }},
+		{"xattrs", func(e *Entry) { e.XAttrs = map[string]string{"user.a": "Yg=="} }},
 	} {
 		t.Run(tc.field, func(t *testing.T) {
 			a := Entry{Path: "etc/hosts", Type: "file", Mode: 0600}
@@ -73,5 +74,23 @@ func TestComparisonSymlinkTargetIsMetadata(t *testing.T) {
 	v := compareFiles([]byte("old"), []byte("new"), &a, &b, "A", "B")
 	if v.ContentChanged || len(v.Hunks) != 0 || len(v.MetadataChanges) != 1 || v.MetadataChanges[0].Field != "link" {
 		t.Fatal(v)
+	}
+}
+
+func TestComparisonMasksDecodedXAttrsAndInvalidEncoding(t *testing.T) {
+	for _, value := range []string{base64.StdEncoding.EncodeToString([]byte("password=classified")), "not-base64!"} {
+		for _, before := range []bool{true, false} {
+			a := Entry{Path: "etc/hosts", Type: "file"}
+			b := a
+			if before {
+				a.XAttrs = map[string]string{"user.comment": value}
+			} else {
+				b.XAttrs = map[string]string{"user.comment": value}
+			}
+			got := compareFiles([]byte("old"), []byte("new"), &a, &b, "A", "B")
+			if !got.Masked || got.State != "masked" || len(got.Hunks) != 0 || len(got.MetadataChanges) != 0 {
+				t.Fatalf("encoded xattr escaped gate: %+v", got)
+			}
+		}
 	}
 }

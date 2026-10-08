@@ -45,6 +45,21 @@ func scrubRecoveryValue(v any, key string) any {
 				}
 			}
 		}
+		if attrs, ok := x["xattrs"].(map[string]any); ok {
+			encoded := map[string]string{}
+			invalid := false
+			for name, value := range attrs {
+				text, ok := value.(string)
+				if !ok {
+					invalid = true
+					break
+				}
+				encoded[name] = text
+			}
+			if invalid || comparisonXAttrsSecret(encoded) {
+				x["xattrs"] = nil
+			}
+		}
 		for k, y := range x {
 			_, rawContent := y.(string)
 			if k == "details" || (k == "content" && rawContent) {

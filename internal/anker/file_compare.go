@@ -2,7 +2,7 @@ package anker
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/base64"
 	"fmt"
 	"reflect"
 	"strings"
@@ -54,8 +54,22 @@ func comparisonSecret(data []byte, e *Entry) bool {
 	if e == nil {
 		return false
 	}
-	raw, _ := json.Marshal(e.XAttrs)
-	return e.Secret || isSecret(e.Path) || publicSecretText(e.Link) || publicSecretText(string(raw))
+	return e.Secret || isSecret(e.Path) || publicSecretText(e.Link) || comparisonXAttrsSecret(e.XAttrs)
+}
+
+// Xattrs are stored as base64, so inspecting their serialized representation
+// cannot establish that metadata is safe. Invalid encodings stay restricted.
+func comparisonXAttrsSecret(attrs map[string]string) bool {
+	for name, encoded := range attrs {
+		if publicSecretText(name+"=value") || base64.StdEncoding.DecodedLen(len(encoded)) > comparisonBytes {
+			return true
+		}
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil || publicSecretText(string(decoded)) {
+			return true
+		}
+	}
+	return false
 }
 func compareFilesVisible(before, after []byte, a, b *Entry, al, bl string, reveal bool) FileComparison {
 	c := FileComparison{BeforeLabel: al, AfterLabel: bl, State: "identical", MetadataChanges: []MetadataChange{}, Hunks: []DiffHunk{}}

@@ -383,10 +383,14 @@ func (s *Service) ensureReadableUnlocked(id string) error {
 }
 
 type FileDiff struct {
-	Path   string `json:"path"`
-	Change string `json:"change"`
-	Secret bool   `json:"secret"`
-	Diff   string `json:"diff,omitempty"`
+	Path            string `json:"path"`
+	Change          string `json:"change"`
+	Secret          bool   `json:"secret"`
+	Diff            string `json:"diff,omitempty"`
+	ContentChanged  bool   `json:"content_changed"`
+	MetadataChanged bool   `json:"metadata_changed"`
+	MTimeChanged    bool   `json:"mtime_changed"`
+	MTimeOnly       bool   `json:"mtime_only"`
 }
 
 func (s *Service) DiffBackups(from, to, p string) ([]FileDiff, error) {
@@ -426,7 +430,24 @@ func (s *Service) DiffBackups(from, to, p string) ([]FileDiff, error) {
 		if !okB {
 			kind = "removed"
 		}
-		out = append(out, FileDiff{Path: path, Change: kind, Secret: a.Secret || b.Secret || isSecret(path)})
+		row := FileDiff{Path: path, Change: kind, Secret: isSecret(path) || (okA && comparisonSecret(nil, &a)) || (okB && comparisonSecret(nil, &b))}
+		// Presence is itself a change: empty regular files still have added/removed
+		// content, while symlink destinations belong exclusively to metadata.
+		if !okA || !okB {
+			row.ContentChanged = (okA && a.Type == "file") || (okB && b.Type == "file")
+			row.MetadataChanged = true
+		} else {
+			row.ContentChanged = (a.Type == "file" || b.Type == "file") && (a.Type != b.Type || a.SHA256 != b.SHA256)
+			for _, change := range comparisonMetadata(&a, &b) {
+				if change.Field == "mtime" {
+					row.MTimeChanged = true
+				} else {
+					row.MetadataChanged = true
+				}
+			}
+			row.MTimeOnly = row.MTimeChanged && !row.ContentChanged && !row.MetadataChanged
+		}
+		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil

@@ -292,7 +292,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 					hosts[i].KnownHostsPath = ""
 				}
 			}
-			return jsonOut(w, hosts)
+			return jsonOut(w, redactRecovery(hosts))
 		}
 		if method != "POST" {
 			return fail(405, "Methode nicht unterstützt")
@@ -311,7 +311,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return err
 		}
 		s.LogAudit(u.ID, "host.save", h.ID)
-		return jsonOut(w, h)
+		return jsonOut(w, redactRecovery(h))
 	case "plans/inspect":
 		if method != "POST" {
 			return fail(405, "Methode nicht unterstützt")
@@ -499,7 +499,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				h.RestoreKeyPath = ""
 				h.KnownHostsPath = ""
 			}
-			return jsonOut(w, h)
+			return jsonOut(w, redactRecovery(h))
 		}
 		if action == "backup" && method == "POST" {
 			j, err := s.QueueBackup(id)

@@ -1,6 +1,7 @@
 package anker
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -107,7 +108,7 @@ func TestCompareSummaryDoesNotLoadFileContent(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "etc/sysctl.d/a.conf") {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "hunks") || strings.Contains(w.Body.String(), "content") {
+	if strings.Contains(w.Body.String(), `"hunks":`) || strings.Contains(w.Body.String(), `"content":`) {
 		t.Fatal(w.Body.String())
 	}
 }
@@ -232,14 +233,16 @@ func TestRecoveryStatusAndInspectionSanitizeInventoryAndErrors(t *testing.T) {
 	if err := s.Store.Put("hosts", h.ID, h); err != nil {
 		t.Fatal(err)
 	}
-	w := comparisonRequest(t, s, "GET", "/api/status", nil, nil)
-	if strings.Contains(w.Body.String(), "secret-from-storage") {
-		t.Fatal(w.Body.String())
+	for _, route := range []string{"/api/status", "/api/hosts", "/api/hosts/host1"} {
+		w := comparisonRequest(t, s, "GET", route, nil, nil)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "secret-from-storage") {
+			t.Fatal(route, w.Code, w.Body.String())
+		}
 	}
 	c := s.Collector.(snapshotCollector)
 	c.inv.Details["storage_config"] = json.RawMessage(`"password secret-from-storage"`)
 	s.Collector = c
-	w = comparisonRequest(t, s, "POST", "/api/plans/inspect", r, nil)
+	w := comparisonRequest(t, s, "POST", "/api/plans/inspect", r, nil)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "secret-from-storage") {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -311,5 +314,150 @@ func TestPlanComparisonUnreadableHiddenSideFailsClosed(t *testing.T) {
 	w := comparisonRequest(t, s, "GET", "/api/plans/"+p.ID+"/comparison?path="+r.Files[0]+"&basis=source", nil, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"unavailable"`) {
 		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+// Produce internally consistent persisted manifest fixtures with metadata that
+// the content-only collector cannot set. Bodies stay exactly as collected.
+func comparisonManifestFixture(t *testing.T, s *Service, b Backup, edit func(*Entry)) {
+	t.Helper()
+	m, err := s.Manifest(b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Entries {
+		edit(&m.Entries[i])
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(s.backupDir(b), "manifest.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	b.ManifestSHA = Hash(raw)
+	if err = s.Store.Put("backups", b.ID, b); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestComparisonXAttrHTTPRevealGate(t *testing.T) {
+	for _, value := range []string{base64.StdEncoding.EncodeToString([]byte("password=classified")), "invalid-base64!"} {
+		for _, left := range []bool{true, false} {
+			s, a, b := comparisonPair(t, map[string]string{"etc/hosts": "old"}, map[string]string{"etc/hosts": "new"})
+			selected := b
+			if left {
+				selected = a
+			}
+			comparisonManifestFixture(t, s, selected, func(e *Entry) { e.XAttrs = map[string]string{"user.comment": value} })
+			body := map[string]any{"from": a.ID, "to": b.ID, "path": "etc/hosts"}
+			w := comparisonRequest(t, s, "POST", "/api/backups/compare/file", body, &User{Role: "reader", Secrets: true})
+			if w.Code != 200 || !strings.Contains(w.Body.String(), `"masked":true`) || strings.Contains(w.Body.String(), value) {
+				t.Fatal("default xattr exposure", w.Code, w.Body.String())
+			}
+			body["reveal"] = true
+			w = comparisonRequest(t, s, "POST", "/api/backups/compare/file", body, &User{Role: "reader"})
+			if w.Code != 403 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			w = comparisonRequest(t, s, "POST", "/api/backups/compare/file", body, &User{Role: "reader", Secrets: true})
+			if w.Code != 200 || !strings.Contains(w.Body.String(), value) || !strings.Contains(w.Body.String(), `"field":"xattrs"`) {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		}
+	}
+}
+func TestCompareSummaryClassifiesWithoutBodies(t *testing.T) {
+	before := map[string]string{}
+	after := map[string]string{}
+	for _, name := range []string{"content", "metadata", "mtime", "mixed", "unchanged"} {
+		before["etc/sysctl.d/"+name] = "old"
+		after["etc/sysctl.d/"+name] = "old"
+	}
+	after["etc/sysctl.d/content"] = "new"
+	after["etc/sysctl.d/mixed"] = "new"
+	before["etc/sysctl.d/removed"] = ""
+	after["etc/sysctl.d/added"] = ""
+	s, a, b := comparisonPair(t, before, after)
+	comparisonManifestFixture(t, s, b, func(e *Entry) {
+		switch e.Path {
+		case "etc/sysctl.d/metadata":
+			e.Mode = 0644
+		case "etc/sysctl.d/mtime":
+			e.MTime = 123
+		case "etc/sysctl.d/mixed":
+			e.Mode = 0644
+			e.MTime = 123
+		}
+	})
+	for _, backup := range []Backup{a, b} {
+		if err := os.RemoveAll(filepath.Join(s.backupDir(backup), "files")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := comparisonRequest(t, s, "POST", "/api/backups/compare", map[string]string{"from": a.ID, "to": b.ID}, nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		change                         string
+		content, metadata, mtime, only bool
+	}{
+		"content": {"changed", true, false, false, false}, "metadata": {"changed", false, true, false, false}, "mtime": {"changed", false, false, true, true}, "mixed": {"changed", true, true, true, false}, "added": {"added", true, true, false, false}, "removed": {"removed", true, true, false, false},
+	}
+	if len(rows) != len(want) {
+		t.Fatal(rows)
+	}
+	for _, row := range rows {
+		name := strings.TrimPrefix(row["path"].(string), "etc/sysctl.d/")
+		expect, ok := want[name]
+		if !ok || row["change"] != expect.change || row["content_changed"] != expect.content || row["metadata_changed"] != expect.metadata || row["mtime_changed"] != expect.mtime || row["mtime_only"] != expect.only {
+			t.Fatalf("classification %s: %+v", name, row)
+		}
+		for _, key := range []string{"diff", "content", "hunks", "metadata_changes", "before", "after"} {
+			if _, ok := row[key]; ok {
+				t.Fatalf("summary value leak %s: %+v", key, row)
+			}
+		}
+	}
+}
+func TestRecoveryRedactionMasksEncodedXAttrCredentials(t *testing.T) {
+	value := base64.StdEncoding.EncodeToString([]byte("password=classified"))
+	v := redactRecovery(RecoveryInspection{Files: []RecoveryReadFile{{Path: "etc/hosts", State: "read", Metadata: &Entry{Path: "etc/hosts", XAttrs: map[string]string{"user.comment": value}}}}})
+	raw, _ := json.Marshal(v)
+	if strings.Contains(string(raw), value) {
+		t.Fatal(string(raw))
+	}
+}
+func TestPlanComparisonMasksDecodedTargetXAttrs(t *testing.T) {
+	for _, value := range []string{base64.StdEncoding.EncodeToString([]byte("password=classified")), "invalid-base64!"} {
+		s, _, r := snapshotSetup(t)
+		c := s.Collector.(snapshotCollector)
+		c.result.Files[0].Metadata.XAttrs = map[string]string{"user.comment": value}
+		c.inv.Details["file_metadata"], _ = json.Marshal(map[string]*Entry{r.Files[0]: c.result.Files[0].Metadata})
+		s.Collector = c
+		p, err := s.CreatePlan(t.Context(), r)
+		if value == "invalid-base64!" {
+			if err == nil {
+				t.Fatal("invalid target xattr evidence accepted")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := "/api/plans/" + p.ID + "/comparison?path=" + r.Files[0] + "&basis=source"
+		w := comparisonRequest(t, s, "GET", path, nil, &User{Role: "restore", Secrets: true})
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"masked":true`) || strings.Contains(w.Body.String(), value) {
+			t.Fatal("hidden target xattr escaped", w.Code, w.Body.String())
+		}
+		path = "/api/plans/" + p.ID + "/comparison?path=" + r.Files[0] + "&basis=target&reveal=1"
+		w = comparisonRequest(t, s, "GET", path, nil, &User{Role: "restore", Secrets: true})
+		if w.Code != 200 || !strings.Contains(w.Body.String(), value) {
+			t.Fatal(w.Code, w.Body.String())
+		}
 	}
 }
