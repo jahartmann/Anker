@@ -95,8 +95,18 @@ func guestStorageReferences(data string) []string {
 	return refs
 }
 
-// Guest disk ownership must agree in every supported component. ISO/snippets
-// are shared content and are handled separately by their selected field kind.
+// A media flag is not ownership evidence. Only canonical shared namespaces on
+// file-backed storage bypass the guest-disk owner check (and still need Content
+// and exact target-volume inventory evidence below).
+func sharedGuestVolume(backend, volume, namespace string) bool {
+	if backend != "dir" && backend != "nfs" {
+		return false
+	}
+	parts := strings.Split(volume, "/")
+	return len(parts) == 2 && parts[0] == namespace && parts[1] != "" && parts[1] != "." && parts[1] != ".."
+}
+
+// Guest disk ownership must agree in every supported component.
 func guestVolumeOwner(backend, volume string) (string, bool) {
 	parts := strings.Split(volume, "/")
 	directory := ""
@@ -252,10 +262,10 @@ func prepareGuest(p *PreparedRecoveryFile, s RecoverySnapshot, m Mapping) {
 		if strings.Contains(p.Destination, "/lxc/") {
 			required = "rootdir"
 		}
-		if strings.Contains(value, "media=cdrom") {
+		if containsString(strings.Split(value, ","), "media=cdrom") && sharedGuestVolume(dst.Kind, volume, "iso") {
 			required = "iso"
 		}
-		if key == "hookscript" {
+		if key == "hookscript" && sharedGuestVolume(dst.Kind, volume, "snippets") {
 			required = "snippets"
 		}
 		if required == "images" || required == "rootdir" {

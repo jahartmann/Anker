@@ -318,3 +318,39 @@ func TestNetworkPreparationAllowsProvenCompatibleMemberships(t *testing.T) {
 		})
 	}
 }
+
+func TestGuestCDROMAndHookReferencesRetainOwnershipChecks(t *testing.T) {
+	for _, tc := range []struct {
+		name, field, volume, options string
+		allowed                      bool
+	}{
+		{"foreign disk CDROM", "ide2", "vm-200-disk-0", ",media=cdrom", false},
+		{"foreign directory CDROM", "ide2", "200/vm-200-disk-0.qcow2", ",media=cdrom", false},
+		{"contradictory directory CDROM", "ide2", "100/vm-200-disk-0.qcow2", ",media=cdrom", false},
+		{"unknown CDROM owner", "ide2", "custom-disk", ",media=cdrom", false},
+		{"same owner CDROM", "ide2", "vm-100-cloudinit", ",media=cdrom", true},
+		{"same directory owner CDROM", "ide2", "100/vm-100-disk-0.qcow2", ",media=cdrom", true},
+		{"shared ISO", "ide2", "iso/install.iso", ",media=cdrom", true},
+		{"ISO traversal", "ide2", "iso/../200/vm-200-disk-0.qcow2", ",media=cdrom", false},
+		{"shared snippet", "hookscript", "snippets/hook.pl", "", true},
+		{"foreign disk hook", "hookscript", "vm-200-disk-0", "", false},
+		{"snippet traversal", "hookscript", "snippets/../200/vm-200-disk-0.raw", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := preparationSnapshot()
+			s.SourceStorageConfig = []byte("dir: old\n path /srv/data\n content images,iso,snippets\n")
+			s.Files[0].Content = []byte("dir: new\n path /srv/data\n content images,iso,snippets\n")
+			s.Files[0].SHA256 = Hash(s.Files[0].Content)
+			s.StorageVolumes["new"] = RecoveryVolumeResult{State: "ok", Volumes: []string{"new:" + tc.volume}}
+			input := tc.field + ": old:" + tc.volume + tc.options + "\n"
+			p := prepareForTest(t, "etc/pve/qemu-server/100.conf", input, s, Mapping{Storage: map[string]string{"old": "new"}})
+			if tc.allowed {
+				if string(p.Content) != tc.field+": new:"+tc.volume+tc.options+"\n" || hasPreparationTask(p, "guest-volume") {
+					t.Fatalf("valid owned/shared volume not prepared: %q %+v", p.Content, p.ManualTasks)
+				}
+			} else if string(p.Content) != input || !hasPreparationTask(p, "guest-volume") {
+				t.Fatalf("unproven guest ownership bypassed: %q %+v", p.Content, p.ManualTasks)
+			}
+		})
+	}
+}
