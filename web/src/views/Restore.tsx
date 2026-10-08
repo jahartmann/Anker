@@ -1,181 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, date, labels } from "../api";
-import type {
-  Entry,
-  Job,
-  Plan,
-  RecoveryInspection,
-  Status,
-  User,
-} from "../api";
+import type { Job, Plan, Status, User } from "../api";
 import {
   Dialog,
   Download,
   Empty,
   Field,
   Heading,
-  LoadError,
   Pagination,
   State,
 } from "../components/shared";
 import type { Notify } from "../components/shared";
-import RecoveryMapping from "../components/RecoveryMapping";
-
-function RestoreFiles({
-  entries,
-  files,
-  onChange,
-}: {
-  entries: Entry[];
-  files: string[];
-  onChange: (files: string[]) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [selectedOnly, setSelectedOnly] = useState(false);
-  const [page, setPage] = useState(1);
-  const selected = useMemo(() => new Set(files), [files]);
-  const matches = useMemo(
-    () =>
-      entries
-        .filter(
-          (f) =>
-            f.type !== "directory" &&
-            f.path.toLowerCase().includes(query.trim().toLowerCase()) &&
-            (!selectedOnly || selected.has(f.path)),
-        )
-        .sort((a, b) =>
-          a.path.localeCompare(b.path, undefined, { numeric: true }),
-        ),
-    [entries, query, selectedOnly, selected],
-  );
-  useEffect(() => {
-    setPage(1);
-  }, [query, selectedOnly, entries]);
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
-  return (
-    <fieldset className="file-selection restore-file-selection">
-      <legend>Dateien auswählen · {files.length} ausgewählt</legend>
-      <div className="restore-selection-toolbar">
-        <input
-          aria-label="Wiederherstellungsdateien durchsuchen"
-          placeholder="Dateipfad suchen"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button
-          type="button"
-          className="secondary"
-          aria-pressed={selectedOnly}
-          onClick={() => setSelectedOnly((v) => !v)}
-        >
-          Nur ausgewählte Dateien
-        </button>
-      </div>
-      <div className="restore-file-items">
-        {matches.slice((current - 1) * 25, current * 25).map((f) => (
-          <label className="check" key={f.path}>
-            <input
-              type="checkbox"
-              checked={selected.has(f.path)}
-              onChange={(e) =>
-                onChange(
-                  e.target.checked
-                    ? [...files, f.path]
-                    : files.filter((p) => p !== f.path),
-                )
-              }
-            />
-            <span className="mono">{f.path}</span>
-            {f.secret && <small className="muted">Geschützt</small>}
-          </label>
-        ))}
-        {!matches.length && (
-          <p className="muted">
-            {selectedOnly && !files.length
-              ? "Noch keine Dateien ausgewählt."
-              : "Keine passenden Dateien."}
-          </p>
-        )}
-      </div>
-      <Pagination
-        page={current}
-        pageSize={25}
-        total={matches.length}
-        onPageChange={setPage}
-        label="Dateien"
-      />
-      <p className="field-hint">
-        Die Auswahl bleibt beim Suchen und Blättern erhalten.
-      </p>
-    </fieldset>
-  );
-}
-
-function RecoveryEvidence({
-  title,
-  items,
-  ordered = false,
-}: {
-  title: string;
-  items: string[];
-  ordered?: boolean;
-}) {
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const matches = useMemo(
-    () =>
-      items.filter((item) =>
-        item.toLowerCase().includes(query.trim().toLowerCase()),
-      ),
-    [items, query],
-  );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
-  const rows = matches
-    .slice((current - 1) * 25, current * 25)
-    .map((item, i) => <li key={(current - 1) * 25 + i}>{item}</li>);
-  return (
-    <details
-      className={
-        "recovery-disclosure recovery-evidence" +
-        (ordered ? " manual-steps" : "")
-      }
-    >
-      <summary>
-        {title} · {items.length}
-      </summary>
-      <section aria-label={title}>
-        {items.length > 25 && (
-          <Field label={title + " durchsuchen"}>
-            <input
-              value={query}
-              placeholder="Text suchen"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(1);
-              }}
-            />
-          </Field>
-        )}
-        {ordered ? (
-          <ol start={(current - 1) * 25 + 1}>{rows}</ol>
-        ) : (
-          <ul>{rows}</ul>
-        )}
-        {!matches.length && <p className="muted">Keine passenden Einträge.</p>}
-        {items.length > 25 && (
-          <Pagination
-            page={current}
-            pageSize={25}
-            total={matches.length}
-            onPageChange={setPage}
-            label={title}
-          />
-        )}
-      </section>
-    </details>
-  );
-}
+import RecoveryEvidence from "../components/recovery/RecoveryEvidence";
+import RecoveryWizard from "../components/recovery/RecoveryWizard";
+import { useRecoveryDraft } from "../components/recovery/useRecoveryDraft";
 
 function PlanFiles({ steps }: { steps: Plan["steps"] }) {
   const [query, setQuery] = useState("");
@@ -229,6 +67,8 @@ export default function Restore({
   user,
   notify,
   refresh,
+  onConnectTarget,
+  onBusyChange,
 }: {
   status: Status;
   initialBackup: string;
@@ -236,22 +76,26 @@ export default function Restore({
   user: User;
   notify: Notify;
   refresh: () => void;
+  onConnectTarget: () => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [wizard, setWizard] = useState(!!initialBackup);
-  const [backup, setBackup] = useState(initialBackup);
-  const [sourceHost, setSourceHost] = useState(
-    status.backups.find((b) => b.id === initialBackup)?.host_id || "",
-  );
-  const [target, setTarget] = useState("");
-  const [scenario, setScenario] = useState("files");
-  const [hostname, setHostname] = useState("");
-  const [address, setAddress] = useState("");
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [files, setFiles] = useState<string[]>([]);
-  const [interfaces, setInterfaces] = useState<Record<string, string>>({});
-  const [storage, setStorage] = useState<Record<string, string>>({});
-  const [inspection, setInspection] = useState<RecoveryInspection | null>(null);
-  const [inspectionKey, setInspectionKey] = useState("");
+  const draft = useRecoveryDraft(initialBackup, initialFile);
+  const selectedTarget = status.hosts.find((h) => h.id === draft.target);
+  const connection = JSON.stringify(selectedTarget ? [
+    selectedTarget.address, selectedTarget.ssh_port, selectedTarget.ssh_user,
+    selectedTarget.known_hosts_path, selectedTarget.key_path,
+    selectedTarget.restore_ssh_user, selectedTarget.restore_key_path,
+  ] : []);
+  const previousConnection = useRef({ target: draft.target, connection });
+  useEffect(() => {
+    const previous = previousConnection.current;
+    if (previous.target === draft.target && previous.connection !== connection) {
+      draft.changeTarget(draft.target);
+      if (draft.step > 2) draft.setStep(2);
+    }
+    previousConnection.current = { target: draft.target, connection };
+  }, [draft.target, connection]);
   const [pendingJob, setPendingJob] = useState("");
   const [uncertainPlans, setUncertainPlans] = useState<Record<string, boolean>>(
     {},
@@ -260,8 +104,6 @@ export default function Restore({
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const activeRequest = useRef(false);
   const mounted = useRef(true);
-  const [consoleOK, setConsoleOK] = useState(false);
-  const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [canRevise, setCanRevise] = useState(false);
@@ -276,28 +118,7 @@ export default function Restore({
   const [planState, setPlanState] = useState("");
   const [planPage, setPlanPage] = useState(1);
   const [confirmation, setConfirmation] = useState("");
-  const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [reload, setReload] = useState(0);
-  const contextKey = JSON.stringify([
-    backup,
-    target,
-    scenario,
-    [...files].sort(),
-  ]);
-  const currentContext = useRef(contextKey);
-  currentContext.current = contextKey;
-  const inspected = !!inspection && inspectionKey === contextKey;
-  const missingDecisions =
-    inspected &&
-    (inspection.ports.some((p) => !interfaces[p.name]) ||
-      inspection.storage.some((s) => !storage[s.id]) ||
-      (inspection.requires_console && !consoleOK) ||
-      (inspection.requires_source_offline && !offline));
-  const portValues =
-    inspection?.ports.map((p) => interfaces[p.name]).filter(Boolean) || [];
-  const duplicatePorts = new Set(portValues).size !== portValues.length;
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -305,22 +126,17 @@ export default function Restore({
     };
   }, []);
   useEffect(() => {
-    setInspection(null);
-    setInspectionKey("");
-    setInterfaces({});
-    setStorage({});
-    setConsoleOK(false);
-    setOffline(false);
-    setFormError("");
-  }, [contextKey]);
-  useEffect(() => {
+    onBusyChange(busy);
     if (!busy) return;
     const protect = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", protect);
-    return () => window.removeEventListener("beforeunload", protect);
-  }, [busy]);
+    return () => {
+      window.removeEventListener("beforeunload", protect);
+      onBusyChange(false);
+    };
+  }, [busy, onBusyChange]);
   useEffect(() => {
     if (!plan) return;
     const latest = status.plans.find((p) => p.id === plan.id);
@@ -344,120 +160,6 @@ export default function Restore({
       active = false;
     };
   }, [status.plans, status.jobs, pendingJob, plan?.id, plan?.state]);
-  useEffect(() => {
-    if (initialBackup) {
-      setBackup(initialBackup);
-      setWizard(true);
-    }
-  }, [initialBackup]);
-  useEffect(() => {
-    setFiles([]);
-    setEntries([]);
-    setInterfaces({});
-    setConsoleOK(false);
-    setOffline(false);
-    setLoadError("");
-    setFormError("");
-    if (!backup) {
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    api<Entry[]>("backups/" + backup + "/files")
-      .then((items) => {
-        if (!active) return;
-        setEntries(items);
-        if (
-          backup === initialBackup &&
-          initialFile &&
-          items.some((f) => f.path === initialFile && f.type !== "directory")
-        )
-          setFiles([initialFile]);
-      })
-      .catch((e) => {
-        if (active) setLoadError(e.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [backup, initialBackup, initialFile, reload]);
-  function requestBody() {
-    return {
-      backup_id: backup,
-      target_id: target,
-      scenario,
-      files: scenario === "files" ? files : [],
-      mapping: {
-        interfaces,
-        storage,
-        ...(scenario !== "files"
-          ? { hostname: hostname.trim(), address: address.trim() }
-          : {}),
-      },
-      console_confirmed: consoleOK,
-      source_offline: offline,
-    };
-  }
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    if (
-      activeRequest.current ||
-      loading ||
-      loadError ||
-      !backup ||
-      !target ||
-      (scenario === "files" && !files.length)
-    )
-      return;
-    if (inspected && (missingDecisions || duplicatePorts)) return;
-    activeRequest.current = true;
-    const key = contextKey;
-    setBusy(true);
-    setFormError("");
-    try {
-      if (!inspected) {
-        const result = await api<RecoveryInspection>(
-          "plans/inspect",
-          "POST",
-          requestBody(),
-        );
-        if (!mounted.current || currentContext.current !== key) return;
-        setInspection(result);
-        setInspectionKey(key);
-        setInterfaces(
-          Object.fromEntries(
-            (result.ports || [])
-              .filter((p) => p.suggested)
-              .map((p) => [p.name, p.suggested!]),
-          ),
-        );
-        // Storage decisions remain explicit even when an inventory suggests a match.
-        setStorage({});
-      } else {
-        const p = await api<Plan>("plans", "POST", requestBody());
-        if (!mounted.current || currentContext.current !== key) return;
-        setPlan(p);
-        setCanRevise(true);
-        setWizard(false);
-        setConfirmation("");
-        setRollbackConfirmation("");
-        setRollbackOpen(false);
-        setPendingJob("");
-        refresh();
-        notify("Wiederherstellungsplan erstellt");
-      }
-    } catch (e) {
-      if (mounted.current && currentContext.current === key)
-        setFormError((e as Error).message);
-    } finally {
-      activeRequest.current = false;
-      if (mounted.current) setBusy(false);
-    }
-  }
   async function execute(action: "apply" | "rollback" | "reconcile") {
     if (
       !plan ||
@@ -523,10 +225,6 @@ export default function Restore({
       if (mounted.current) setBusy(false);
     }
   }
-  const sources = new Map(status.backups.map((b) => [b.host_id, b.host_name]));
-  const stands = status.backups
-    .filter((b) => !sourceHost || b.host_id === sourceHost)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const plans = status.plans
     .filter(
       (p) =>
@@ -542,412 +240,173 @@ export default function Restore({
   );
   return (
     <>
-      <Heading
-        title="Wiederherstellung"
-        description="Originale bewahren. Änderungen am Ziel zuerst prüfen."
-        action={
-          user.role !== "reader" && (
-            <button
-              onClick={() => {
-                if (activeRequest.current) return;
-                setWizard(true);
-                setPlan(null);
-                setInspection(null);
-                setFormError("");
-              }}
-            >
-              Plan erstellen
-            </button>
-          )
-        }
-      />
-      {status.plans.length ? (
-        <div>
-          <div className="restore-plan-filters">
-            <input
-              aria-label="Wiederherstellungspläne durchsuchen"
-              placeholder="Quelle, Ziel oder Plan suchen"
-              value={planQuery}
-              onChange={(e) => {
-                setPlanQuery(e.target.value);
-                setPlanPage(1);
-              }}
-            />
-            <select
-              aria-label="Planstatus filtern"
-              value={planState}
-              onChange={(e) => {
-                setPlanState(e.target.value);
-                setPlanPage(1);
-              }}
-            >
-              <option value="">Alle Status</option>
-              {Array.from(
-                new Set(
-                  [...status.plans.map((p) => p.state), planState].filter(
-                    Boolean,
-                  ),
-                ),
+      {!wizard && (
+        <>
+          <Heading
+            title="Wiederherstellung"
+            description="Originale bewahren. Änderungen am Ziel zuerst prüfen."
+            action={
+              user.role !== "reader" && (
+                <button
+                  onClick={() => {
+                    if (activeRequest.current) return;
+                    setWizard(true);
+                    setPlan(null);
+                    draft.invalidate();
+                    draft.setStep(1);
+                    setFormError("");
+                  }}
+                >
+                  Plan erstellen
+                </button>
               )
-                .sort()
-                .map((state) => (
-                  <option key={state} value={state}>
-                    {labels[state] || state}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="table-scroll">
-            <table className="restore-plans">
-              <thead>
-                <tr>
-                  <th>Quelle → Ziel</th>
-                  <th>Szenario</th>
-                  <th>Status</th>
-                  <th className="right">Aktionen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plans
-                  .slice((currentPlanPage - 1) * 25, currentPlanPage * 25)
-                  .map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <strong>
-                          {p.source.hostname} → {p.target.hostname}
-                        </strong>
-                        <div className="secondary-line">
-                          {date(p.created_at)}
-                        </div>
-                      </td>
-                      <td>{labels[p.scenario]}</td>
-                      <td>
-                        <State value={p.state} />
-                      </td>
-                      <td className="right">
-                        <button
-                          className="text-button"
-                          disabled={busy}
-                          onClick={async () => {
-                            if (activeRequest.current) return;
-                            activeRequest.current = true;
-                            setBusy(true);
-                            try {
-                              const opened = await api<Plan>("plans/" + p.id);
-                              if (!mounted.current) return;
-                              setPlan(opened);
-                              setCanRevise(false);
-                              setConfirmation("");
-                              setRollbackConfirmation("");
-                              setRollbackOpen(false);
-                              setPendingJob("");
-                              setFormError("");
-                            } catch (e) {
-                              if (mounted.current)
-                                notify((e as Error).message, true);
-                            } finally {
-                              activeRequest.current = false;
-                              if (mounted.current) setBusy(false);
-                            }
-                          }}
-                        >
-                          Plan ansehen
-                        </button>
-                      </td>
+            }
+          />
+          {status.plans.length ? (
+            <div>
+              <div className="restore-plan-filters">
+                <input
+                  aria-label="Wiederherstellungspläne durchsuchen"
+                  placeholder="Quelle, Ziel oder Plan suchen"
+                  value={planQuery}
+                  onChange={(e) => {
+                    setPlanQuery(e.target.value);
+                    setPlanPage(1);
+                  }}
+                />
+                <select
+                  aria-label="Planstatus filtern"
+                  value={planState}
+                  onChange={(e) => {
+                    setPlanState(e.target.value);
+                    setPlanPage(1);
+                  }}
+                >
+                  <option value="">Alle Status</option>
+                  {Array.from(
+                    new Set(
+                      [...status.plans.map((p) => p.state), planState].filter(
+                        Boolean,
+                      ),
+                    ),
+                  )
+                    .sort()
+                    .map((state) => (
+                      <option key={state} value={state}>
+                        {labels[state] || state}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="table-scroll">
+                <table className="restore-plans">
+                  <thead>
+                    <tr>
+                      <th>Quelle → Ziel</th>
+                      <th>Szenario</th>
+                      <th>Status</th>
+                      <th className="right">Aktionen</th>
                     </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          {!plans.length && (
-            <Empty title="Keine passenden Pläne">
-              Suche oder Statusfilter ändern.
+                  </thead>
+                  <tbody>
+                    {plans
+                      .slice((currentPlanPage - 1) * 25, currentPlanPage * 25)
+                      .map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            <strong>
+                              {p.source.hostname} → {p.target.hostname}
+                            </strong>
+                            <div className="secondary-line">
+                              {date(p.created_at)}
+                            </div>
+                          </td>
+                          <td>{labels[p.scenario]}</td>
+                          <td>
+                            <State value={p.state} />
+                          </td>
+                          <td className="right">
+                            <button
+                              className="text-button"
+                              disabled={busy}
+                              onClick={async () => {
+                                if (activeRequest.current) return;
+                                activeRequest.current = true;
+                                setBusy(true);
+                                try {
+                                  const opened = await api<Plan>(
+                                    "plans/" + p.id,
+                                  );
+                                  if (!mounted.current) return;
+                                  setPlan(opened);
+                                  setCanRevise(false);
+                                  setConfirmation("");
+                                  setRollbackConfirmation("");
+                                  setRollbackOpen(false);
+                                  setPendingJob("");
+                                  setFormError("");
+                                } catch (e) {
+                                  if (mounted.current)
+                                    notify((e as Error).message, true);
+                                } finally {
+                                  activeRequest.current = false;
+                                  if (mounted.current) setBusy(false);
+                                }
+                              }}
+                            >
+                              Plan ansehen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              {!plans.length && (
+                <Empty title="Keine passenden Pläne">
+                  Suche oder Statusfilter ändern.
+                </Empty>
+              )}
+              <Pagination
+                page={currentPlanPage}
+                pageSize={25}
+                total={plans.length}
+                onPageChange={setPlanPage}
+                label="Pläne"
+              />
+            </div>
+          ) : (
+            <Empty title="Noch keine Wiederherstellungspläne">
+              Eine Sicherung und einen Zielhost auswählen. Anker zeigt danach
+              die möglichen Schritte und offenen Entscheidungen.
             </Empty>
           )}
-          <Pagination
-            page={currentPlanPage}
-            pageSize={25}
-            total={plans.length}
-            onPageChange={setPlanPage}
-            label="Pläne"
-          />
-        </div>
-      ) : (
-        <Empty title="Noch keine Wiederherstellungspläne">
-          Eine Sicherung und einen Zielhost auswählen. Anker zeigt danach die
-          möglichen Schritte und offenen Entscheidungen.
-        </Empty>
+        </>
       )}
       {wizard && (
-        <Dialog
-          title="Wiederherstellung vorbereiten"
-          wide
-          busy={busy}
+        <RecoveryWizard
+          status={status}
+          user={user}
+          draft={draft}
           onClose={() => {
-            if (!activeRequest.current) setWizard(false);
+            draft.invalidate();
+            if (draft.step > 2) draft.setStep(2);
+            setWizard(false);
           }}
-        >
-          <form onSubmit={create}>
-            <fieldset className="form-fields" disabled={busy}>
-              <p className="dialog-intro">
-                Quelle auswählen, Ziel frisch prüfen, dann Änderungen ansehen.
-                Die Vorbereitung verändert keine Konfiguration.
-              </p>
-              <h3 className="recovery-section-title">1 · Quelle und Ziel</h3>
-              <div className="form-grid">
-                <Field
-                  label="Quellhost"
-                  hint="Bei vielen Ständen zuerst nach dem Quellhost filtern."
-                >
-                  <select
-                    value={sourceHost}
-                    onChange={(e) => {
-                      setSourceHost(e.target.value);
-                      setBackup("");
-                    }}
-                  >
-                    <option value="">Alle Quellhosts</option>
-                    {Array.from(sources)
-                      .sort((a, b) => a[1].localeCompare(b[1]))
-                      .map(([id, name]) => (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      ))}
-                  </select>
-                </Field>
-                <Field label="Sicherung">
-                  <select
-                    required
-                    value={backup}
-                    onChange={(e) => setBackup(e.target.value)}
-                  >
-                    <option value="">Stand auswählen</option>
-                    {stands.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.host_name} · {date(b.created_at)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <div className="form-grid">
-                <Field label="Zielhost">
-                  <select
-                    required
-                    value={target}
-                    onChange={(e) => {
-                      setTarget(e.target.value);
-                      setInterfaces({});
-                      setConsoleOK(false);
-                      setOffline(false);
-                    }}
-                  >
-                    <option value="">Ziel auswählen</option>
-                    {status.hosts.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Szenario">
-                  <select
-                    value={scenario}
-                    onChange={(e) => setScenario(e.target.value)}
-                  >
-                    {[
-                      "files",
-                      "standalone",
-                      "migration",
-                      "version",
-                      "cluster-node",
-                      "cluster-disaster",
-                      "topology",
-                    ].map((s) => (
-                      <option key={s} value={s}>
-                        {labels[s]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              {loading && (
-                <p className="notice" role="status">
-                  Sicherung wird gelesen …
-                </p>
-              )}
-              {loadError && (
-                <LoadError
-                  message={loadError}
-                  retry={() => setReload((v) => v + 1)}
-                />
-              )}
-              {scenario === "files" && backup && !loading && !loadError && (
-                <RestoreFiles
-                  entries={entries}
-                  files={files}
-                  onChange={setFiles}
-                />
-              )}
-              {scenario !== "files" && (
-                <p className="notice">
-                  Dieses Szenario wird manuell geführt. Der Plan bereitet einen
-                  Export und konkrete Prüfschritte vor; er baut keinen
-                  vollständigen Host oder Cluster automatisch wieder auf.
-                </p>
-              )}
-              {scenario !== "files" && (
-                <details className="recovery-disclosure">
-                  <summary>Hostidentität festlegen (optional, manuell)</summary>
-                  <p className="field-hint">
-                    Diese Wünsche werden im Plan dokumentiert. Hostname und
-                    Adresse werden nicht automatisch in Konfigurationsdateien
-                    geändert. Leer lassen, wenn die Identität später vor Ort
-                    entschieden wird.
-                  </p>
-                  <div className="form-grid">
-                    <Field label="Gewünschter Hostname (manuell)">
-                      <input
-                        value={hostname}
-                        onChange={(e) => setHostname(e.target.value)}
-                        placeholder="z. B. pve-ersatz"
-                      />
-                    </Field>
-                    <Field label="Gewünschte Adresse (manuell)">
-                      <input
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder="IP-Adresse oder DNS-Name"
-                      />
-                    </Field>
-                  </div>
-                </details>
-              )}
-              <h3 className="recovery-section-title">
-                2 · Zielprüfung und Entscheidungen
-              </h3>
-              {!inspected && (
-                <p className="field-hint">
-                  „Ziel prüfen“ liest das aktuelle Zielinventar. Danach
-                  erscheinen nur die für diese Auswahl benötigten
-                  Entscheidungen.
-                </p>
-              )}
-              {inspected && inspection && (
-                <>
-                  <div className="recovery-inspection-meta">
-                    <strong>
-                      {inspection.source.hostname} →{" "}
-                      {inspection.target.hostname}
-                    </strong>
-                    <span className="state success">Ziel geprüft</span>
-                  </div>
-                  <p className="field-hint">
-                    Quelle {inspection.source.pve_version} · Ziel{" "}
-                    {inspection.target.pve_version} ·{" "}
-                    {inspection.automatic
-                      ? "Dateiübernahme nach Planprüfung möglich"
-                      : "Manuelle Vorbereitung erforderlich"}
-                  </p>
-                  {inspection.blockers?.map((s, i) => (
-                    <p className="notice warning" key={i}>
-                      {s}
-                    </p>
-                  ))}
-                  {inspection.warnings?.length > 0 && (
-                    <RecoveryEvidence
-                      key={inspectionKey + "warnings"}
-                      title="Hinweise zur Zielprüfung"
-                      items={inspection.warnings}
-                    />
-                  )}
-                  <RecoveryMapping
-                    inspection={inspection}
-                    interfaces={interfaces}
-                    storage={storage}
-                    onInterfaces={setInterfaces}
-                    onStorage={setStorage}
-                  />
-                  {duplicatePorts && (
-                    <p className="notice warning" role="alert">
-                      Mehrere Quellports sind demselben Zielport zugeordnet. Für
-                      jeden Port ein eigenes Ziel wählen.
-                    </p>
-                  )}
-                  {inspection.requires_console && (
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={consoleOK}
-                        onChange={(e) => setConsoleOK(e.target.checked)}
-                      />
-                      Konsolenzugang zum Ziel ist verfügbar
-                    </label>
-                  )}
-                  {inspection.requires_source_offline && (
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={offline}
-                        onChange={(e) => setOffline(e.target.checked)}
-                      />
-                      Alter Host ist ausgeschaltet oder isoliert
-                    </label>
-                  )}
-                  {inspection.manual?.length > 0 && (
-                    <RecoveryEvidence
-                      key={inspectionKey + "manual"}
-                      title="Manuelle Schritte"
-                      items={inspection.manual}
-                      ordered
-                    />
-                  )}
-                  <p className="field-hint">
-                    „Plan prüfen“ prüft das Ziel und diese Entscheidungen
-                    erneut. Änderungen an Quelle, Ziel, Szenario oder
-                    Dateiauswahl erfordern eine neue Zielprüfung.
-                  </p>
-                </>
-              )}
-              {formError && (
-                <p className="notice warning" role="alert">
-                  {formError}
-                </p>
-              )}
-              <footer className="dialog-footer">
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => setWizard(false)}
-                >
-                  Abbrechen
-                </button>
-                <button
-                  disabled={
-                    busy ||
-                    loading ||
-                    !!loadError ||
-                    !backup ||
-                    !target ||
-                    (scenario === "files" && !files.length) ||
-                    !!missingDecisions ||
-                    duplicatePorts
-                  }
-                >
-                  {busy
-                    ? inspected
-                      ? "Plan wird geprüft …"
-                      : "Ziel wird geprüft …"
-                    : inspected
-                      ? "Plan prüfen"
-                      : "Ziel prüfen"}
-                </button>
-              </footer>
-            </fieldset>
-          </form>
-        </Dialog>
+          onConnectTarget={onConnectTarget}
+          notify={notify}
+          onBusyChange={onBusyChange}
+          onPlan={(p) => {
+            setPlan(p);
+            setCanRevise(true);
+            setWizard(false);
+            setConfirmation("");
+            setRollbackConfirmation("");
+            setRollbackOpen(false);
+            setPendingJob("");
+            refresh();
+          }}
+        />
       )}
       {plan && (
         <Dialog
@@ -1102,10 +561,8 @@ export default function Restore({
                   className="secondary"
                   disabled={busy}
                   onClick={() => {
-                    setInspection(null);
-                    setInspectionKey("");
-                    setConsoleOK(false);
-                    setOffline(false);
+                    draft.invalidate();
+                    draft.setStep(2);
                     setPlan(null);
                     setWizard(true);
                     setFormError("");

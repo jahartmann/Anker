@@ -20,7 +20,7 @@ import {
 } from "./components/shared";
 import ActiveJobs from "./components/ActiveJobs";
 import Jobs from "./views/Jobs";
-import Hosts from "./views/Hosts";
+import Hosts, { HostForm } from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
 import Restore from "./views/Restore";
 import Settings from "./views/Settings";
@@ -98,6 +98,8 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState("");
   const [page, setPage] = useState("Hosts");
   const [nav, setNav] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [connectTarget, setConnectTarget] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingPage, setPendingPage] = useState("");
   const [file, setFile] = useState("");
@@ -148,6 +150,8 @@ export default function App() {
       setStatus(emptyStatus);
       setFile("");
       setRestoreRequest(null);
+      setConnectTarget(false);
+      setRecoveryBusy(false);
       setPage("Hosts");
       setSettingsDirty(false);
       setPendingPage("");
@@ -179,6 +183,10 @@ export default function App() {
     document.title = loading ? "Anker" : `${user ? page : "Anmelden"} · Anker`;
   }, [loading, !!user, page]);
   function navigate(p: string) {
+    if (recoveryBusy) {
+      notify("Plananfrage läuft. Bitte Antwort abwarten.", true);
+      return;
+    }
     if (p === page) {
       setNav(false);
       return;
@@ -190,9 +198,9 @@ export default function App() {
     }
     setPage(p);
     setNav(false);
-    setRestoreRequest(null);
   }
   function restore(id: string, file?: string) {
+    if (recoveryBusy) return;
     setRestoreRequest((old) => ({
       id,
       file,
@@ -277,6 +285,7 @@ export default function App() {
             <button
               className="icon-button"
               aria-label="Abmelden"
+              disabled={recoveryBusy}
               onClick={async () => {
                 try {
                   await api("logout", "POST", {});
@@ -284,6 +293,8 @@ export default function App() {
                   setUser(null);
                   setFile("");
                   setRestoreRequest(null);
+                  setConnectTarget(false);
+                  setRecoveryBusy(false);
                   setStatus(emptyStatus);
                   setPage("Hosts");
                   setSettingsDirty(false);
@@ -313,7 +324,7 @@ export default function App() {
           <ChevronRight size={12} />
           <span>{page}</span>
         </div>
-        <main key={page}>
+        <main>
           <div className="content">
             {updating && (
               <p className="update-progress" role="status">
@@ -355,7 +366,7 @@ export default function App() {
               />
             )}{" "}
             {page === "Sicherungen" && <Backups {...common} user={user} />}{" "}
-            {page === "Wiederherstellung" && (
+            <div hidden={page !== "Wiederherstellung"}>
               <Restore
                 key={restoreRequest?.sequence || "restore"}
                 status={status}
@@ -364,8 +375,13 @@ export default function App() {
                 user={user}
                 notify={notify}
                 refresh={refresh}
+                onBusyChange={setRecoveryBusy}
+                onConnectTarget={() => {
+                  setConnectTarget(true);
+                  setPage("Hosts");
+                }}
               />
-            )}{" "}
+            </div>{" "}
             {page === "Einstellungen" && user.role === "admin" && (
               <Settings
                 notify={notify}
@@ -547,6 +563,16 @@ export default function App() {
           </div>
         </main>
       </div>
+      {connectTarget && user.role === "admin" && (
+        <HostForm
+          notify={notify}
+          onSaved={refresh}
+          onClose={() => {
+            setConnectTarget(false);
+            setPage("Wiederherstellung");
+          }}
+        />
+      )}
       {backup && (
         <FileBrowser
           backup={backup}

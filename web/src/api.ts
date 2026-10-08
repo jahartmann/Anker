@@ -13,6 +13,7 @@ export interface Port {
   kind?: string;
 }
 export interface Inventory {
+  captured_at?: string;
   hostname: string;
   pve_version: string;
   debian: string;
@@ -175,13 +176,28 @@ export interface Plan {
   };
 }
 export interface RecoveryStorage {
+  backing?: Record<string, string>;
+  content?: string[];
+  nodes?: string[];
+  verified?: boolean;
   id: string;
   kind: string;
   path: string;
   reason?: string;
   suggested?: string;
 }
+export type FileDecision = "backup" | "prepared" | "keep" | "manual";
 export interface RecoveryInspection {
+  snapshot_id?: string;
+  comparison_complete?: boolean;
+  preserved?: { path: string; reason: string }[];
+  files?: {
+    path: string;
+    state: string;
+    sha256?: string;
+    metadata?: Entry;
+    error?: string;
+  }[];
   source: Inventory;
   target: Inventory;
   ports: (Port & { reason: string; suggested?: string })[];
@@ -328,6 +344,7 @@ export const labels: Record<string, string> = {
   checks_pending: "Prüfung ausstehend",
   demo_applied: "Demo angewendet",
   files: "Einzelne Dateien",
+  host: "Host wiederaufbauen",
   standalone: "Host wiederaufbauen",
   migration: "Neue Hardware",
   version: "Neue Proxmox-Version",

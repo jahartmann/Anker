@@ -21,10 +21,13 @@ async function setup(page: Page) {
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
+  await page.getByLabel("etc/network/interfaces", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
   await page
     .getByLabel("Zielhost", { exact: true })
     .selectOption(base.hosts[0].id);
-  await page.getByLabel("etc/network/interfaces", { exact: true }).check();
   return base;
 }
 function inspected(base: any) {
@@ -66,6 +69,9 @@ test("fresh inspection shows only necessary mappings before creating a plan", as
   });
   base = await setup(page);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
   await expect(page.getByLabel("eno1 → Zielport", { exact: true })).toHaveValue(
     "enp7s0",
   );
@@ -74,6 +80,8 @@ test("fresh inspection shows only necessary mappings before creating a plan", as
     page.getByLabel("Alter Host ist ausgeschaltet oder isoliert"),
   ).toHaveCount(0);
   expect(creates).toBe(0);
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await page.getByLabel("etc/network/interfaces", { exact: true }).uncheck();
   await expect(page.getByLabel("eno1 → Zielport", { exact: true })).toHaveCount(
     0,
@@ -106,18 +114,25 @@ test("failed inspection retries the same file draft and prevents duplicate or cl
   await expect(page.getByRole("alert")).toContainText(
     "Inventar nicht erreichbar",
   );
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await expect(
     page.getByLabel("etc/network/interfaces", { exact: true }),
   ).toBeChecked();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Ziel wird geprüft …", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("dialog", { name: "Wiederherstellung vorbereiten" }),
+    page.getByRole("region", { name: "Wiederherstellung vorbereiten" }),
   ).toBeVisible();
   release();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
   await expect(
     page.getByLabel("eno1 → Zielport", { exact: true }),
   ).toBeVisible();
@@ -162,7 +177,9 @@ test("duplicate physical port choices block preparation and storage stays an exp
   });
   base = await setup(page);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
-  await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
   await expect(
     page.getByLabel("local-zfs → Zielspeicher (manuell)", { exact: true }),
   ).toHaveValue("");
@@ -174,14 +191,25 @@ test("duplicate physical port choices block preparation and storage stays an exp
     .selectOption("enp7s0");
   await expect(page.getByRole("alert")).toContainText("Mehrere Quellports");
   await expect(
-    page.getByRole("button", { name: "Plan prüfen", exact: true }),
+    page.getByRole("button", { name: "Zuordnungen prüfen", exact: true }),
   ).toBeDisabled();
   await page
     .getByLabel("eno2 → Zielport", { exact: true })
     .selectOption("enp8s0");
+  await page
+    .getByLabel("Entscheidung für etc/network/interfaces", { exact: true })
+    .selectOption("prepared");
+  await page
+    .getByRole("button", { name: "Zuordnungen prüfen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Prüfung unterbrochen");
   expect(payload.mapping.storage).toEqual({ "local-zfs": "manual" });
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await expect(
     page.getByLabel("local-zfs → Zielspeicher (manuell)", { exact: true }),
   ).toHaveValue("manual");
@@ -336,6 +364,9 @@ test("many physical target candidates are searchable and preserve an off-page ch
   );
   base = await setup(page);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
   const port = page.getByLabel("eno1 → Zielport", { exact: true });
   await expect(port.getByRole("option")).toHaveCount(51);
   await page
@@ -577,8 +608,6 @@ test("whole recovery records desired identity as a manual decision without anoth
     return r.fulfill({
       json: {
         ...inspected(base),
-        ports: [],
-        target_ports: [],
         requires_console: false,
         requires_source_offline: false,
       },
@@ -590,24 +619,39 @@ test("whole recovery records desired identity as a manual decision without anoth
     return r.fulfill({ status: 503, json: { error: "Planprüfung pausiert" } });
   });
   base = await setup(page);
-  await page.getByLabel("Szenario", { exact: true }).selectOption("migration");
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByLabel("Situation", { exact: true }).selectOption("host");
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
   await page
-    .getByText("Hostidentität festlegen (optional, manuell)", { exact: true })
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
     .click();
   await page
-    .getByLabel("Gewünschter Hostname (manuell)", { exact: true })
+    .getByLabel("Gewünschter Hostname", { exact: true })
     .fill("pve-ersatz");
   await page
     .getByLabel("Gewünschte Adresse (manuell)", { exact: true })
     .fill("10.50.0.77");
+  await page
+    .getByRole("button", {
+      name: "Offene Dateien manuell bearbeiten",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Planprüfung pausiert");
   expect(payload.mapping.hostname).toBe("pve-ersatz");
   expect(payload.mapping.address).toBe("10.50.0.77");
   expect(inspections).toBe(1);
-  await page.getByLabel("Szenario", { exact: true }).selectOption("files");
+  for (let i = 0; i < 3; i++)
+    await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByLabel("Situation", { exact: true }).selectOption("files");
   await expect(
-    page.getByLabel("Gewünschter Hostname (manuell)", { exact: true }),
+    page.getByLabel("Gewünschter Hostname", { exact: true }),
   ).toHaveCount(0);
 });

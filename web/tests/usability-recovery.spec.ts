@@ -28,26 +28,62 @@ test("console and source isolation approvals belong to the selected recovery tar
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
+  await page.getByLabel("Situation", { exact: true }).selectOption("host");
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
   await page
     .getByLabel("Zielhost", { exact: true })
     .selectOption(base.hosts[0].id);
-  await page.getByLabel("Szenario", { exact: true }).selectOption("migration");
-  await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await review();
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
   await page.getByLabel("Alter Host ist ausgeschaltet oder isoliert").check();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await page
     .getByLabel("Zielhost", { exact: true })
     .selectOption(base.hosts[1].id);
   await expect(
     page.getByLabel("Konsolenzugang zum Ziel ist verfügbar"),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await review();
   await expect(
     page.getByLabel("Konsolenzugang zum Ziel ist verfügbar"),
   ).not.toBeChecked();
   await expect(
     page.getByLabel("Alter Host ist ausgeschaltet oder isoliert"),
   ).not.toBeChecked();
+  async function review() {
+    await page
+      .getByRole("button", { name: "Ziel prüfen", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+      .click();
+    for (const select of await page.locator(".recovery-mapping select").all()) {
+      const options = await select
+        .locator("option")
+        .evaluateAll((nodes) =>
+          nodes.map((n) => (n as HTMLOptionElement).value),
+        );
+      await select.selectOption(
+        options.includes("manual") ? "manual" : options[1],
+      );
+    }
+    const open = page.getByRole("button", {
+      name: "Offene Dateien manuell bearbeiten",
+      exact: true,
+    });
+    if (await open.count()) await open.click();
+    const recheck = page.getByRole("button", {
+      name: "Zuordnungen prüfen",
+      exact: true,
+    });
+    if (await recheck.count()) await recheck.click();
+    await page
+      .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+      .click();
+  }
 });
 
 test("recovery selection pages and searches 1600 files without dropping prior selections", async ({
@@ -97,9 +133,6 @@ test("recovery selection pages and searches 1600 files without dropping prior se
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
-  await page
-    .getByLabel("Zielhost", { exact: true })
-    .selectOption(base.hosts[0].id);
   const files = page.getByRole("group", { name: /Dateien auswählen/ });
   await expect(files.getByRole("checkbox")).toHaveCount(25);
   await files
@@ -122,7 +155,25 @@ test("recovery selection pages and searches 1600 files without dropping prior se
     .getByRole("button", { name: "Nur ausgewählte Dateien", exact: true })
     .click();
   await expect(files.getByRole("checkbox")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await page
+    .getByLabel("Zielhost", { exact: true })
+    .selectOption(base.hosts[0].id);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Offene Dateien manuell bearbeiten",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Testziel nicht erreichbar",
@@ -190,21 +241,32 @@ test("freshly inspected target ports are mapped before the first plan without lo
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
-  await page.getByLabel("Zielhost", { exact: true }).selectOption(target.id);
   await page.getByLabel("etc/network/interfaces", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await page
+    .getByLabel("Zielhost", { exact: true })
+    .selectOption(base.hosts[0].id);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
-  await expect(page.getByLabel("Sicherung", { exact: true })).toHaveValue(
-    base.backups[0].id,
-  );
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
   await expect(
-    page.getByLabel("etc/network/interfaces", { exact: true }),
-  ).toBeChecked();
+    page.getByLabel("Entscheidung für etc/network/interfaces", { exact: true }),
+  ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Plan prüfen", exact: true }),
+    page.getByRole("button", { name: "Weiter zur Planprüfung", exact: true }),
   ).toBeDisabled();
   await page
     .getByLabel("eno1 → Zielport", { exact: true })
     .selectOption("enp7s0");
+  await page
+    .getByLabel("Entscheidung für etc/network/interfaces", { exact: true })
+    .selectOption("prepared");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
@@ -221,6 +283,7 @@ test("freshly inspected target ports are mapped before the first plan without lo
   await expect(
     page.getByRole("button", { name: "Ziel prüfen", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await expect(
     page.getByLabel("etc/network/interfaces", { exact: true }),
   ).toBeChecked();

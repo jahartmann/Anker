@@ -54,7 +54,8 @@ export default function RecoveryMapping({
       {!!inspection.storage?.length && (
         <p className="notice">
           Speicherzuordnungen werden als manuelle Entscheidungen dokumentiert.
-          Anker formatiert oder verschiebt keine Datenträger.
+          Gleiche IDs belegen keine gleichen Pools, Pfade oder vorhandenen
+          Volumes. Anker formatiert oder verschiebt keine Datenträger.
         </p>
       )}
       {rows.length > 8 && (
@@ -102,6 +103,20 @@ export default function RecoveryMapping({
               id: s.id,
               label: s.id + (s.path ? " · " + s.path : ""),
             }));
+        const sourceStorage =
+          !ports && inspection.storage.find((s) => s.id === row.key);
+        const targetStorage =
+          !ports && inspection.target_storage.find((s) => s.id === value);
+        const evidence = (s: typeof targetStorage) =>
+          s
+            ? `${s.kind} · ${
+                Object.entries(s.backing || {})
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join(" · ") ||
+                s.path ||
+                "Backing unbekannt"
+              } · Inhalte: ${(s.content || []).join(", ") || "unbekannt"}`
+            : "Kein geprüfter Speicherbeleg";
         // A selected port remains in the bounded list even after a search changes.
         if (ports && value && !candidates.some((c) => c.id === value)) {
           const selected = inspection.target_ports.find(
@@ -121,6 +136,13 @@ export default function RecoveryMapping({
             }
             hint={[
               row.reason,
+              !ports
+                ? "Quelle: " +
+                  evidence(sourceStorage) +
+                  "; Ziel: " +
+                  evidence(targetStorage) +
+                  ". Konkreten Volumebestand separat prüfen."
+                : "",
               row.suggested && value === row.suggested
                 ? "Vorschlag aus Zielprüfung"
                 : "",

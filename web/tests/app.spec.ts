@@ -678,26 +678,57 @@ test("a running plan request cannot be dismissed or submitted twice", async ({
     .getByLabel("Sicherung", { exact: true })
     .selectOption(status.backups[0].id);
   await page
-    .getByLabel("Zielhost", { exact: true })
-    .selectOption(status.hosts[0].id);
-  await page
     .getByRole("checkbox", { name: "etc/sysctl.d/99-anker.conf", exact: true })
     .check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await page
+    .getByLabel("Zielhost", { exact: true })
+    .selectOption(status.hosts[0].id);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("backup");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Dialog schließen", exact: true }),
+    page.getByRole("button", { name: "Vorbereitung schließen", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByRole("region", {
+      name: "Wiederherstellung vorbereiten",
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
-  expect(await page.getByRole("dialog").evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Hosts", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Wiederherstellung vorbereiten",
+      exact: true,
+    }),
+  ).toBeVisible();
   expect(calls).toBe(1);
   finish();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
-    "Ziel für Prüfung nicht erreichbar",
-  );
+  await expect(
+    page
+      .getByRole("region", {
+        name: "Wiederherstellung vorbereiten",
+        exact: true,
+      })
+      .getByRole("alert"),
+  ).toContainText("Ziel für Prüfung nicht erreichbar");
 });
 
 test("logout network failure stays visible without losing the session", async ({
@@ -1131,13 +1162,24 @@ test("file restore plans and executes only after exact confirmation", async ({
     .getByRole("button", { name: "Plan erstellen", exact: true })
     .click();
   const status = await (await page.request.get("/api/status")).json();
-  const b = status.backups.find(
-    (b: { host_name: string }) => b.host_name === "pve-berlin-01",
-  );
+  // Use the older differing stand: an identical latest stand must stay no-write.
+  const b = status.backups.filter((b: { host_name: string }) => b.host_name === "pve-berlin-01").sort((a: {created_at:string}, b: {created_at:string}) => a.created_at.localeCompare(b.created_at))[0];
   await page.getByLabel("Sicherung", { exact: true }).selectOption(b.id);
-  await page.getByLabel("Zielhost", { exact: true }).selectOption(b.host_id);
   await page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await page.getByLabel("Zielhost", { exact: true }).selectOption(b.host_id);
   await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
+    .click();
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("backup");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
@@ -1159,10 +1201,14 @@ test("file restore plans and executes only after exact confirmation", async ({
   const plan = updated.plans.find(
     (p: { backup_id: string }) => p.backup_id === b.id,
   );
+  await page.getByLabel("Plan-ID zur Ausführung eingeben").fill("wrong-plan");
+  await expect(page.getByRole("button", { name: "In Demo anwenden" })).toBeDisabled();
   await page.getByLabel("Plan-ID zur Ausführung eingeben").fill(plan.id);
   await page.getByRole("button", { name: "In Demo anwenden" }).click();
   await expect(page.getByRole("dialog")).toContainText("Demo angewendet");
-  await page.getByRole("button", {name:"Dialog schließen",exact:true}).click();
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "Aufträge", exact: true })
