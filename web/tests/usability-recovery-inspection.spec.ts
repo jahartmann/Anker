@@ -1324,3 +1324,128 @@ test("a lost reply with ready server and refused reconcile gives console guidanc
   ).toBeDisabled();
   expect(reconciles).toBe(1);
 });
+
+test("failed authoritative detail refresh keeps apply blocked and retries identical status without a tracked job", async ({
+  page,
+}) => {
+  const plan = await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill(plan.id);
+  const base = await (await page.request.get("/api/status")).json();
+  const current = {
+    ...plan,
+    state: "checks_pending",
+    result: {
+      state: "applied",
+      applied: ["etc/sysctl.conf"],
+      checks: [],
+      rollback_path: "",
+      reboot_verified: false,
+    },
+  };
+  let detailReads = 0;
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, demo: false, jobs: [], plans: [current] } }),
+  );
+  await page.route("**/api/plans/review-plan", (r) => {
+    detailReads++;
+    return detailReads === 1
+      ? r.fulfill({
+          status: 503,
+          json: { error: "Aktueller Plan vorübergehend nicht lesbar" },
+        })
+      : r.fulfill({ json: current });
+  });
+  await expect(page.getByRole("alert")).toContainText(
+    "Aktueller Plan vorübergehend nicht lesbar",
+    { timeout: 10000 },
+  );
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  await expect.poll(() => detailReads, { timeout: 10000 }).toBe(2);
+  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend");
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("a current authoritative detail reply delayed across equivalent jobs polls is retained without a tracked job", async ({
+  page,
+}) => {
+  const plan = await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill(plan.id);
+  const base = await (await page.request.get("/api/status")).json();
+  const current = {
+    ...plan,
+    state: "checks_pending",
+    result: {
+      state: "applied",
+      applied: ["etc/sysctl.conf"],
+      checks: [],
+      rollback_path: "",
+      reboot_verified: false,
+    },
+  };
+  let polls = 0;
+  let detailReads = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route("**/api/status", (r) => {
+    polls++;
+    return r.fulfill({
+      json: { ...base, demo: false, jobs: [], plans: [current] },
+    });
+  });
+  await page.route("**/api/plans/review-plan", async (r) => {
+    detailReads++;
+    await gate;
+    return r.fulfill({ json: current });
+  });
+  await expect.poll(() => detailReads, { timeout: 10000 }).toBe(1);
+  await expect.poll(() => polls, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
+  release();
+  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend");
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+  expect(detailReads).toBe(1);
+});
+
+test("reopening the selected comparison preserves its loaded evidence", async ({
+  page,
+}) => {
+  let reads = 0;
+  await page.route("**/api/plans/review-plan/comparison?**", (r) => {
+    reads++;
+    return r.fulfill({
+      json: {
+        path: "etc/sysctl.conf",
+        before_label: "Aufgenommenes Ziel",
+        after_label: "Vorbereitete Datei",
+        state: "identical",
+        content_changed: false,
+        metadata_changes: [],
+        hunks: [],
+        masked: false,
+      },
+    });
+  });
+  await savedPlan(page);
+  const open = page.getByRole("button", {
+    name: "Vergleich öffnen: etc/sysctl.conf",
+    exact: true,
+  });
+  await open.click();
+  await expect(
+    page.getByText("Inhalt und Metadaten stimmen überein", { exact: true }),
+  ).toBeVisible();
+  await open.click();
+  await expect(
+    page.getByText("Inhalt und Metadaten stimmen überein", { exact: true }),
+  ).toBeVisible();
+  expect(reads).toBe(1);
+});

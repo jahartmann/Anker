@@ -45,6 +45,15 @@ export default function RecoveryPlan({
   onOperationChange: (operation: RecoveryOperation) => void;
 }) {
   const { pendingJob } = operation;
+  const latestSignature = JSON.stringify(
+    status.plans.find((p) => p.id === plan.id),
+  );
+  const [acknowledgedStatus, setAcknowledgedStatus] = useState(latestSignature);
+  const trackedJob = pendingJob && status.jobs.find((j) => j.id === pendingJob);
+  const finishedJob =
+    !!trackedJob && !["queued", "running"].includes(trackedJob.state);
+  const refreshNeeded = acknowledgedStatus !== latestSignature || finishedJob;
+  const [refreshError, setRefreshError] = useState("");
   const journalState = plan.result?.state;
   const journalConflict =
     !!journalState &&
@@ -56,6 +65,7 @@ export default function RecoveryPlan({
       journalState === "applied"
     );
   const uncertain =
+    refreshNeeded ||
     operation.uncertain ||
     journalConflict ||
     ["interrupted", "unknown"].includes(plan.state) ||
@@ -94,39 +104,59 @@ export default function RecoveryPlan({
       onBusyChange(false);
     };
   }, [busy, onBusyChange]);
-  const latest = status.plans.find((p) => p.id === plan.id);
-  const latestSignature = JSON.stringify(latest);
-  const observedStatus = useRef(latestSignature);
   const refreshGeneration = useRef(0);
+  const refreshKey =
+    latestSignature + (finishedJob ? `|finished:${pendingJob}` : "");
+  const currentRefreshKey = useRef(refreshKey);
+  currentRefreshKey.current = refreshKey;
+  const refreshInFlight = useRef<{ key: string; generation: number } | null>(
+    null,
+  );
   useEffect(() => {
-    const job = pendingJob && status.jobs.find((j) => j.id === pendingJob);
-    const finished = !!job && !["queued", "running"].includes(job.state);
-    const changed = observedStatus.current !== latestSignature;
-    if (activeRequest.current || (!changed && !finished)) return;
-    observedStatus.current = latestSignature;
+    if (activeRequest.current || !refreshNeeded) return;
+    if (
+      refreshInFlight.current?.key === refreshKey &&
+      refreshInFlight.current.generation === refreshGeneration.current
+    )
+      return;
     const generation = ++refreshGeneration.current;
-    let active = true;
+    refreshInFlight.current = { key: refreshKey, generation };
     api<Plan>("plans/" + plan.id)
       .then((p) => {
-        if (!active || generation !== refreshGeneration.current) return;
+        if (
+          !mounted.current ||
+          generation !== refreshGeneration.current ||
+          currentRefreshKey.current !== refreshKey
+        )
+          return;
         setPlan(p);
-        if (finished) {
-          onOperationChange({ pendingJob: "", uncertain: operation.uncertain });
+        setAcknowledgedStatus(latestSignature);
+        setRefreshError("");
+        if (finishedJob) {
+          onOperationChange({ ...operation, pendingJob: "" });
           setConfirmation("");
         }
       })
       .catch((e) => {
-        if (active && generation === refreshGeneration.current)
-          setFormError(e.message);
+        if (
+          mounted.current &&
+          generation === refreshGeneration.current &&
+          currentRefreshKey.current === refreshKey
+        )
+          setRefreshError(e.message);
+      })
+      .finally(() => {
+        if (refreshInFlight.current?.generation === generation)
+          refreshInFlight.current = null;
       });
-    return () => {
-      active = false;
-    };
+    // Equivalent status polls retry a failed read but retain a current in-flight read.
+    // Only a semantic signature/job change, mutation, or unmount supersedes its result.
   }, [latestSignature, status.jobs, pendingJob, busy]);
   async function execute(action: "apply" | "rollback" | "reconcile") {
     if (
       !plan ||
       activeRequest.current ||
+      refreshNeeded ||
       (action === "apply" &&
         (legacy ||
           !!plan.blockers?.length ||
@@ -423,6 +453,17 @@ export default function RecoveryPlan({
           </button>
         </section>
       )}
+      {refreshNeeded && (
+        <p className="notice warning" role="status">
+          Aktueller Serverplan wird nachgeladen. Übernahme, Rücksetzung und
+          Aufgabenbestätigung bleiben bis zum verlässlichen Nachweis gesperrt.
+        </p>
+      )}
+      {refreshError && (
+        <p className="notice warning" role="alert">
+          {refreshError}
+        </p>
+      )}
       {formError && (
         <p className="notice warning" role="alert">
           {formError}
@@ -454,7 +495,9 @@ export default function RecoveryPlan({
               plan.state,
             )) && (
             <button
-              disabled={busy || !!pendingJob || reconcileRefused}
+              disabled={
+                busy || !!pendingJob || reconcileRefused || refreshNeeded
+              }
               onClick={() => execute("reconcile")}
             >
               Hostzustand abgleichen
@@ -547,6 +590,7 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
   );
   const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
   function select(next: string) {
+    if (next === path && !reveal) return;
     setComparison(null);
     setReveal(false);
     setPath(next);
