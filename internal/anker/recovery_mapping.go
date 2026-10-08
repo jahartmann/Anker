@@ -3,7 +3,6 @@ package anker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -26,53 +25,29 @@ type RecoveryStorage struct {
 	Suggested string `json:"suggested"`
 }
 type RecoveryInspection struct {
-	Source                Inventory         `json:"source"`
-	Target                Inventory         `json:"target"`
-	Ports                 []RecoveryPort    `json:"ports"`
-	TargetPorts           []Interface       `json:"target_ports"`
-	Storage               []RecoveryStorage `json:"storage"`
-	TargetStorage         []RecoveryStorage `json:"target_storage"`
-	Blockers              []string          `json:"blockers"`
-	Warnings              []string          `json:"warnings"`
-	Manual                []string          `json:"manual"`
-	RequiresConsole       bool              `json:"requires_console"`
-	RequiresSourceOffline bool              `json:"requires_source_offline"`
-	Automatic             bool              `json:"automatic"`
+	Preserved             []RecoveryPreservation `json:"preserved"`
+	Source                Inventory              `json:"source"`
+	Target                Inventory              `json:"target"`
+	Ports                 []RecoveryPort         `json:"ports"`
+	TargetPorts           []Interface            `json:"target_ports"`
+	Storage               []RecoveryStorage      `json:"storage"`
+	TargetStorage         []RecoveryStorage      `json:"target_storage"`
+	Blockers              []string               `json:"blockers"`
+	Warnings              []string               `json:"warnings"`
+	Manual                []string               `json:"manual"`
+	RequiresConsole       bool                   `json:"requires_console"`
+	RequiresSourceOffline bool                   `json:"requires_source_offline"`
+	Automatic             bool                   `json:"automatic"`
 }
 
 func recoverySelection(m Manifest, r PlanRequest) (map[string]bool, error) {
-	switch r.Scenario {
-	case "files", "standalone", "migration", "cluster-node", "cluster-disaster", "version", "topology":
-	default:
-		return nil, errors.New("unbekanntes Wiederherstellungsszenario")
+	selection, err := scenarioSelection(m, r)
+	if err != nil {
+		return nil, err
 	}
-	selected := map[string]bool{}
-	for _, p := range r.Files {
-		if err := ValidPath(p); err != nil {
-			return nil, err
-		}
+	selected := make(map[string]bool, len(selection.Paths))
+	for _, p := range selection.Paths {
 		selected[p] = true
-	}
-	if r.Scenario == "files" && len(selected) == 0 {
-		return nil, errors.New("mindestens eine Datei auswählen")
-	}
-	if len(selected) == 0 {
-		for _, e := range m.Entries {
-			if e.Type != "directory" {
-				selected[e.Path] = true
-			}
-		}
-	}
-	available := map[string]bool{}
-	for _, e := range m.Entries {
-		if e.Type != "directory" {
-			available[e.Path] = true
-		}
-	}
-	for p := range selected {
-		if !available[p] {
-			return nil, errors.New("Dateiauswahl enthält nicht gesicherte Dateien")
-		}
 	}
 	return selected, nil
 }
@@ -381,11 +356,19 @@ func requiredCommandFailures(i Inventory, keys []string, strict bool) []string {
 	return out
 }
 func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r PlanRequest) (RecoveryInspection, error) {
-	selected, err := recoverySelection(m, r)
+	selection, err := scenarioSelection(m, r)
 	if err != nil {
 		return RecoveryInspection{}, err
 	}
 	i := RecoveryInspection{Source: m.Inventory, Target: target, Ports: []RecoveryPort{}, TargetPorts: physicalPorts(target), Storage: []RecoveryStorage{}, TargetStorage: []RecoveryStorage{}, Blockers: []string{}, Warnings: []string{}, Manual: []string{}, RequiresSourceOffline: r.Scenario != "files", Automatic: true}
+	selected := make(map[string]bool, len(selection.Paths))
+	for _, path := range selection.Paths {
+		selected[path] = true
+	}
+	i.Preserved = selection.Preserved
+	for _, preserved := range selection.Preserved {
+		i.Manual = appendUnique(i.Manual, preserved.Path+": "+preserved.Reason)
+	}
 	network := map[string]string{}
 	definitions := []RecoveryStorage{}
 	usedStorage := map[string]string{}

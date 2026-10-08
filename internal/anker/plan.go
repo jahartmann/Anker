@@ -125,9 +125,8 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	allowed := map[string]bool{"files": true, "standalone": true, "migration": true, "cluster-node": true, "cluster-disaster": true, "version": true, "topology": true}
-	if !allowed[r.Scenario] {
-		return Plan{}, errors.New("unbekanntes Wiederherstellungsszenario")
+	if _, err := recoverySituation(r.Scenario); err != nil {
+		return Plan{}, err
 	}
 	target, err := s.Collector.Probe(ctx, h)
 	if err != nil {

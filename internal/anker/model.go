@@ -136,6 +136,16 @@ type Mapping struct {
 	Hostname   string            `json:"hostname"`
 	Address    string            `json:"address"`
 }
+type RecoverySituation string
+
+type RecoveryPreservation struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+type RecoverySelection struct {
+	Paths     []string               `json:"paths"`
+	Preserved []RecoveryPreservation `json:"preserved"`
+}
 type PlanRequest struct {
 	BackupID         string   `json:"backup_id"`
 	TargetID         string   `json:"target_id"`
