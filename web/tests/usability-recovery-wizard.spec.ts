@@ -385,14 +385,190 @@ test("fresh changed target evidence invalidates dependent file choice", async ({
   ).toBeDisabled();
 });
 
-test("starting another plan returns to source selection with its draft", async ({ page }) => {
+test("starting another plan returns to source selection with its draft", async ({
+  page,
+}) => {
   await start(page);
   await inspect(page);
-  await page.getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true }).selectOption("keep");
-  await page.getByRole("button", { name: "Weiter zur Planprüfung", exact: true }).click();
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("keep");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
-  await page.getByRole("button", { name: "Dialog schließen", exact: true }).click();
-  await page.getByRole("button", { name: "Plan erstellen", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "1 · Quelle und Situation", exact: true })).toBeVisible();
-  await expect(page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true })).toBeChecked();
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Plan erstellen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "1 · Quelle und Situation",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }),
+  ).toBeChecked();
+});
+
+test("saved plan comparison and checks remain readable with keyboard at desktop laptop and mobile sizes", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (["error", "warning"].includes(m.type())) errors.push(m.text());
+  });
+  await start(page);
+  await inspect(page);
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("keep");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Wiederherstellungsplan",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  await page
+    .getByRole("button", { name: "Meldung schließen", exact: true })
+    .click();
+  const compare = dialog.getByRole("button", {
+    name: "Vergleich öffnen: etc/sysctl.d/99-anker.conf",
+    exact: true,
+  });
+  await compare.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    dialog.getByText("Inhalt und Metadaten stimmen überein", { exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("Wiederherstellung · Anker");
+  expect(new URL(page.url()).origin).toBe("http://127.0.0.1:8088");
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0);
+  for (const [name, width, height] of [
+    ["desktop", 1440, 1000],
+    ["laptop", 1280, 900],
+    ["mobile", 390, 844],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await dialog
+      .getByLabel("Vergleichsbasis", { exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    const box = await dialog.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: `/tmp/anker-task9-${name}-comparison.png`,
+      fullPage: false,
+    });
+    await dialog
+      .getByLabel("Nachweis für Dienste prüfen", { exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `/tmp/anker-task9-${name}-checks.png`,
+      fullPage: false,
+    });
+  }
+  await dialog
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .focus();
+  await page.keyboard.press("Tab");
+  await expect(dialog.locator("summary").first()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    dialog.getByLabel("Plandateien durchsuchen", { exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("revising a freshly saved plan retains its controlled draft and requires fresh target inspection", async ({
+  page,
+}) => {
+  const base = await start(page);
+  await inspect(page);
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("keep");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Zuordnungen anpassen", exact: true })
+    .click();
+  await expect(page.getByLabel("Zielhost", { exact: true })).toHaveValue(
+    base.hosts[0].id,
+  );
+  await expect(
+    page.getByRole("button", { name: "Weiter zu Entscheidungen", exact: true }),
+  ).toBeDisabled();
+  await inspect(page);
+  await expect(
+    page.getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", {
+      exact: true,
+    }),
+  ).toHaveValue("keep");
+});
+
+test("real demo task confirmations remain user attestations including reboot", async ({
+  page,
+}) => {
+  await start(page);
+  await inspect(page);
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("keep");
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  const created = page.waitForResponse(
+    (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  const plan = await (await created).json();
+  for (const title of [
+    "Dienste prüfen",
+    "Erreichbarkeit prüfen",
+    "Neustart prüfen",
+  ]) {
+    const response = page.waitForResponse((r) =>
+      r.url().includes(`/api/plans/${plan.id}/checks/`),
+    );
+    await page
+      .getByLabel(`Nachweis für ${title}`, { exact: true })
+      .fill(`${title}: an lokaler Demo geprüft`);
+    await page
+      .getByRole("button", {
+        name: `Schritt bestätigen: ${title}`,
+        exact: true,
+      })
+      .click();
+    const confirmed = await response;
+    expect(confirmed.ok()).toBe(true);
+    const body = await confirmed.json();
+    expect(body.result?.reboot_verified || false).toBe(false);
+    expect(Object.keys(confirmed.request().postDataJSON())).toEqual([
+      "evidence",
+    ]);
+  }
+  const saved = await (await page.request.get(`/api/plans/${plan.id}`)).json();
+  expect(
+    saved.tasks.every((t: { state: string }) => t.state === "user_confirmed"),
+  ).toBe(true);
+  expect(saved.state).toBe("manual");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Neustart maschinell nicht nachgewiesen",
+  );
+  await expect(
+    page.getByText(/Herkunft: Benutzerbestätigung, kein maschineller Nachweis/),
+  ).toHaveCount(3);
 });

@@ -1,65 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, date, labels } from "../api";
-import type { Job, Plan, Status, User } from "../api";
-import {
-  Dialog,
-  Download,
-  Empty,
-  Field,
-  Heading,
-  Pagination,
-  State,
-} from "../components/shared";
+import { api, date, labels } from "../api";
+import type { Plan, Status, User } from "../api";
+import { Empty, Heading, Pagination, State } from "../components/shared";
 import type { Notify } from "../components/shared";
-import RecoveryEvidence from "../components/recovery/RecoveryEvidence";
+import RecoveryPlan from "../components/recovery/RecoveryPlan";
+import type { RecoveryOperation } from "../components/recovery/RecoveryPlan";
 import RecoveryWizard from "../components/recovery/RecoveryWizard";
 import { useRecoveryDraft } from "../components/recovery/useRecoveryDraft";
 
-function PlanFiles({ steps }: { steps: Plan["steps"] }) {
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const matches = steps.filter((s) =>
-    s.path.toLowerCase().includes(query.trim().toLowerCase()),
-  );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
-  return (
-    <section className="plan-files">
-      <Field label="Plandateien durchsuchen">
-        <input
-          placeholder="Dateipfad suchen"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(1);
-          }}
-        />
-      </Field>
-      {matches.slice((current - 1) * 25, current * 25).map((s) => (
-        <details className="file-diff" key={s.path}>
-          <summary>
-            <span className="mono">{s.path}</span>
-            <span className="muted">
-              {s.action === "apply" ? "Vorbereitet" : "Manuell"}
-            </span>
-          </summary>
-          <p>
-            {s.reason ||
-              "Originalinhalt mit geprüften Vorbedingungen übernehmen."}
-          </p>
-          {s.diff && <pre>{s.diff}</pre>}
-        </details>
-      ))}
-      {!matches.length && <p className="muted">Keine passenden Plandateien.</p>}
-      <Pagination
-        page={current}
-        pageSize={25}
-        total={matches.length}
-        onPageChange={setPage}
-        label="Plandateien"
-      />
-    </section>
-  );
-}
 export default function Restore({
   status,
   initialBackup,
@@ -82,42 +30,42 @@ export default function Restore({
   const [wizard, setWizard] = useState(!!initialBackup);
   const draft = useRecoveryDraft(initialBackup, initialFile);
   const selectedTarget = status.hosts.find((h) => h.id === draft.target);
-  const connection = JSON.stringify(selectedTarget ? [
-    selectedTarget.address, selectedTarget.ssh_port, selectedTarget.ssh_user,
-    selectedTarget.known_hosts_path, selectedTarget.key_path,
-    selectedTarget.restore_ssh_user, selectedTarget.restore_key_path,
-  ] : []);
+  const connection = JSON.stringify(
+    selectedTarget
+      ? [
+          selectedTarget.address,
+          selectedTarget.ssh_port,
+          selectedTarget.ssh_user,
+          selectedTarget.known_hosts_path,
+          selectedTarget.key_path,
+          selectedTarget.restore_ssh_user,
+          selectedTarget.restore_key_path,
+        ]
+      : [],
+  );
   const previousConnection = useRef({ target: draft.target, connection });
   useEffect(() => {
     const previous = previousConnection.current;
-    if (previous.target === draft.target && previous.connection !== connection) {
+    if (
+      previous.target === draft.target &&
+      previous.connection !== connection
+    ) {
       draft.changeTarget(draft.target);
       if (draft.step > 2) draft.setStep(2);
     }
     previousConnection.current = { target: draft.target, connection };
   }, [draft.target, connection]);
-  const [pendingJob, setPendingJob] = useState("");
-  const [uncertainPlans, setUncertainPlans] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [rollbackConfirmation, setRollbackConfirmation] = useState("");
-  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [operations, setOperations] = useState<
+    Record<string, RecoveryOperation>
+  >({});
   const activeRequest = useRef(false);
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [canRevise, setCanRevise] = useState(false);
-  const uncertain = !!plan && !!uncertainPlans[plan.id];
-  const targetBusy =
-    !!plan &&
-    status.jobs.some(
-      (j) =>
-        j.host_id === plan.target_id && ["queued", "running"].includes(j.state),
-    );
   const [planQuery, setPlanQuery] = useState("");
   const [planState, setPlanState] = useState("");
   const [planPage, setPlanPage] = useState(1);
-  const [confirmation, setConfirmation] = useState("");
   const [formError, setFormError] = useState("");
   useEffect(() => {
     mounted.current = true;
@@ -137,94 +85,6 @@ export default function Restore({
       onBusyChange(false);
     };
   }, [busy, onBusyChange]);
-  useEffect(() => {
-    if (!plan) return;
-    const latest = status.plans.find((p) => p.id === plan.id);
-    const job = pendingJob && status.jobs.find((j) => j.id === pendingJob);
-    const finished = job && !["queued", "running"].includes(job.state);
-    if (!finished && (!latest || latest.state === plan.state)) return;
-    let active = true;
-    api<Plan>("plans/" + plan.id)
-      .then((p) => {
-        if (!active) return;
-        setPlan(p);
-        if (finished) {
-          setPendingJob("");
-          setConfirmation("");
-        }
-      })
-      .catch((e) => {
-        if (active) setFormError((e as Error).message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [status.plans, status.jobs, pendingJob, plan?.id, plan?.state]);
-  async function execute(action: "apply" | "rollback" | "reconcile") {
-    if (
-      !plan ||
-      activeRequest.current ||
-      pendingJob ||
-      (action !== "reconcile" && (uncertain || targetBusy))
-    )
-      return;
-    activeRequest.current = true;
-    setBusy(true);
-    setFormError("");
-    const id = plan.id;
-    let jobAccepted = false;
-    try {
-      if (action === "reconcile") {
-        const p = await api<Plan>("plans/" + id + "/reconcile", "POST");
-        if (!mounted.current) return;
-        setPlan(p);
-        if (
-          [
-            "applied",
-            "checks_pending",
-            "rolled_back",
-            "failed",
-            "rollback_conflict",
-          ].includes(p.state)
-        )
-          setUncertainPlans((old) => ({ ...old, [id]: false }));
-      } else {
-        const job = await api<Job>("plans/" + id + "/" + action, "POST", {
-          confirmation:
-            action === "apply" ? confirmation : rollbackConfirmation,
-        });
-        jobAccepted = true;
-        if (!mounted.current) return;
-        setPendingJob(job.id);
-        setConfirmation("");
-        setRollbackConfirmation("");
-        setRollbackOpen(false);
-        setPlan(await api<Plan>("plans/" + id));
-        notify(
-          action === "apply"
-            ? "Dateiübernahme beauftragt. Hostnachweis abwarten."
-            : "Kontrollierte Rücksetzung beauftragt.",
-        );
-      }
-      refresh();
-    } catch (e) {
-      if (mounted.current) {
-        setFormError((e as Error).message);
-        const rejected =
-          !jobAccepted &&
-          e instanceof ApiError &&
-          e.status !== undefined &&
-          e.status >= 400 &&
-          e.status < 500;
-        if (action !== "reconcile" && !rejected)
-          setUncertainPlans((old) => ({ ...old, [id]: true }));
-        if (rejected) refresh();
-      }
-    } finally {
-      activeRequest.current = false;
-      if (mounted.current) setBusy(false);
-    }
-  }
   const plans = status.plans
     .filter(
       (p) =>
@@ -340,10 +200,6 @@ export default function Restore({
                                   if (!mounted.current) return;
                                   setPlan(opened);
                                   setCanRevise(false);
-                                  setConfirmation("");
-                                  setRollbackConfirmation("");
-                                  setRollbackOpen(false);
-                                  setPendingJob("");
                                   setFormError("");
                                 } catch (e) {
                                   if (mounted.current)
@@ -400,242 +256,47 @@ export default function Restore({
             setPlan(p);
             setCanRevise(true);
             setWizard(false);
-            setConfirmation("");
-            setRollbackConfirmation("");
-            setRollbackOpen(false);
-            setPendingJob("");
             refresh();
           }}
         />
       )}
       {plan && (
-        <Dialog
-          title="Wiederherstellungsplan"
-          wide
-          busy={busy}
-          onClose={() => {
-            if (!activeRequest.current) setPlan(null);
+        <RecoveryPlan
+          key={plan.id}
+          plan={plan}
+          status={status}
+          user={user}
+          notify={notify}
+          refresh={refresh}
+          setPlan={setPlan}
+          onClose={() => setPlan(null)}
+          onBusyChange={onBusyChange}
+          operation={
+            operations[plan.id] || { pendingJob: "", uncertain: false }
+          }
+          onOperationChange={(operation) =>
+            setOperations((old) => ({ ...old, [plan.id]: operation }))
+          }
+          onRevise={(legacy) => {
+            if (!canRevise || legacy) {
+              draft.changeBackup(plan.backup_id);
+              draft.changeTarget(plan.target_id);
+              draft.changeScenario(
+                ["files", "host", "cluster-node", "cluster-disaster"].includes(
+                  plan.scenario,
+                )
+                  ? plan.scenario
+                  : "host",
+              );
+              draft.changeFiles(plan.steps.map((s) => s.path));
+            }
+            draft.invalidate();
+            draft.setStep(legacy || !canRevise ? 1 : 2);
+            setPlan(null);
+            setWizard(true);
+            setFormError("");
           }}
-        >
-          <div className="plan-meta">
-            <strong>
-              {plan.source.hostname} → {plan.target.hostname}
-            </strong>
-            <State value={plan.state} />
-          </div>
-          <p className="dialog-intro">
-            {labels[plan.scenario]} · Quelle {plan.source.pve_version} · Ziel{" "}
-            {plan.target.pve_version}
-          </p>
-          {plan.blockers?.map((s, i) => (
-            <p className="notice warning" key={i}>
-              {s}
-            </p>
-          ))}
-          <h3 className="recovery-section-title">3 · Änderungen prüfen</h3>
-          <p className="field-hint">
-            {plan.steps.filter((s) => s.action === "apply").length} vorbereitete reguläre Dateien · {plan.steps.filter((s) => s.action !== "apply").length}{" "}
-            manuelle Dateien
-          </p>
-          {plan.manual?.length > 0 && (
-            <RecoveryEvidence
-              key={plan.id + "manual"}
-              title="Manuelle Schritte"
-              items={plan.manual}
-              ordered
-            />
-          )}
-          <p className="field-hint">
-            Die Dateiansicht zeigt Anpassungen an der Sicherung. Sie ist kein
-            vollständiger Vergleich mit den aktuellen Dateiinhalten des
-            Zielhosts.
-          </p>
-          <PlanFiles key={plan.id} steps={plan.steps} />
-          {targetBusy && (
-            <p className="notice" role="status">
-              Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
-              Übernahme und Rücksetzung wieder verfügbar.
-            </p>
-          )}
-          {pendingJob && (
-            <p className="notice" role="status">
-              Auftrag läuft. Datei- und Hostnachweis werden nach Abschluss
-              geladen.
-            </p>
-          )}
-          {plan.result && (
-            <div className="notice recovery-result">
-              <p>
-                {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
-                {plan.state === "rolled_back"
-                  ? "Rücksetzung laut Hostjournal abgeschlossen."
-                  : "Betriebsprüfung bleibt ausstehend."}
-              </p>
-              {plan.result.operation_id && (
-                <p>
-                  Recovery-ID:{" "}
-                  <span className="mono">{plan.result.operation_id}</span>
-                </p>
-              )}
-              {plan.result.rollback_path && (
-                <p>
-                  Rollback:{" "}
-                  <span className="mono">{plan.result.rollback_path}</span>
-                </p>
-              )}
-              {plan.result.error && <p role="alert">{plan.result.error}</p>}
-              <p>
-                Ein vollständiger Host-Restore und ein geprüfter Neustart sind
-                damit nicht bestätigt.
-              </p>
-              {!!plan.result.checks?.length && (
-                <RecoveryEvidence
-                  key={plan.id + "checks"}
-                  title="Hostnachweise"
-                  items={plan.result.checks}
-                />
-              )}
-            </div>
-          )}
-          {(uncertain ||
-            ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
-              plan.state,
-            )) && (
-            <p className="notice warning">
-              Den aktuellen Hostzustand über das Journal abgleichen. Eine
-              unklare Übernahme wird nicht automatisch wiederholt.
-            </p>
-          )}
-          {plan.state === "ready" && user.role !== "reader" && !pendingJob && (
-            <Field label="Plan-ID zur Ausführung eingeben" hint={plan.id}>
-              <input
-                autoComplete="off"
-                disabled={busy}
-                value={confirmation}
-                onChange={(e) => setConfirmation(e.target.value)}
-                placeholder={plan.id}
-              />
-            </Field>
-          )}
-          {rollbackOpen && (
-            <section className="recovery-rollback">
-              <p className="notice warning">
-                Nur unveränderte Dateien aus dieser Übernahme werden
-                kontrolliert zurückgesetzt. Zwischenzeitliche Fremdänderungen
-                können die Rücksetzung blockieren.
-              </p>
-              <Field label="Plan-ID zur Rücksetzung eingeben" hint={plan.id}>
-                <input
-                  autoComplete="off"
-                  disabled={busy}
-                  value={rollbackConfirmation}
-                  onChange={(e) => setRollbackConfirmation(e.target.value)}
-                  placeholder={plan.id}
-                />
-              </Field>
-              <button
-                disabled={
-                  busy ||
-                  !!pendingJob ||
-                  uncertain ||
-                  targetBusy ||
-                  rollbackConfirmation !== plan.id
-                }
-                onClick={() => execute("rollback")}
-              >
-                Rücksetzung bestätigen
-              </button>
-            </section>
-          )}
-          {formError && (
-            <p className="notice warning" role="alert">
-              {formError}
-            </p>
-          )}
-          <footer className="dialog-footer">
-            {canRevise &&
-              !uncertain &&
-              !pendingJob &&
-              ["ready", "blocked", "manual"].includes(plan.state) && (
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    draft.invalidate();
-                    draft.setStep(2);
-                    setPlan(null);
-                    setWizard(true);
-                    setFormError("");
-                  }}
-                >
-                  Zuordnungen anpassen
-                </button>
-              )}
-            {user.secrets && (
-              <Download path={"plans/" + plan.id + "/download"} notify={notify}>
-                Plan herunterladen
-              </Download>
-            )}
-            {!status.demo &&
-              user.role !== "reader" &&
-              (uncertain ||
-                [
-                  "interrupted",
-                  "failed",
-                  "unknown",
-                  "rollback_conflict",
-                ].includes(plan.state)) && (
-                <button
-                  className="secondary"
-                  disabled={busy || !!pendingJob}
-                  onClick={() => execute("reconcile")}
-                >
-                  Hostzustand abgleichen
-                </button>
-              )}
-            {!status.demo &&
-              user.role !== "reader" &&
-              !rollbackOpen &&
-              !!plan.result?.rollback_path &&
-              [
-                "applied",
-                "checks_pending",
-                "interrupted",
-                "failed",
-                "rollback_conflict",
-              ].includes(plan.state) && (
-                <button
-                  className="secondary"
-                  disabled={busy || !!pendingJob || uncertain || targetBusy}
-                  onClick={() => {
-                    setRollbackOpen(true);
-                    setRollbackConfirmation("");
-                    setConfirmation("");
-                  }}
-                >
-                  Dateien zurücksetzen
-                </button>
-              )}
-            {plan.state === "ready" && user.role !== "reader" && (
-              <button
-                disabled={
-                  confirmation !== plan.id ||
-                  busy ||
-                  !!pendingJob ||
-                  uncertain ||
-                  targetBusy
-                }
-                onClick={() => execute("apply")}
-              >
-                {busy
-                  ? "Startet …"
-                  : status.demo
-                    ? "In Demo anwenden"
-                    : "Dateien übernehmen"}
-              </button>
-            )}
-          </footer>
-        </Dialog>
+        />
       )}
     </>
   );

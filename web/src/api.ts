@@ -140,7 +140,29 @@ export interface Job {
   error?: string;
   attempts: number;
 }
+export interface RecoveryEffect {
+  path: string;
+  field: string;
+  before: string;
+  after: string;
+  reason: string;
+}
+export interface RecoveryTask {
+  id: string;
+  kind: string;
+  title: string;
+  instruction: string;
+  requires: string[];
+  state: string;
+  evidence?: string;
+  confirmed_by?: string;
+  confirmed_at?: string;
+}
 export interface Step {
+  decision?: FileDecision;
+  destination?: string;
+  effects?: RecoveryEffect[];
+  comparison_state?: string;
   path: string;
   action: string;
   reason: string;
@@ -148,6 +170,11 @@ export interface Step {
   secret?: boolean;
 }
 export interface Plan {
+  schema_version?: number;
+  target_snapshot_id?: string;
+  decisions?: Record<string, FileDecision>;
+  preserved?: { path: string; reason: string }[];
+  tasks?: RecoveryTask[];
   id: string;
   backup_id: string;
   target_id: string;
@@ -162,6 +189,10 @@ export interface Plan {
   mapping?: {
     interfaces: Record<string, string>;
     storage?: Record<string, string>;
+    network?: Record<
+      string,
+      { address_cidr?: string; gateway?: string; dns_servers?: string[] }
+    >;
     hostname?: string;
     address?: string;
   };

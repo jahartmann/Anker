@@ -1,0 +1,700 @@
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError, labels } from "../../api";
+import type {
+  FileComparison,
+  Job,
+  Plan,
+  RecoveryTask,
+  Status,
+  User,
+} from "../../api";
+import { Dialog, Download, Field, Pagination, State } from "../shared";
+import type { Notify } from "../shared";
+import FileComparisonView from "../FileComparison";
+import RecoveryEvidence from "./RecoveryEvidence";
+import RecoveryChecks from "./RecoveryChecks";
+
+export interface RecoveryOperation {
+  pendingJob: string;
+  uncertain: boolean;
+  reconcileRefused?: boolean;
+}
+export default function RecoveryPlan({
+  plan,
+  status,
+  user,
+  notify,
+  refresh,
+  onRevise,
+  onClose,
+  setPlan,
+  onBusyChange,
+  operation,
+  onOperationChange,
+}: {
+  plan: Plan;
+  status: Status;
+  user: User;
+  notify: Notify;
+  refresh: () => void;
+  onRevise?: (legacy: boolean) => void;
+  onClose: () => void;
+  setPlan: (plan: Plan) => void;
+  onBusyChange: (busy: boolean) => void;
+  operation: RecoveryOperation;
+  onOperationChange: (operation: RecoveryOperation) => void;
+}) {
+  const { pendingJob } = operation;
+  const journalState = plan.result?.state;
+  const journalConflict =
+    !!journalState &&
+    journalState !== plan.state &&
+    !(plan.state === "checks_pending" && journalState === "applied") &&
+    !(
+      status.demo &&
+      plan.state === "demo_applied" &&
+      journalState === "applied"
+    );
+  const uncertain =
+    operation.uncertain ||
+    journalConflict ||
+    ["interrupted", "unknown"].includes(plan.state) ||
+    ["interrupted", "unknown", "writing", "not_found"].includes(
+      journalState || "",
+    );
+  const reconcileRefused =
+    !!operation.reconcileRefused && plan.state === "ready";
+  const legacy = plan.schema_version !== 2;
+  const targetBusy = status.jobs.some(
+    (j) =>
+      j.host_id === plan.target_id && ["queued", "running"].includes(j.state),
+  );
+  const [rollbackConfirmation, setRollbackConfirmation] = useState("");
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [formError, setFormError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const activeRequest = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    onBusyChange(busy);
+    if (!busy) return;
+    const protect = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", protect);
+    return () => {
+      window.removeEventListener("beforeunload", protect);
+      onBusyChange(false);
+    };
+  }, [busy, onBusyChange]);
+  const latest = status.plans.find((p) => p.id === plan.id);
+  const latestSignature = JSON.stringify(latest);
+  const observedStatus = useRef(latestSignature);
+  const refreshGeneration = useRef(0);
+  useEffect(() => {
+    const job = pendingJob && status.jobs.find((j) => j.id === pendingJob);
+    const finished = !!job && !["queued", "running"].includes(job.state);
+    const changed = observedStatus.current !== latestSignature;
+    if (activeRequest.current || (!changed && !finished)) return;
+    observedStatus.current = latestSignature;
+    const generation = ++refreshGeneration.current;
+    let active = true;
+    api<Plan>("plans/" + plan.id)
+      .then((p) => {
+        if (!active || generation !== refreshGeneration.current) return;
+        setPlan(p);
+        if (finished) {
+          onOperationChange({ pendingJob: "", uncertain: operation.uncertain });
+          setConfirmation("");
+        }
+      })
+      .catch((e) => {
+        if (active && generation === refreshGeneration.current)
+          setFormError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [latestSignature, status.jobs, pendingJob, busy]);
+  async function execute(action: "apply" | "rollback" | "reconcile") {
+    if (
+      !plan ||
+      activeRequest.current ||
+      (action === "apply" &&
+        (legacy ||
+          !!plan.blockers?.length ||
+          confirmation !== plan.id ||
+          plan.state !== "ready")) ||
+      (action === "rollback" && rollbackConfirmation !== plan.id) ||
+      pendingJob ||
+      (action !== "reconcile" && (uncertain || targetBusy))
+    )
+      return;
+    refreshGeneration.current++;
+    activeRequest.current = true;
+    onBusyChange(true);
+    setBusy(true);
+    setFormError("");
+    const id = plan.id;
+    let jobAccepted = false;
+    let acceptedJob = pendingJob;
+    try {
+      if (action === "reconcile") {
+        const p = await api<Plan>("plans/" + id + "/reconcile", "POST");
+        if (!mounted.current) return;
+        setPlan(p);
+        if (
+          [
+            "applied",
+            "checks_pending",
+            "rolled_back",
+            "failed",
+            "rollback_conflict",
+          ].includes(p.state)
+        )
+          onOperationChange({ pendingJob: "", uncertain: false });
+      } else {
+        const job = await api<Job>("plans/" + id + "/" + action, "POST", {
+          confirmation:
+            action === "apply" ? confirmation : rollbackConfirmation,
+        });
+        jobAccepted = true;
+        acceptedJob = job.id;
+        if (!mounted.current) return;
+        onOperationChange({ pendingJob: job.id, uncertain: false });
+        setConfirmation("");
+        setRollbackConfirmation("");
+        setRollbackOpen(false);
+        setPlan(await api<Plan>("plans/" + id));
+        notify(
+          action === "apply"
+            ? "Dateiübernahme beauftragt. Hostnachweis abwarten."
+            : "Kontrollierte Rücksetzung beauftragt.",
+        );
+      }
+      refresh();
+    } catch (e) {
+      if (mounted.current) {
+        setFormError((e as Error).message);
+        const rejected =
+          !jobAccepted &&
+          e instanceof ApiError &&
+          e.status !== undefined &&
+          e.status >= 400 &&
+          e.status < 500;
+        if (action !== "reconcile" && !rejected)
+          onOperationChange({ pendingJob: acceptedJob, uncertain: true });
+        if (
+          action === "reconcile" &&
+          plan.state === "ready" &&
+          uncertain &&
+          (e as Error).message ===
+            "Für diesen Plan ist keine ungeklärte Hostausführung gespeichert"
+        )
+          onOperationChange({
+            ...operation,
+            uncertain: true,
+            reconcileRefused: true,
+          });
+        if (rejected) refresh();
+      }
+    } finally {
+      activeRequest.current = false;
+      if (mounted.current) {
+        setBusy(false);
+        onBusyChange(false);
+      }
+    }
+  }
+  async function confirmTask(task: RecoveryTask, evidence: string) {
+    if (activeRequest.current || uncertain || pendingJob || targetBusy) return;
+    refreshGeneration.current++;
+    activeRequest.current = true;
+    onBusyChange(true);
+    setBusy(true);
+    setFormError("");
+    try {
+      const updated = await api<Plan>(
+        `plans/${plan.id}/checks/${encodeURIComponent(task.id)}`,
+        "POST",
+        { evidence },
+      );
+      if (mounted.current) {
+        setPlan(updated);
+        refresh();
+      }
+    } catch (e) {
+      if (mounted.current) {
+        setFormError((e as Error).message);
+        refresh();
+      }
+    } finally {
+      activeRequest.current = false;
+      if (mounted.current) {
+        setBusy(false);
+        onBusyChange(false);
+      }
+    }
+  }
+  return (
+    <Dialog
+      title="Wiederherstellungsplan"
+      wide
+      busy={busy}
+      onClose={() => {
+        if (!activeRequest.current) onClose();
+      }}
+    >
+      <div className="plan-meta">
+        <strong>
+          {plan.source.hostname} → {plan.target.hostname}
+        </strong>
+        <State value={uncertain ? "unknown" : plan.state} />
+      </div>
+      {journalState && (
+        <p className="field-hint">
+          Hostjournal: {labels[journalState] || journalState} · Serverplan:{" "}
+          {labels[plan.state] || plan.state}
+        </p>
+      )}
+      <p className="dialog-intro">
+        {labels[plan.scenario]} · Quelle {plan.source.pve_version} · Ziel{" "}
+        {plan.target.pve_version}
+      </p>
+      {plan.blockers?.map((s, i) => (
+        <p className="notice warning" key={i}>
+          {s}
+        </p>
+      ))}
+      <h3 className="recovery-section-title">Dateiaktionen und Vergleiche</h3>
+      {legacy && (
+        <p className="notice warning">
+          Alter Plan: Für eine neue Freigabe ist eine neue Vorbereitung
+          erforderlich. Lesen, Export und bestehende Rücksetzung bleiben
+          verfügbar.
+        </p>
+      )}
+      <p className="field-hint">
+        {plan.steps.filter((s) => s.action === "apply").length} Dateien
+        übernehmen · {plan.steps.filter((s) => s.action === "keep").length} Ziel
+        behalten · {plan.steps.filter((s) => s.action === "manual").length}{" "}
+        manuelle Dateien
+      </p>
+      <p className="field-hint">
+        Vergleiche verwenden die gespeicherte Zielaufnahme. Vor der Übernahme
+        prüft Anker erneut auf Änderungen am Ziel.
+      </p>
+      {!!plan.preserved?.length && (
+        <RecoveryEvidence
+          title="Erhaltene Systemteile"
+          items={plan.preserved.map((p) => `${p.path} · ${p.reason}`)}
+        />
+      )}
+      {!!plan.manual?.length && (
+        <RecoveryEvidence
+          title="Manuelle Schritte"
+          items={plan.manual}
+          ordered
+        />
+      )}
+      <PlanFiles key={plan.id} plan={plan} user={user} />
+      {targetBusy && (
+        <p className="notice" role="status">
+          Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
+          Übernahme und Rücksetzung wieder verfügbar.
+        </p>
+      )}
+      {pendingJob && (
+        <p className="notice" role="status">
+          Auftrag läuft. Datei- und Hostnachweis werden nach Abschluss geladen.
+        </p>
+      )}
+      {plan.result && (
+        <div className="notice recovery-result">
+          <p>
+            {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
+            {plan.state === "rolled_back" && !uncertain
+              ? "Rücksetzung laut Hostjournal abgeschlossen."
+              : "Betriebsprüfung bleibt ausstehend."}
+          </p>
+          {plan.result.operation_id && (
+            <p>
+              Recovery-ID:{" "}
+              <span className="mono">{plan.result.operation_id}</span>
+            </p>
+          )}
+          {plan.result.rollback_path && (
+            <p>
+              Rollback:{" "}
+              <span className="mono">{plan.result.rollback_path}</span>
+            </p>
+          )}
+          {plan.result.error && <p role="alert">{plan.result.error}</p>}
+          <p>
+            Ein vollständiger Host-Restore und ein geprüfter Neustart sind damit
+            nicht bestätigt.
+          </p>
+          <p className="field-hint">
+            {status.demo
+              ? "Herkunft: lokales Demoresultat; kein realer Hostnachweis."
+              : "Herkunft der Hostnachweise: maschinelles Hostresultat / Journal, getrennt von Benutzerbestätigungen."}
+          </p>
+          {!!plan.result.checks?.length && (
+            <RecoveryEvidence
+              key={plan.id + "checks"}
+              title="Hostnachweise"
+              items={plan.result.checks}
+            />
+          )}
+        </div>
+      )}
+      <RecoveryChecks
+        plan={plan}
+        onConfirm={user.role !== "reader" ? confirmTask : undefined}
+        disabled={busy || !!pendingJob || uncertain || targetBusy}
+      />
+      {(uncertain ||
+        ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
+          plan.state,
+        )) && (
+        <p className="notice warning">
+          Den aktuellen Hostzustand über das Journal abgleichen. Eine unklare
+          Übernahme wird nicht automatisch wiederholt.
+        </p>
+      )}
+      {reconcileRefused && (
+        <p className="notice warning" role="status">
+          Über die Zielkonsole das Hostjournal zur Recovery-ID {plan.id} und
+          laufende Anker-Aufträge prüfen. Der Server speichert keine ungeklärte
+          Ausführung. Dieser Plan bleibt für eine zweite Übernahme gesperrt,
+          solange Server und Journal keinen eindeutigen Zustand liefern. Ein
+          erneuter Abgleich wird verfügbar, sobald sich der Serverzustand
+          ändert.
+        </p>
+      )}
+      {!legacy &&
+        plan.state === "ready" &&
+        user.role !== "reader" &&
+        !pendingJob && (
+          <Field label="Plan-ID zur Ausführung eingeben" hint={plan.id}>
+            <input
+              autoComplete="off"
+              disabled={busy}
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              placeholder={plan.id}
+            />
+          </Field>
+        )}
+      {rollbackOpen && (
+        <section className="recovery-rollback">
+          <p className="notice warning">
+            Nur unveränderte Dateien aus dieser Übernahme werden kontrolliert
+            zurückgesetzt. Zwischenzeitliche Fremdänderungen können die
+            Rücksetzung blockieren.
+          </p>
+          <Field label="Plan-ID zur Rücksetzung eingeben" hint={plan.id}>
+            <input
+              autoComplete="off"
+              disabled={busy}
+              value={rollbackConfirmation}
+              onChange={(e) => setRollbackConfirmation(e.target.value)}
+              placeholder={plan.id}
+            />
+          </Field>
+          <button
+            disabled={
+              busy ||
+              !!pendingJob ||
+              uncertain ||
+              targetBusy ||
+              rollbackConfirmation !== plan.id
+            }
+            onClick={() => execute("rollback")}
+          >
+            Rücksetzung bestätigen
+          </button>
+        </section>
+      )}
+      {formError && (
+        <p className="notice warning" role="alert">
+          {formError}
+        </p>
+      )}
+      <footer className="dialog-footer">
+        {onRevise &&
+          user.role !== "reader" &&
+          !uncertain &&
+          !pendingJob &&
+          ["ready", "blocked", "manual"].includes(plan.state) && (
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => onRevise(legacy)}
+            >
+              {legacy ? "Neu vorbereiten" : "Zuordnungen anpassen"}
+            </button>
+          )}
+        {user.secrets && (
+          <Download path={"plans/" + plan.id + "/download"} notify={notify}>
+            Plan herunterladen
+          </Download>
+        )}
+        {!status.demo &&
+          user.role !== "reader" &&
+          (uncertain ||
+            ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
+              plan.state,
+            )) && (
+            <button
+              disabled={busy || !!pendingJob || reconcileRefused}
+              onClick={() => execute("reconcile")}
+            >
+              Hostzustand abgleichen
+            </button>
+          )}
+        {!status.demo &&
+          user.role !== "reader" &&
+          !rollbackOpen &&
+          !!plan.result?.rollback_path &&
+          [
+            "applied",
+            "checks_pending",
+            "interrupted",
+            "failed",
+            "rollback_conflict",
+          ].includes(plan.state) && (
+            <button
+              className="secondary"
+              disabled={busy || !!pendingJob || uncertain || targetBusy}
+              onClick={() => {
+                setRollbackOpen(true);
+                setRollbackConfirmation("");
+                setConfirmation("");
+              }}
+            >
+              Dateien zurücksetzen
+            </button>
+          )}
+        {!legacy && plan.state === "ready" && user.role !== "reader" && (
+          <button
+            disabled={
+              confirmation !== plan.id ||
+              !!plan.blockers?.length ||
+              busy ||
+              !!pendingJob ||
+              uncertain ||
+              targetBusy
+            }
+            onClick={() => execute("apply")}
+          >
+            {busy
+              ? "Startet …"
+              : status.demo
+                ? "In Demo anwenden"
+                : "Dateien übernehmen"}
+          </button>
+        )}
+      </footer>
+    </Dialog>
+  );
+}
+
+function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [path, setPath] = useState("");
+  const [basis, setBasis] = useState("target");
+  const [comparison, setComparison] = useState<FileComparison | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setComparison(null);
+    setError("");
+    if (!path) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    api<FileComparison>(
+      `plans/${encodeURIComponent(plan.id)}/comparison?path=${encodeURIComponent(path)}&basis=${basis}${reveal ? "&reveal=1" : ""}`,
+    )
+      .then((c) => {
+        if (active) setComparison(c);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [plan.id, path, basis, reveal, retry]);
+  const matches = plan.steps.filter((s) =>
+    s.path.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  function select(next: string) {
+    setComparison(null);
+    setReveal(false);
+    setPath(next);
+  }
+  return (
+    <section className="plan-files" aria-label="Plandateien">
+      <Field label="Plandateien durchsuchen">
+        <input
+          placeholder="Dateipfad suchen"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(1);
+          }}
+        />
+      </Field>
+      {matches.slice((current - 1) * 25, current * 25).map((step) => (
+        <article className="recovery-plan-file" key={step.path}>
+          <div className="recovery-file-heading">
+            <strong className="mono">{step.path}</strong>
+            <span>
+              {step.action === "keep"
+                ? "Ziel behalten · kein Schreiben"
+                : step.action === "apply"
+                  ? "Datei übernehmen"
+                  : "Manuell · keine automatische Übernahme"}
+            </span>
+          </div>
+          <p className="field-hint">
+            Entscheidung:{" "}
+            {step.decision === "backup"
+              ? "Originalsicherung"
+              : step.decision === "prepared"
+                ? "Vorbereitete Datei"
+                : step.decision === "keep"
+                  ? "Ziel behalten"
+                  : "Manuelle Referenz"}{" "}
+            · Zielpfad: {step.destination || step.path}
+          </p>
+          {step.reason && <p>{step.reason}</p>}
+          {!!step.effects?.length && (
+            <RecoveryEvidence
+              title={`Anpassungen an ${step.path}`}
+              items={step.effects.map(
+                (e) =>
+                  `${e.path} · ${e.field}: ${e.before || "(leer)"} → ${e.after || "(leer)"} · ${e.reason}`,
+              )}
+            />
+          )}
+          {/^etc\/network\//.test(step.path) && (
+            <p className="notice warning">
+              Netzwerkaktivierung und Erreichbarkeit separat an der Konsole
+              prüfen. Anker aktiviert keine Netzwerkkonfiguration automatisch.
+            </p>
+          )}
+          {/^etc\/pve\//.test(step.path) && (
+            <p className="notice warning">
+              Clusterzuordnung, Quorum und Gastdatenträger separat prüfen.
+              Gleiche Speicher-IDs belegen keine verfügbaren Volumes; kein
+              Anlegen, Formatieren oder Verschieben.
+            </p>
+          )}
+          {step.path === "etc/fstab" && (
+            <p className="notice warning">
+              Root, Boot und Swap des Ziels erhalten; weitere Mounts manuell
+              prüfen.
+            </p>
+          )}
+          {plan.source.pve_version !== plan.target.pve_version && (
+            <p className="notice warning">
+              Quelle {plan.source.pve_version} → Ziel {plan.target.pve_version}:
+              Versionsverträglichkeit für diese Datei manuell prüfen.
+            </p>
+          )}
+          {user.role !== "reader" && (
+            <button
+              className="text-button"
+              aria-pressed={path === step.path}
+              onClick={() => select(step.path)}
+            >
+              Vergleich öffnen: {step.path}
+            </button>
+          )}
+          {path === step.path && (
+            <div className="recovery-plan-comparison">
+              <Field label="Vergleichsbasis">
+                <select
+                  value={basis}
+                  onChange={(e) => {
+                    setBasis(e.target.value);
+                    setComparison(null);
+                    setReveal(false);
+                  }}
+                >
+                  <option value="target">
+                    Aufgenommenes Ziel → vorbereitet / behalten
+                  </option>
+                  <option value="source">
+                    Originalsicherung → vorbereitet / behalten
+                  </option>
+                  <option value="source-target">
+                    Originalsicherung → aufgenommenes Ziel
+                  </option>
+                </select>
+              </Field>
+              <FileComparisonView
+                comparison={comparison}
+                loading={loading}
+                error={error}
+                retry={() => {
+                  setReveal(false);
+                  setRetry((n) => n + 1);
+                }}
+              />
+              {user.secrets && comparison?.masked && (
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setComparison(null);
+                    setReveal(true);
+                  }}
+                >
+                  Geschützten Inhalt anzeigen
+                </button>
+              )}
+              {reveal && (
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setComparison(null);
+                    setReveal(false);
+                  }}
+                >
+                  Inhalt wieder schützen
+                </button>
+              )}
+            </div>
+          )}
+        </article>
+      ))}
+      {!matches.length && <p className="muted">Keine passenden Plandateien.</p>}
+      <Pagination
+        page={current}
+        pageSize={25}
+        total={matches.length}
+        onPageChange={setPage}
+        label="Plandateien"
+      />
+    </section>
+  );
+}

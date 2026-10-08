@@ -2893,3 +2893,20 @@ input[type="checkbox"] {
 .recovery-target-facts dt { color: var(--muted); }
 .recovery-target-facts dd { margin: 0; overflow-wrap: anywhere; }
 .recovery-draft-context { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+.recovery-plan-file { padding: 18px 0; border-bottom: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.recovery-file-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+.recovery-file-heading > span { color: var(--muted); flex-shrink: 0; }
+.recovery-plan-comparison { margin-top: 18px; min-width: 0; }
+.recovery-plan-comparison .diff-hunks { max-height: 440px; overflow: auto; }
+.recovery-checks { margin: 26px 0; }
+.recovery-checks > ol { padding-left: 24px; }
+.recovery-task { padding: 18px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.recovery-task .notice p:last-child { margin-bottom: 0; }
+.recovery-task textarea { min-height: 72px; resize: vertical; }
+@media (max-width: 760px) {
+  .recovery-file-heading { flex-direction: column; gap: 6px; }
+  .recovery-file-heading > span { flex-shrink: 1; }
+  .recovery-plan-file .text-button { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  .recovery-task > button { white-space: normal; }
+}

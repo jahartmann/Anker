@@ -305,6 +305,7 @@ test("lost apply response disables a second apply until the host journal is reco
   const base = await (await page.request.get("/api/status")).json();
   const plan = {
     id: "lost-response-plan",
+    schema_version: 2,
     backup_id: base.backups[0].id,
     target_id: base.hosts[0].id,
     scenario: "files",
@@ -438,6 +439,7 @@ test("a rejected busy-host apply can be retried after the backup finishes", asyn
   const base = await (await page.request.get("/api/status")).json();
   const plan = {
     id: "busy-plan",
+    schema_version: 2,
     backup_id: base.backups[0].id,
     target_id: base.hosts[0].id,
     scenario: "files",
@@ -654,4 +656,671 @@ test("whole recovery records desired identity as a manual decision without anoth
   await expect(
     page.getByLabel("Gewünschter Hostname", { exact: true }),
   ).toHaveCount(0);
+});
+
+async function savedPlan(page: Page, extra: Record<string, unknown> = {}) {
+  const base = await (await page.request.get("/api/status")).json();
+  const plan = {
+    id: "review-plan",
+    schema_version: 2,
+    target_snapshot_id: "captured-target",
+    backup_id: base.backups[0].id,
+    target_id: base.hosts[0].id,
+    scenario: "files",
+    created_at: "2026-10-07T10:00:00Z",
+    state: "ready",
+    source: base.hosts[0].inventory,
+    target: base.hosts[0].inventory,
+    blockers: [],
+    manual: [],
+    steps: [
+      {
+        path: "etc/sysctl.conf",
+        action: "apply",
+        decision: "prepared",
+        destination: "etc/sysctl.conf",
+        reason: "",
+        effects: [
+          {
+            path: "etc/sysctl.conf",
+            field: "hostname",
+            before: "old",
+            after: "new",
+            reason: "Identität anpassen",
+          },
+        ],
+      },
+      {
+        path: "etc/hosts",
+        action: "keep",
+        decision: "keep",
+        reason: "Zielentscheidung",
+      },
+    ],
+    preserved: [
+      { path: "etc/fstab", reason: "Root und Boot am Ziel erhalten" },
+    ],
+    ...extra,
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, demo: false, jobs: [], plans: [plan] } }),
+  );
+  await page.route("**/api/plans/review-plan", (r) =>
+    r.fulfill({ json: plan }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  return plan;
+}
+
+test("plan compares actual target against prepared content", async ({
+  page,
+}) => {
+  const bases: string[] = [];
+  await page.route("**/api/plans/review-plan/comparison?**", (r) => {
+    const basis = new URL(r.request().url()).searchParams.get("basis")!;
+    bases.push(basis);
+    return r.fulfill({
+      json: {
+        path: "etc/sysctl.conf",
+        before_label:
+          basis === "target" ? "Aufgenommenes Ziel" : "Originalsicherung",
+        after_label:
+          basis === "source-target"
+            ? "Aufgenommenes Ziel"
+            : "Vorbereitete Datei",
+        state: "different",
+        content_changed: true,
+        metadata_changes: [],
+        masked: false,
+        hunks: [
+          {
+            before_start: 1,
+            after_start: 1,
+            lines: [
+              { kind: "remove", text: "target-only-value\n", before_line: 1 },
+              { kind: "add", text: "prepared-value\n", after_line: 1 },
+            ],
+          },
+        ],
+      },
+    });
+  });
+  await savedPlan(page);
+  expect(bases).toEqual([]);
+  await page
+    .getByRole("button", {
+      name: "Vergleich öffnen: etc/sysctl.conf",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText("Aufgenommenes Ziel → Vorbereitete Datei", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Zeilenvergleich" }),
+  ).toContainText("target-only-value");
+  await page
+    .getByLabel("Vergleichsbasis", { exact: true })
+    .selectOption("source");
+  await expect.poll(() => bases).toEqual(["target", "source"]);
+  await page
+    .getByLabel("Vergleichsbasis", { exact: true })
+    .selectOption("source-target");
+  await expect.poll(() => bases).toEqual(["target", "source", "source-target"]);
+});
+
+test("keep files and preserved system parts are explicit", async ({ page }) => {
+  await savedPlan(page);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Ziel behalten · kein Schreiben",
+  );
+  await expect(page.getByRole("dialog")).toContainText("Erhaltene Systemteile");
+  await page.getByText("Erhaltene Systemteile · 1", { exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Erhaltene Systemteile" }),
+  ).toContainText("etc/fstab · Root und Boot am Ziel erhalten");
+  await page
+    .getByText("Anpassungen an etc/sysctl.conf · 1", { exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("hostname: old → new");
+});
+
+test("checks never imply verified reboot", async ({ page }) => {
+  let confirmed = false;
+  const plan = await savedPlan(page, {
+    state: "applied",
+    tasks: [
+      {
+        id: "check-services",
+        kind: "manual-check",
+        title: "Dienste prüfen",
+        instruction: "Dienste am Ziel prüfen",
+        requires: [],
+        state: "pending",
+      },
+      {
+        id: "check-reboot",
+        kind: "manual-check",
+        title: "Neustart prüfen",
+        instruction: "Neustart am Ziel prüfen",
+        requires: ["check-services"],
+        state: "pending",
+      },
+    ],
+    result: {
+      applied: ["etc/sysctl.conf"],
+      checks: ["Datei-Hash am Host geprüft"],
+      rollback_path: "",
+      reboot_verified: false,
+    },
+  });
+  await page.route("**/api/plans/review-plan/checks/check-services", (r) => {
+    confirmed = true;
+    expect(r.request().postDataJSON()).toEqual({
+      evidence: "Dienste an Konsole geprüft",
+    });
+    return r.fulfill({
+      json: {
+        ...plan,
+        tasks: (plan.tasks as any[]).map((t) =>
+          t.id === "check-services"
+            ? {
+                ...t,
+                state: "user_confirmed",
+                evidence: "Dienste an Konsole geprüft",
+                confirmed_by: "authenticated-user",
+                confirmed_at: "2026-10-08T10:00:00Z",
+              }
+            : t,
+        ),
+      },
+    });
+  });
+  await expect(
+    page.getByRole("button", {
+      name: "Schritt bestätigen: Neustart prüfen",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("Nachweis für Dienste prüfen", { exact: true })
+    .fill("Dienste an Konsole geprüft");
+  await page
+    .getByRole("button", {
+      name: "Schritt bestätigen: Dienste prüfen",
+      exact: true,
+    })
+    .click();
+  expect(confirmed).toBe(true);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Vom Benutzer bestätigt · authenticated-user",
+  );
+  await expect(page.getByRole("dialog")).toContainText(
+    "Neustart maschinell nicht nachgewiesen",
+  );
+});
+
+test("legacy plan requires new preparation", async ({ page }) => {
+  await savedPlan(page, { schema_version: 1, target_snapshot_id: undefined });
+  await expect(page.getByRole("dialog")).toContainText(
+    "Für eine neue Freigabe ist eine neue Vorbereitung erforderlich",
+  );
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Neu vorbereiten", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "1 · Quelle und Situation",
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test("lost apply reply remains uncertain after reopen", async ({ page }) => {
+  await page.route("**/api/plans/review-plan/apply", (r) =>
+    r.abort("connectionfailed"),
+  );
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("nicht erreichbar");
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+});
+
+test("journal uncertainty overrides a ready server plan after reopen", async ({
+  page,
+}) => {
+  await savedPlan(page, {
+    result: {
+      state: "writing",
+      operation_id: "review-plan",
+      applied: [],
+      checks: [],
+      rollback_path: "",
+      reboot_verified: false,
+    },
+  });
+  await expect(page.getByRole("dialog")).toContainText("Hostzustand ungeklärt");
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+});
+
+test("failed apply response remains uncertain while a rejected 4xx permits retry", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/api/plans/review-plan/apply", (r) => {
+    attempts++;
+    return r.fulfill({
+      status: attempts === 1 ? 403 : 503,
+      json: { error: attempts === 1 ? "Freigabe fehlt" : "Antwort verloren" },
+    });
+  });
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("wrong-plan");
+  const apply = page.getByRole("button", {
+    name: "Dateien übernehmen",
+    exact: true,
+  });
+  await expect(apply).toBeDisabled();
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await apply.click();
+  await expect(page.getByRole("alert")).toContainText("Freigabe fehlt");
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByRole("alert")).toContainText("Antwort verloren");
+  await expect(apply).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+});
+
+test("comparison secrets require explicit reveal and stale replies cannot replace another path", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const requests: string[] = [];
+  await page.route("**/api/plans/review-plan/comparison?**", async (r) => {
+    const url = new URL(r.request().url());
+    const path = url.searchParams.get("path")!;
+    requests.push(url.search);
+    if (
+      path === "etc/sysctl.conf" &&
+      url.searchParams.get("basis") === "source"
+    )
+      await gate;
+    const reveal = url.searchParams.has("reveal");
+    return r.fulfill({
+      json: {
+        path,
+        before_label: "Aufgenommenes Ziel",
+        after_label: "Vorbereitete Datei",
+        state: reveal ? "different" : "masked",
+        content_changed: reveal,
+        metadata_changes: [],
+        hunks: reveal
+          ? [
+              {
+                before_start: 1,
+                after_start: 1,
+                lines: [
+                  { kind: "add", text: "explicit-secret\n", after_line: 1 },
+                ],
+              },
+            ]
+          : [],
+        masked: !reveal,
+      },
+    });
+  });
+  await savedPlan(page);
+  await page
+    .getByRole("button", {
+      name: "Vergleich öffnen: etc/sysctl.conf",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText("Geschützter Inhalt", { exact: true }),
+  ).toBeVisible();
+  expect(requests[0]).not.toContain("reveal");
+  await page
+    .getByRole("button", { name: "Geschützten Inhalt anzeigen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Zeilenvergleich" }),
+  ).toContainText("explicit-secret");
+  await page
+    .getByLabel("Vergleichsbasis", { exact: true })
+    .selectOption("source");
+  await expect
+    .poll(() => requests.some((s) => s.includes("basis=source")))
+    .toBe(true);
+  await page
+    .getByRole("button", { name: "Vergleich öffnen: etc/hosts", exact: true })
+    .click();
+  await expect(page.locator(".preview-heading")).toHaveText("etc/hosts");
+  release();
+  await expect(page.locator(".preview-heading")).toHaveText("etc/hosts");
+  await expect(page.getByText("explicit-secret", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("restore role sees masked comparisons without reveal or export controls", async ({
+  page,
+}) => {
+  const me = await (await page.request.get("/api/me")).json();
+  await page.route("**/api/me", (r) =>
+    r.fulfill({
+      json: { ...me, user: { ...me.user, role: "restore", secrets: false } },
+    }),
+  );
+  await page.route("**/api/plans/review-plan/comparison?**", (r) =>
+    r.fulfill({
+      json: {
+        path: "etc/sysctl.conf",
+        before_label: "Aufgenommenes Ziel",
+        after_label: "Vorbereitete Datei",
+        state: "masked",
+        content_changed: false,
+        metadata_changes: [],
+        hunks: [],
+        masked: true,
+      },
+    }),
+  );
+  await savedPlan(page);
+  await page
+    .getByRole("button", {
+      name: "Vergleich öffnen: etc/sysctl.conf",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText("Geschützter Inhalt", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Geschützten Inhalt anzeigen",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Plan herunterladen", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("a completed accepted job refreshes server evidence across reopen without repeating apply", async ({
+  page,
+}) => {
+  let current: any;
+  let applyCount = 0;
+  let phase = "ready";
+  await page.route("**/api/plans/review-plan/apply", (r) => {
+    applyCount++;
+    phase = "running";
+    return r.fulfill({
+      json: {
+        id: "accepted-job",
+        kind: "restore",
+        host_id: current.target_id,
+        state: "queued",
+      },
+    });
+  });
+  current = await savedPlan(page);
+  const base = await (await page.request.get("/api/status")).json();
+  await page.route("**/api/status", (r) =>
+    r.fulfill({
+      json: {
+        ...base,
+        demo: false,
+        plans: [
+          phase === "done"
+            ? {
+                ...current,
+                state: "checks_pending",
+                result: {
+                  state: "applied",
+                  applied: ["etc/sysctl.conf"],
+                  checks: ["Server-Hostnachweis"],
+                  rollback_path: "",
+                  reboot_verified: false,
+                },
+              }
+            : current,
+        ],
+        jobs:
+          phase === "ready"
+            ? []
+            : [
+                {
+                  id: "accepted-job",
+                  kind: "restore",
+                  host_id: current.target_id,
+                  state: phase === "done" ? "successful" : "running",
+                },
+              ],
+      },
+    }),
+  );
+  await page.route("**/api/plans/review-plan", (r) =>
+    r.fulfill({
+      json:
+        phase === "done"
+          ? {
+              ...current,
+              state: "checks_pending",
+              result: {
+                state: "applied",
+                applied: ["etc/sysctl.conf"],
+                checks: ["Server-Hostnachweis"],
+                rollback_path: "",
+                reboot_verified: false,
+              },
+            }
+          : current,
+    }),
+  );
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Auftrag läuft" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  phase = "done";
+  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend", {
+    timeout: 10000,
+  });
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Auftrag läuft" }),
+  ).toHaveCount(0);
+  expect(applyCount).toBe(1);
+});
+
+test("check API failures retain an open task and its evidence without claiming confirmation", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/api/plans/review-plan/checks/check-services", (r) => {
+    attempts++;
+    return r.fulfill({
+      status: attempts === 1 ? 409 : 503,
+      json: {
+        error:
+          attempts === 1 ? "Voraussetzung offen" : "Prüfung nicht gespeichert",
+      },
+    });
+  });
+  await savedPlan(page, {
+    state: "applied",
+    tasks: [
+      {
+        id: "check-services",
+        kind: "manual-check",
+        title: "Dienste prüfen",
+        instruction: "Dienste am Ziel prüfen",
+        requires: [],
+        state: "pending",
+      },
+    ],
+  });
+  const evidence = page.getByLabel("Nachweis für Dienste prüfen", {
+    exact: true,
+  });
+  await evidence.fill("Lokale Dienste geprüft");
+  const confirm = page.getByRole("button", {
+    name: "Schritt bestätigen: Dienste prüfen",
+    exact: true,
+  });
+  await confirm.click();
+  await expect(page.getByRole("alert")).toContainText("Voraussetzung offen");
+  await expect(evidence).toHaveValue("Lokale Dienste geprüft");
+  await confirm.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Prüfung nicht gespeichert",
+  );
+  await expect(page.getByText(/Vom Benutzer bestätigt ·/)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Neustart maschinell nicht nachgewiesen",
+  );
+});
+
+test("an active plan mutation protects navigation logout and dialog close", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route("**/api/plans/review-plan/apply", async (r) => {
+    await gate;
+    return r.fulfill({ status: 503, json: { error: "Antwort ungeklärt" } });
+  });
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+  const hosts = page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Hosts", exact: true });
+  await expect(
+    page.getByRole("button", { name: "Abmelden", exact: true }),
+  ).toBeDisabled();
+  await hosts.dispatchEvent("click");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Plananfrage läuft" }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("Wiederherstellung · Anker");
+  await expect(
+    page.getByRole("button", { name: "Abmelden", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Dialog schließen", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  release();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Antwort ungeklärt" }),
+  ).toBeVisible();
+  await expect(hosts).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+});
+
+test("a lost reply with ready server and refused reconcile gives console guidance without repeating an unproven apply", async ({
+  page,
+}) => {
+  let reconciles = 0;
+  await page.route("**/api/plans/review-plan/apply", (r) =>
+    r.fulfill({ status: 503, json: { error: "Antwort verloren" } }),
+  );
+  await page.route("**/api/plans/review-plan/reconcile", (r) => {
+    reconciles++;
+    return r.fulfill({
+      status: 409,
+      json: {
+        error:
+          "Für diesen Plan ist keine ungeklärte Hostausführung gespeichert",
+      },
+    });
+  });
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Über die Zielkonsole das Hostjournal zur Recovery-ID review-plan und laufende Anker-Aufträge prüfen",
+  );
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeDisabled();
+  expect(reconciles).toBe(1);
 });
