@@ -76,6 +76,30 @@ export interface Backup {
   archived: boolean;
   warnings: string[];
 }
+export interface BackupReadiness {
+  version: number;
+  backup_id: string;
+  items: {
+    id: string;
+    state: "ok" | "missing" | "unknown" | "failed" | "stale";
+    title: string;
+    detail: string;
+    at?: string;
+    next_action?: string;
+  }[];
+  coverage: {
+    path: string;
+    state: "captured" | "missing";
+    reason: string;
+    authority: "collector" | "required";
+  }[];
+  dependencies: {
+    path: string;
+    source?: string;
+    state: "captured" | "missing" | "unknown";
+    reason?: string;
+  }[];
+}
 export interface Entry {
   path: string;
   type: string;

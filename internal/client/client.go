@@ -260,6 +260,8 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			return err
 		}
 		switch args[1] {
+		case "readiness":
+			return call("GET", "backups/"+args[2]+"/readiness", nil)
 		case "run":
 			return call("POST", "hosts/"+args[2]+"/backup", map[string]any{})
 		case "verify":
@@ -545,7 +547,7 @@ Hosts und Sicherungen
   anker host list | probe HOST | remove HOST
   anker host trust ADRESSE --fingerprint SHA256:... [--port 22]
   anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
-  anker backup run HOST | list | files BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
+  anker backup run HOST | list | files BACKUP | readiness BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
   anker diff ALT NEU
   anker export BACKUP ./sicherung.tar
   Im Web/Terminal Adresse, SSH-Benutzer und einmaliges Passwort eingeben.

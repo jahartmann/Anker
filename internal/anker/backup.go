@@ -317,7 +317,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	}
 	b.Warnings = c.Warnings
 	c.Inventory.Fingerprint = Fingerprint(c.Inventory)
-	m := Manifest{Version: 1, ID: b.ID, HostID: h.ID, CreatedAt: b.CreatedAt, CompletedAt: now(), Status: b.Status, Entries: c.Entries, Warnings: c.Warnings, Inventory: c.Inventory, Consistency: "SQLite snapshot; ordinary files captured over documented interval", Artifacts: map[string]string{}}
+	m := Manifest{Version: 1, ID: b.ID, HostID: h.ID, CreatedAt: b.CreatedAt, CompletedAt: now(), Status: b.Status, Entries: c.Entries, Warnings: c.Warnings, Inventory: c.Inventory, Profile: c.Profile, RequiredPaths: append([]string(nil), h.ExtraPaths...), Dependencies: c.Dependencies, Consistency: "SQLite snapshot; ordinary files captured over documented interval", Artifacts: map[string]string{}}
 	if err = writeJSON(filepath.Join(stage, "inventory/host.json"), c.Inventory); err != nil {
 		return b, err
 	}

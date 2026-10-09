@@ -533,6 +533,15 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return fail(404, "Sicherung nicht gefunden")
 		}
 		switch action {
+		case "readiness":
+			if method != "GET" {
+				break
+			}
+			readiness, err := s.BackupReadiness(id)
+			if err != nil {
+				return err
+			}
+			return jsonOut(w, redactRecovery(readiness))
 		case "inventory":
 			if method != "GET" {
 				break

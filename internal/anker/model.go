@@ -89,22 +89,44 @@ type Entry struct {
 	Secret bool              `json:"secret"`
 }
 type Collection struct {
-	Inventory Inventory `json:"inventory"`
-	Entries   []Entry   `json:"entries"`
-	Warnings  []string  `json:"warnings"`
+	Inventory    Inventory            `json:"inventory"`
+	Entries      []Entry              `json:"entries"`
+	Warnings     []string             `json:"warnings"`
+	Profile      *CollectionProfile   `json:"profile,omitempty"`
+	Dependencies []DependencyEvidence `json:"dependencies,omitempty"`
+}
+
+// Profile records the collector's effective, root-owned capture authority.
+// Nil on older helpers means that authority cannot be reconstructed afterward.
+type CollectionProfile struct {
+	Version                  int      `json:"version,omitempty"`
+	Roots                    []string `json:"roots"`
+	DependencyEntryLimit     int      `json:"dependency_entry_limit,omitempty"`
+	DependencyFileLimit      int      `json:"dependency_file_limit,omitempty"`
+	DependencyReferenceLimit int      `json:"dependency_reference_limit,omitempty"`
+	DependencyScanComplete   bool     `json:"dependency_scan_complete"`
+}
+type DependencyEvidence struct {
+	Path   string `json:"path"`
+	Source string `json:"source,omitempty"`
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
 }
 type Manifest struct {
-	Version     int               `json:"version"`
-	ID          string            `json:"id"`
-	HostID      string            `json:"host_id"`
-	CreatedAt   string            `json:"created_at"`
-	CompletedAt string            `json:"completed_at"`
-	Status      string            `json:"status"`
-	Consistency string            `json:"consistency"`
-	Entries     []Entry           `json:"entries"`
-	Warnings    []string          `json:"warnings"`
-	Artifacts   map[string]string `json:"artifacts"`
-	Inventory   Inventory         `json:"inventory"`
+	Version       int                  `json:"version"`
+	ID            string               `json:"id"`
+	HostID        string               `json:"host_id"`
+	CreatedAt     string               `json:"created_at"`
+	CompletedAt   string               `json:"completed_at"`
+	Status        string               `json:"status"`
+	Consistency   string               `json:"consistency"`
+	Entries       []Entry              `json:"entries"`
+	Warnings      []string             `json:"warnings"`
+	Artifacts     map[string]string    `json:"artifacts"`
+	Inventory     Inventory            `json:"inventory"`
+	Profile       *CollectionProfile   `json:"profile,omitempty"`
+	RequiredPaths []string             `json:"required_paths,omitempty"`
+	Dependencies  []DependencyEvidence `json:"dependencies,omitempty"`
 }
 type Backup struct {
 	VerifiedAt        string   `json:"verified_at,omitempty"`

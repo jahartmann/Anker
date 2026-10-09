@@ -40,6 +40,23 @@ class BackupAuthorityTests(unittest.TestCase):
   helper.authorize('probe',read_only=True);helper.authorize('collect',read_only=True)
 
 class CompletenessTests(unittest.TestCase):
+ def test_collection_records_effective_roots_and_structured_dependency(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);(root/'etc/custom').mkdir(parents=True)
+   (root/'etc/custom/app.conf').write_text('keyfile=/opt/secrets/key\n')
+   out=root/'out';out.mkdir()
+   result=helper.collect(root,out,['/etc/custom'],test_mode=True)
+   self.assertEqual(result['profile']['roots'],['/etc/custom'])
+   self.assertTrue(result['profile']['dependency_scan_complete'])
+   self.assertIn({'path':'/opt/secrets/key','source':'etc/custom/app.conf','state':'missing','reason':'outside_capture'},result['dependencies'])
+ def test_dependency_scan_limit_is_explicit(self):
+  with tempfile.TemporaryDirectory() as d:
+   out=pathlib.Path(d);(out/'files/etc').mkdir(parents=True)
+   (out/'files/etc/huge.conf').write_text('keyfile=/opt/secret\n')
+   warnings,dependencies,complete=helper.dependency_scan(out,[{'path':'etc/huge.conf','type':'file','size':1024*1024+1}])
+   self.assertFalse(complete)
+   self.assertEqual(dependencies,[])
+   self.assertTrue(any('scan incomplete' in warning for warning in warnings))
  def test_metadata_read_failure_is_not_silent(self):
   from unittest.mock import patch
   with tempfile.TemporaryDirectory() as d:

@@ -4,10 +4,30 @@ import (
 	"anker/internal/anker"
 	"bytes"
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 )
+
+func TestCLIBackupReadinessReadsProjection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/api/backups/backup1/readiness" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"backup_id":"backup1","items":[{"id":"verification","state":"unknown","title":"Integrität","detail":"Ungeprüft"}],"coverage":[],"dependencies":[]}`))
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &out}
+	if err := c.Run(context.Background(), []string{"backup", "readiness", "backup1"}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(`"state": "unknown"`)) {
+		t.Fatal(out.String())
+	}
+}
 
 func TestCLICreatesHostAndListsStatus(t *testing.T) {
 	root := t.TempDir()

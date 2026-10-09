@@ -359,28 +359,43 @@ def collect(root,out,paths,test_mode=False):
   snapshot_db(db,out/'recovery/config.db')
   entries.extend(decode_db(out/'recovery/config.db',out))
  except (sqlite3.Error,OSError,ValueError) as exc:warnings.append('config.db capture failed: '+str(exc))
- warnings.extend(dependency_warnings(out,entries,root))
- return {'inventory':probe(root,test_mode),'entries':entries,'warnings':warnings}
+ dependency_alerts,dependencies,scan_complete=dependency_scan(out,entries,root)
+ warnings.extend(dependency_alerts)
+ return {'inventory':probe(root,test_mode),'entries':entries,'warnings':warnings,
+         'profile':{'version':1,'roots':list(paths),'dependency_entry_limit':10000,'dependency_file_limit':1024*1024,
+                    'dependency_reference_limit':4096,'dependency_scan_complete':scan_complete},
+         'dependencies':dependencies}
 
 def dependency_warnings(out,entries,root=None):
+ return dependency_scan(out,entries,root)[0]
+
+def dependency_scan(out,entries,root=None):
  """Bounded discovery of Proxmox hooks and explicit config/secret file references."""
- known={e['path'] for e in entries};warnings=[];storage={}
+ known={e['path'] for e in entries};warnings=[];storage={};dependencies=[];complete=True
+ def note(candidate,source,state,reason):
+  nonlocal complete
+  if len(dependencies)>=4096:
+   complete=False
+   return
+  dependencies.append({'path':candidate,'source':source,'state':state,'reason':reason})
  p=out/'files/etc/pve/storage.cfg'
  if p.exists():
-  current=None
-  for line in p.read_text(errors='replace').splitlines():
-   match=re.match(r'^dir:\s*(\S+)',line)
-   if match:current=match.group(1)
-   elif line and not line[0].isspace():current=None
-   elif current:
-    match=re.match(r'^\s+path\s+(\S+)',line)
-    if match:storage[current]=match.group(1)
- for e in entries:
+  if p.stat().st_size>1024*1024:complete=False
+  else:
+   current=None
+   for line in p.read_text(errors='replace').splitlines():
+    match=re.match(r'^dir:\s*(\S+)',line)
+    if match:current=match.group(1)
+    elif line and not line[0].isspace():current=None
+    elif current:
+     match=re.match(r'^\s+path\s+(\S+)',line)
+     if match:storage[current]=match.group(1)
+ for e in entries[:10000]:
   if e.get('type')!='file' or not e['path'].startswith('etc/'):continue
-  if e.get('size',0)>1024*1024:continue
+  if e.get('size',0)>1024*1024:complete=False;continue
   p=out/'files'/e['path']
   try:data=p.read_text(errors='replace')
-  except OSError:continue
+  except OSError:complete=False;continue
   if '\x00' in data:continue
   vm_config=re.fullmatch(r'etc/pve/(?:nodes/[^/]+/)?qemu-server/\d+\.conf',e['path']) is not None
   vim_config=e['path'].startswith('etc/vim/');vim_guards=[]
@@ -398,8 +413,11 @@ def dependency_warnings(out,entries,root=None):
     ref=hook.group(1);parts=ref.split(':',1)
     if len(parts)==2 and parts[0] in storage:
      candidate=storage[parts[0]].rstrip('/')+'/'+parts[1]
+     note(candidate,e['path'],'captured' if candidate.lstrip('/') in known else 'missing','captured' if candidate.lstrip('/') in known else 'outside_capture')
      if candidate.lstrip('/') not in known:warnings.append('Referenced hookscript is not captured: '+candidate+' ('+e['path']+')')
-    else:warnings.append('Unresolved hookscript dependency: '+ref+' ('+e['path']+')')
+    else:
+     note(ref,e['path'],'unknown','unresolved_reference')
+     warnings.append('Unresolved hookscript dependency: '+ref+' ('+e['path']+')')
    match=re.search(r'(?i)\b(keyfile|key_file|ssl_keyfile|privatekeyfile|certificatefile|certfile|ca_file|credentials|secret_file|include|source|script)\s*(?:[:=]\s*|\s+)["\']?(/[^\s"\';]+)',line)
    if match:
     directive=match.group(1).lower();candidate=match.group(2)
@@ -412,8 +430,11 @@ def dependency_warnings(out,entries,root=None):
      try:(root/candidate.lstrip('/')).lstat()
      except FileNotFoundError:continue
      except OSError:pass
+    note(candidate,e['path'],'captured' if candidate.lstrip('/') in known else 'missing','captured' if candidate.lstrip('/') in known else 'outside_capture')
     if candidate.lstrip('/') not in known:warnings.append('Referenced config/secret is not captured: '+candidate+' ('+e['path']+')')
- return sorted(set(warnings))
+ if len(entries)>10000:complete=False
+ if not complete:warnings.append('Dependency scan incomplete: bounded discovery limit reached')
+ return sorted(set(warnings)),dependencies,complete
 
 class RestoreError(OSError):
  """Failed mutation with its durable recovery result and original cause."""
