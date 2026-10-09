@@ -3,6 +3,7 @@ package anker
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,17 +92,31 @@ func (s *Service) checkIndependentCopy(b Backup, copyRoot string) error {
 	if _, err = s.Manifest(b.ID); err != nil {
 		return err
 	}
+	// A canonical pathname does not pin its ancestors. Anchor both inventory and
+	// reads to the opened directory, and prove it is the object approved above.
+	handle, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	opened, err := handle.Lstat(".")
+	if err != nil {
+		return err
+	}
+	if !opened.IsDir() || !os.SameFile(info, opened) || os.SameFile(sourceInfo, opened) {
+		return errors.New("Kopiewurzel während Prüfung ersetzt")
+	}
 	// Reject every linked/special inode, including unlisted extras and renamed hardlinks.
 	// Collected symlink metadata is stored as ordinary bytes, never live filesystem links.
 	snapshot := map[string]os.FileInfo{}
-	err = filepath.WalkDir(root, func(p string, d os.DirEntry, e error) error {
+	err = fs.WalkDir(handle.FS(), ".", func(p string, _ fs.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
 		if len(snapshot) >= 100000 {
 			return errors.New("Kopie überschreitet Dateilimit")
 		}
-		st, e := d.Info()
+		st, e := handle.Lstat(p)
 		if e != nil {
 			return e
 		}
@@ -111,23 +126,14 @@ func (s *Service) checkIndependentCopy(b Backup, copyRoot string) error {
 		if stat, ok := st.Sys().(*syscall.Stat_t); !st.IsDir() && (!ok || stat.Nlink != 1) {
 			return errors.New("Mehrfach verknüpfte Kopiedatei")
 		}
-		rel, e := filepath.Rel(root, p)
-		if e != nil {
-			return e
-		}
-		snapshot[rel] = st
+		snapshot[p] = st
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	// Root confines resolution; O_NOFOLLOW and inode comparisons prevent replacing a
-	// checked file by a live link between inventory and byte verification.
-	handle, err := os.OpenRoot(root)
-	if err != nil {
-		return err
-	}
-	defer handle.Close()
+	// O_NOFOLLOW and inode comparisons prevent replacing a checked file by a
+	// live link between descriptor-anchored inventory and byte verification.
 	read := func(p string) ([]byte, error) {
 		if err := ValidPath(p); err != nil {
 			return nil, err
@@ -165,13 +171,22 @@ func (s *Service) checkIndependentCopy(b Backup, copyRoot string) error {
 		return err
 	}
 	for p, before := range snapshot {
-		after, e := os.Lstat(filepath.Join(root, p))
+		after, e := handle.Lstat(p)
 		if e != nil {
 			return e
 		}
 		if !unchangedCopyFile(before, after) {
 			return errors.New("Kopie während Prüfung verändert")
 		}
+	}
+	// Fail closed if the selected pathname was redirected after the descriptor
+	// was opened, even when the pinned original copy itself stayed unchanged.
+	namedRoot, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if !unchangedCopyFile(opened, namedRoot) || os.SameFile(sourceInfo, namedRoot) {
+		return errors.New("Kopiewurzel während Prüfung ersetzt")
 	}
 	return nil
 }
