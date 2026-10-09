@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -101,7 +102,7 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		if q, ok := queries[key]; ok && (q.State == "ok" || q.State == "failed") {
 			state = q.State
 		}
-		if state == "ok" && !queryPayloadPresent(m.Inventory, key) {
+		if state == "ok" && !queryPayloadPresent(m.Inventory, m.Entries, key) {
 			state = "unknown"
 		}
 		detail := "Quellabfrage nicht belegt."
@@ -184,17 +185,105 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 	return r, nil
 }
 
-func queryPayloadPresent(inv Inventory, key string) bool {
+func queryPayloadPresent(inv Inventory, entries []Entry, key string) bool {
 	if key == "pve_version" {
 		return inv.PVEVersion != ""
 	}
-	fields := []string{key}
-	if key == "file_inventory" {
-		fields = []string{"file_hashes", "file_metadata"}
+	if key == "users" || key == "groups" {
+		var names map[string]string
+		if json.Unmarshal(inv.Details[key], &names) != nil || len(names) == 0 {
+			return false
+		}
+		for id, name := range names {
+			numeric, err := strconv.ParseUint(id, 10, 32)
+			if err != nil || strconv.FormatUint(numeric, 10) != id || strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\x00\n\r") {
+				return false
+			}
+		}
+		for _, entry := range entries {
+			owner := entry.UID
+			if key == "groups" {
+				owner = entry.GID
+			}
+			if owner < 0 || names[strconv.Itoa(owner)] == "" {
+				return false
+			}
+		}
+		return true
 	}
-	for _, field := range fields {
-		var payload map[string]json.RawMessage
-		if err := json.Unmarshal(inv.Details[field], &payload); err != nil || payload == nil {
+	if key != "file_inventory" {
+		return false
+	}
+	var hashes map[string]string
+	var metadata map[string]json.RawMessage
+	if json.Unmarshal(inv.Details["file_hashes"], &hashes) != nil || len(hashes) == 0 || json.Unmarshal(inv.Details["file_metadata"], &metadata) != nil || len(metadata) == 0 {
+		return false
+	}
+	for file, hash := range hashes {
+		if ValidPath(file) != nil || hash == "" {
+			return false
+		}
+		if _, ok := metadata[file]; !ok {
+			return false
+		}
+	}
+	for file, raw := range metadata {
+		if ValidPath(file) != nil {
+			return false
+		}
+		var record struct {
+			Type   string            `json:"type"`
+			Mode   *uint32           `json:"mode"`
+			UID    *int              `json:"uid"`
+			GID    *int              `json:"gid"`
+			XAttrs map[string]string `json:"xattrs"`
+			Link   *string           `json:"link"`
+		}
+		if json.Unmarshal(raw, &record) != nil || record.Mode == nil || record.UID == nil || record.GID == nil || record.XAttrs == nil || *record.Mode > 07777 || *record.UID < 0 || *record.GID < 0 {
+			return false
+		}
+		if record.Type != "file" && record.Type != "symlink" {
+			return false
+		}
+		if record.Type == "symlink" && (record.Link == nil || *record.Link == "") {
+			return false
+		}
+		hash, ok := hashes[file]
+		if !ok || record.Type == "file" && !validSHA256(hash) || record.Type == "symlink" && hash != "symlink:"+*record.Link {
+			return false
+		}
+	}
+	for _, entry := range entries {
+		if entry.Type == "directory" || !(strings.HasPrefix(entry.Path, "etc/") || strings.HasPrefix(entry.Path, "usr/local/")) {
+			continue
+		}
+		hash, ok := hashes[entry.Path]
+		if !ok {
+			return false
+		}
+		var record struct {
+			Type string `json:"type"`
+			Link string `json:"link"`
+		}
+		if json.Unmarshal(metadata[entry.Path], &record) != nil || record.Type != entry.Type {
+			return false
+		}
+		if entry.Type == "file" && !validSHA256(hash) {
+			return false
+		}
+		if entry.Type == "symlink" && (hash != "symlink:"+entry.Link || record.Link != entry.Link) {
+			return false
+		}
+	}
+	return true
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, c := range value {
+		if !strings.ContainsRune("0123456789abcdef", c) {
 			return false
 		}
 	}
