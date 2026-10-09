@@ -270,8 +270,6 @@ func (s *Service) ComparePlanFile(id, path, basis string, reveal bool) (FileComp
 			}
 		}
 	}
-	// The gate covers source OR target even when the chosen basis hides one side.
-	masked := !reveal && (step.Secret || comparisonSecret(source.data, source.entry) || comparisonSecret(target.data, target.entry))
 	prepared := comparisonSide{state: "unavailable"}
 	if step.PreparedSHA != "" && source.entry != nil {
 		e := *source.entry
@@ -299,33 +297,11 @@ func (s *Service) ComparePlanFile(id, path, basis string, reveal bool) (FileComp
 	} else if step.Decision == DecisionKeep {
 		prepared = target
 	}
-	a, b, al, bl := target, prepared, "Ziel vor Übernahme", "Vorbereitet"
-	if step.Decision == DecisionKeep {
-		bl = "Ziel behalten"
+	c := compareRecoveryCandidates(source, target, prepared, path, p.BackupID, basis, reveal, step.Secret)
+	if step.Decision == DecisionKeep && basis != "source-target" {
+		c.AfterLabel = "Ziel behalten"
 	}
-	if basis == "source" {
-		a = source
-		al = "Sicherung " + p.BackupID
-	}
-	if basis == "source-target" {
-		a = source
-		b = target
-		al = "Sicherung " + p.BackupID
-		bl = "Ziel vor Übernahme"
-	}
-	if masked {
-		return FileComparison{Path: path, BeforeLabel: al, AfterLabel: bl, State: "masked", Masked: true, MetadataChanges: []MetadataChange{}, Hunks: []DiffHunk{}}, nil
-	}
-	// An unreadable side cannot establish that its hidden content is nonsecret.
-	// Explicit secret-authorized reveal may still compare available selected sides.
-	if !reveal {
-		for _, side := range []comparisonSide{source, target} {
-			if side.state != "read" && side.state != "missing" {
-				return compareSides(source, target, al, bl, path, false), nil
-			}
-		}
-	}
-	return compareSides(a, b, al, bl, path, reveal), nil
+	return c, nil
 }
 func comparisonReveal(u User, r *http.Request, requested bool) (bool, error) {
 	requested = requested || r.URL.Query().Get("reveal") == "1"
@@ -367,6 +343,28 @@ func (s *Service) recoveryHTTP(u User, w http.ResponseWriter, r *http.Request) (
 			return true, err
 		}
 		v, err := s.CompareBackupFile(in.From, in.To, in.Path, reveal)
+		if err != nil {
+			return true, err
+		}
+		return true, jsonOut(w, v)
+	}
+	if path == "plans/preview" {
+		if err := require(u, "restore"); err != nil {
+			return true, err
+		}
+		if r.Method != "POST" {
+			return true, fail(405, "POST erforderlich")
+		}
+		var in RecoveryPreviewRequest
+		if err := input(r, &in); err != nil {
+			return true, err
+		}
+		reveal, err := comparisonReveal(u, r, in.Reveal)
+		if err != nil {
+			return true, err
+		}
+		in.Reveal = reveal
+		v, err := s.PreviewRecoveryFile(in)
 		if err != nil {
 			return true, err
 		}

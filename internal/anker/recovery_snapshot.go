@@ -15,6 +15,7 @@ import (
 )
 
 type RecoverySnapshot struct {
+	SourceManifestSHA   string                          `json:"source_manifest_sha,omitempty"`
 	Source              Inventory                       `json:"-"`
 	SourceStorageConfig []byte                          `json:"-"`
 	ID                  string                          `json:"id"`
@@ -261,7 +262,7 @@ func (s *Service) captureRecoveryUnlocked(ctx context.Context, r PlanRequest) (R
 	}
 	situation, _ := recoverySituation(r.Scenario)
 	captured := time.Now().UTC()
-	snapshot := RecoverySnapshot{ID: ID(), BackupID: b.ID, TargetID: h.ID, Situation: situation, Scenario: r.Scenario, SelectionHash: selectionSHA(selection, r), CapturedAt: captured.Format(time.RFC3339Nano), ExpiresAt: captured.Add(time.Hour).Format(time.RFC3339Nano), Target: inspection.Target, ConnectionSHA: connection, Files: result.Files, StorageVolumes: result.StorageVolumes}
+	snapshot := RecoverySnapshot{SourceManifestSHA: b.ManifestSHA, ID: ID(), BackupID: b.ID, TargetID: h.ID, Situation: situation, Scenario: r.Scenario, SelectionHash: selectionSHA(selection, r), CapturedAt: captured.Format(time.RFC3339Nano), ExpiresAt: captured.Add(time.Hour).Format(time.RFC3339Nano), Target: inspection.Target, ConnectionSHA: connection, Files: result.Files, StorageVolumes: result.StorageVolumes}
 	// Catch a connection edit while probing/reading before publishing evidence.
 	current, err := s.Host(h.ID)
 	if err != nil {
@@ -283,6 +284,7 @@ func (s *Service) captureRecoveryUnlocked(ctx context.Context, r PlanRequest) (R
 	}
 	inspection.StorageVolumes = result.StorageVolumes
 	inspection.SnapshotID = snapshot.ID
+	inspection.ManifestSHA = b.ManifestSHA
 	inspection.ComparisonComplete = complete
 	if !complete {
 		inspection.Automatic = false
@@ -497,6 +499,13 @@ func (s *Service) loadRecoverySnapshotUnlocked(id string, r PlanRequest) (Recove
 	}
 	if err = validateSnapshotEvidenceSet(snapshot, selection); err != nil {
 		return RecoverySnapshot{}, err
+	}
+	b, err := s.Backup(r.BackupID)
+	if err != nil {
+		return RecoverySnapshot{}, err
+	}
+	if snapshot.SourceManifestSHA != "" && snapshot.SourceManifestSHA != b.ManifestSHA {
+		return RecoverySnapshot{}, errors.New("Quellstand wurde geändert; Vergleich wiederholen")
 	}
 	snapshot.Source = m.Inventory
 	for _, e := range m.Entries {

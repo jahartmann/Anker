@@ -142,9 +142,7 @@ test("connect target returns to same recovery draft", async ({ page }) => {
     page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }),
   ).toBeChecked();
 });
-test("context change invalidates only dependent decisions", async ({
-  page,
-}) => {
+test("target change requires renewed file decisions", async ({ page }) => {
   const base = await start(page);
   await inspect(page);
   await page
@@ -162,7 +160,7 @@ test("context change invalidates only dependent decisions", async ({
     page.getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", {
       exact: true,
     }),
-  ).toHaveValue("backup");
+  ).toHaveValue("");
 });
 test("late inspection cannot replace new target", async ({ page }) => {
   const base = await start(page);
@@ -753,6 +751,12 @@ test("typed source network stanza prepares effects and remains manual with keybo
   await page
     .getByLabel("DNS-Server für vmbr0/inet", { exact: true })
     .fill("192.0.2.53,2001:db8::53");
+  await expect(
+    page.getByLabel("Entscheidung für etc/network/interfaces", { exact: true }),
+  ).toHaveValue("");
+  await page
+    .getByLabel("Entscheidung für etc/network/interfaces", { exact: true })
+    .selectOption("prepared");
   for (const width of [1440, 1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page

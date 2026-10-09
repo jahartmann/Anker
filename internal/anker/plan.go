@@ -309,8 +309,11 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 				step.Action, step.Decision, step.Reason = "keep", DecisionKeep, "Inhalt und Metadaten identisch; Ziel behalten"
 			} else {
 				p.Tasks = append(p.Tasks, prepared.ManualTasks...)
-				step.Reason = fileManualReason(e, m.Inventory, target)
-				if step.Reason == "" && decision != DecisionManual && snapshot.ID != "" && (before.State == "read" || before.State == "missing") && len(prepared.ManualTasks) == 0 {
+				actionContext := snapshot
+				actionContext.Target = target
+				candidateAction := recoveryCandidateAction(e, prepared, before, actionContext, decision)
+				step.Reason = candidateAction.Reason
+				if candidateAction.Action == "apply" {
 					step.Action = "apply"
 					step.BeforeSHA = before.SHA256
 					if before.State == "missing" {

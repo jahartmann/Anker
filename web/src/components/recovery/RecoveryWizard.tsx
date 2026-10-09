@@ -140,7 +140,9 @@ export default function RecoveryWizard({
             onConnectTarget={onConnectTarget}
           />
         )}
-        {d.step === 3 && <RecoveryDecisions draft={d} />}
+        {d.step === 3 && (
+          <RecoveryDecisions draft={d} canReveal={user.secrets} />
+        )}
         {d.step === 4 && (
           <section aria-label="Planprüfung">
             <h2>4 · Plan prüfen und speichern</h2>

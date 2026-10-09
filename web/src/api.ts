@@ -252,7 +252,15 @@ export interface RecoveryNetworkMapping {
   gateway?: string;
   dns_servers?: string[];
 }
+export interface RecoveryPreview {
+  snapshot_id: string;
+  manifest_sha: string;
+  comparison: FileComparison;
+  original_action: { action: string; reason: string };
+  prepared_action: { action: string; reason: string };
+}
 export interface RecoveryInspection {
+  manifest_sha?: string;
   network_stanzas?: {
     key: string;
     path: string;

@@ -3222,3 +3222,26 @@ input[type="checkbox"] {
   .recovery-plan-file .text-button { white-space: normal; text-align: left; overflow-wrap: anywhere; }
   .recovery-task > button { white-space: normal; }
 }
+
+.recovery-decision-files > div {
+  min-width: 0;
+}
+.draft-file-comparison {
+  margin-bottom: 12px;
+}
+.draft-file-comparison > button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.draft-file-comparison > section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.draft-file-comparison .diff-hunks {
+  max-height: 360px;
+  overflow: auto;
+}

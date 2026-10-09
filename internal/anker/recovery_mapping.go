@@ -42,6 +42,7 @@ type RecoveryStorage struct {
 	Suggested string                 `json:"suggested"`
 }
 type RecoveryInspection struct {
+	ManifestSHA           string                          `json:"manifest_sha,omitempty"`
 	NetworkStanzas        []RecoveryNetworkStanza         `json:"network_stanzas"`
 	Files                 []RecoveryReadFile              `json:"files"`
 	StorageVolumes        map[string]RecoveryVolumeResult `json:"storage_volumes"`

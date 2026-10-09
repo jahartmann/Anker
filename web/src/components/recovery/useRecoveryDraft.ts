@@ -107,11 +107,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setHostname("");
     setAddress("");
     setNetwork({});
-    setDecisions((old) =>
-      Object.fromEntries(
-        Object.entries(old).filter(([, v]) => v === "backup" || v === "manual"),
-      ),
-    );
+    setDecisions({});
   }
   function changeScenario(value: string) {
     invalidate();
@@ -161,35 +157,46 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       .sort(([a], [b]) => a.localeCompare(b)),
   );
   const needsInspection = !!inspection && inspectionStorageKey !== storageKey;
-  function changed() {
+  function changed(mappingChanged = false) {
     generation.current++;
+    if (mappingChanged)
+      setDecisions((old) =>
+        Object.fromEntries(
+          Object.entries(old).filter(([, decision]) => decision !== "prepared"),
+        ),
+      );
     setConsoleOK(false);
     setOffline(false);
   }
   function changeStorage(value: Record<string, string>) {
-    generation.current++;
+    changed(true);
     setStorage(value);
     setConsoleOK(false);
     setOffline(false);
   }
-  function requestBody() {
+  function requestBody(preview = false) {
+    const context = preview ? inspection : mappingInspection;
     return {
       backup_id: backup,
       target_id: target,
       scenario,
       files: scenario === "files" ? files : [],
       snapshot_id: needsInspection ? undefined : inspection?.snapshot_id,
-      decisions: Object.fromEntries(
-        selectedPaths.filter((p) => decisions[p]).map((p) => [p, decisions[p]]),
-      ),
+      decisions: preview
+        ? {}
+        : Object.fromEntries(
+            selectedPaths
+              .filter((p) => decisions[p])
+              .map((p) => [p, decisions[p]]),
+          ),
       mapping: {
         interfaces: Object.fromEntries(
-          (mappingInspection?.ports || [])
+          (context?.ports || [])
             .filter((p) => interfaces[p.name])
             .map((p) => [p.name, interfaces[p.name]]),
         ),
         storage: Object.fromEntries(
-          (mappingInspection?.storage || [])
+          (context?.storage || [])
             .filter((s) => storage[s.id])
             .map((s) => [s.id, storage[s.id]]),
         ),
@@ -198,11 +205,9 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
         )
           ? { hostname: hostname.trim() }
           : {}),
-        ...(mappingInspection?.ports?.length
-          ? { address: address.trim() }
-          : {}),
+        ...(context?.ports?.length ? { address: address.trim() } : {}),
         network: Object.fromEntries(
-          (mappingInspection?.network_stanzas || [])
+          (context?.network_stanzas || [])
             .filter((s) => network[s.key])
             .map((s) => [
               s.key,
@@ -347,7 +352,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     },
     interfaces,
     setInterfaces: (value: Record<string, string>) => {
-      changed();
+      changed(true);
       setInterfaces(value);
     },
     storage,
@@ -356,17 +361,17 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     snapshotID: needsInspection ? undefined : inspection?.snapshot_id,
     hostname,
     setHostname: (value: string) => {
-      changed();
+      changed(true);
       setHostname(value);
     },
     address,
     setAddress: (value: string) => {
-      changed();
+      changed(true);
       setAddress(value);
     },
     network,
     setNetwork: (value: Record<string, RecoveryNetworkMapping>) => {
-      changed();
+      changed(true);
       setNetwork(value);
     },
     mappingInspection,
@@ -389,6 +394,12 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     changeScenario,
     changeFiles,
     requestBody,
+    previewKey: JSON.stringify({
+      ...requestBody(true),
+      manifest_sha: inspection?.manifest_sha,
+      console_confirmed: undefined,
+      source_offline: undefined,
+    }),
     inspect,
     invalidate,
     reloadEntries: () => {
