@@ -20,10 +20,14 @@ async function start(page: Page, scenario = "files") {
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
   await page.getByLabel("Situation", { exact: true }).selectOption(scenario);
-  if (scenario === "files")
+  if (scenario === "files") {
+    await page
+      .getByLabel("Wiederherstellungsdateien durchsuchen")
+      .fill("etc/sysctl.d/99-anker.conf");
     await page
       .getByLabel("etc/sysctl.d/99-anker.conf", { exact: true })
       .check();
+  }
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })
     .click();
@@ -83,6 +87,9 @@ test("connect target returns to same recovery draft", async ({ page }) => {
     base.hosts[0].id,
   );
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/sysctl.d/99-anker.conf");
   await expect(
     page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }),
   ).toBeChecked();
@@ -271,6 +278,9 @@ test("administrator connects a new demo target and returns without storing crede
   ).toHaveCount(1);
   await target.selectOption({ label: "recovery-draft-target" });
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/sysctl.d/99-anker.conf");
   await expect(
     page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }),
   ).toBeChecked();
@@ -409,6 +419,9 @@ test("starting another plan returns to source selection with its draft", async (
       exact: true,
     }),
   ).toBeVisible();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/sysctl.d/99-anker.conf");
   await expect(
     page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }),
   ).toBeChecked();
@@ -601,8 +614,10 @@ test("kept network and storage prune only their mappings and recapture storage b
 }) => {
   await start(page);
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
-  for (const path of ["etc/network/interfaces", "etc/pve/storage.cfg"])
+  for (const path of ["etc/network/interfaces", "etc/pve/storage.cfg"]) {
+    await page.getByLabel("Wiederherstellungsdateien durchsuchen").fill(path);
     await page.getByLabel(path, { exact: true }).check();
+  }
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })
     .click();
@@ -663,6 +678,9 @@ test("typed source network stanza prepares effects and remains manual with keybo
   page.on("pageerror", (e) => errors.push(e.message));
   await start(page);
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await page.getByLabel("etc/network/interfaces", { exact: true }).check();
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })

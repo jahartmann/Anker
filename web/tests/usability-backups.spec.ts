@@ -61,11 +61,11 @@ test("large file collections use folders, bounded pages and recursive path searc
   files[3].link = "conf";
   await openFiles(page, files);
   const dialog = page.getByRole("dialog");
-  await expect(dialog.locator(".file-items > button")).toHaveCount(1);
+  await expect(dialog.locator(".file-items .file-entry")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: "Ordner etc öffnen", exact: true })
     .click();
-  await expect(dialog.locator(".file-items > button")).toHaveCount(3);
+  await expect(dialog.locator(".file-items .file-entry")).toHaveCount(3);
   await dialog
     .getByRole("button", { name: "Ordner etc/empty öffnen", exact: true })
     .click();
@@ -84,7 +84,7 @@ test("large file collections use folders, bounded pages and recursive path searc
   await dialog
     .getByRole("button", { name: "Ordner etc/conf öffnen", exact: true })
     .click();
-  await expect(dialog.locator(".file-items > button")).toHaveCount(25);
+  await expect(dialog.locator(".file-items .file-entry")).toHaveCount(25);
   await dialog
     .getByRole("button", { name: "Nächste Seite", exact: true })
     .click();
@@ -95,13 +95,13 @@ test("large file collections use folders, bounded pages and recursive path searc
     dialog.getByRole("button", { name: /^etc\/conf\/config-0000.conf/ }),
   ).toHaveCount(0);
   await dialog.getByLabel("Einträge pro Seite").selectOption("50");
-  await expect(dialog.locator(".file-items > button")).toHaveCount(50);
+  await expect(dialog.locator(".file-items .file-entry")).toHaveCount(50);
   await dialog
     .getByRole("navigation", { name: "Dateipfad" })
     .getByRole("button", { name: "Alle Dateien", exact: true })
     .click();
   await dialog.getByPlaceholder("Pfad suchen").fill("config-1599");
-  await expect(dialog.locator(".file-items > button")).toHaveCount(1);
+  await expect(dialog.locator(".file-items .file-entry")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: /^etc\/conf\/config-1599.conf/ })
     .click();

@@ -134,6 +134,10 @@ test("recovery selection pages and searches 1600 files without dropping prior se
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
   const files = page.getByRole("group", { name: /Dateien auswählen/ });
+  await files.getByRole("button", { name: "Ordner etc öffnen" }).click();
+  await files
+    .getByRole("button", { name: "Ordner etc/sysctl.d öffnen" })
+    .click();
   await expect(files.getByRole("checkbox")).toHaveCount(25);
   await files
     .getByLabel("etc/sysctl.d/conf-0000.conf", { exact: true })
@@ -242,6 +246,9 @@ test("freshly inspected target ports are mapped before the first plan without lo
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await page.getByLabel("etc/network/interfaces", { exact: true }).check();
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })
@@ -285,6 +292,9 @@ test("freshly inspected target ports are mapped before the first plan without lo
     page.getByRole("button", { name: "Ziel prüfen", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await expect(
     page.getByLabel("etc/network/interfaces", { exact: true }),
   ).toBeChecked();

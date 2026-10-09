@@ -11,7 +11,15 @@ import {
   Pagination,
   State,
 } from "../components/shared";
-import { ChevronRight, File, Folder, Link, Search } from "lucide-react";
+import { File, Folder, Link, Search } from "lucide-react";
+import FileNavigation, {
+  useFileNavigation,
+} from "../components/files/FileNavigation";
+import {
+  indexManifest,
+  parentPath,
+  visibleEntries,
+} from "../components/files/manifest";
 import type { Notify } from "../components/shared";
 import ActiveJobs from "../components/ActiveJobs";
 import BackupComparison from "../components/BackupComparison";
@@ -384,8 +392,9 @@ export function FileBrowser({
   onRestore: (id: string, file?: string) => void;
 }) {
   const [files, setFiles] = useState<Entry[]>([]);
-  const [query, setQuery] = useState("");
-  const [directory, setDirectory] = useState("");
+  const { query, setQuery, directory, navigate, up } = useFileNavigation(
+    backup.id,
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selected, setSelected] = useState("");
@@ -406,8 +415,6 @@ export function FileBrowser({
     setSelected("");
     setPreview(null);
     setFiles([]);
-    setQuery("");
-    setDirectory("");
     setPage(1);
     setBusy(false);
     setListing(true);
@@ -453,48 +460,17 @@ export function FileBrowser({
       if (sequence === request.current) setBusy(false);
     }
   }
-  const entries = useMemo(() => {
-    const indexed = new Map(files.map((f) => [f.path, f]));
-    for (const file of files) {
-      const parts = file.path.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        const path = parts.slice(0, i).join("/");
-        if (!indexed.has(path))
-          indexed.set(path, {
-            path,
-            type: "directory",
-            mode: 0,
-            uid: 0,
-            gid: 0,
-            size: 0,
-            secret: false,
-          });
-      }
-    }
-    return Array.from(indexed.values());
-  }, [files]);
+  const entries = useMemo(() => indexManifest(files), [files]);
   const search = query.trim().toLowerCase();
-  const visibleFiles = entries
-    .filter((f) =>
-      search
-        ? f.type !== "directory" && f.path.toLowerCase().includes(search)
-        : f.path.slice(0, Math.max(0, f.path.lastIndexOf("/"))) === directory,
-    )
-    .sort(
-      (a, b) =>
-        Number(b.type === "directory") - Number(a.type === "directory") ||
-        a.path.localeCompare(b.path, undefined, { numeric: true }),
-    );
+  const visibleFiles = visibleEntries(entries, directory, query);
   const currentPage = Math.min(
     page,
     Math.max(1, Math.ceil(visibleFiles.length / pageSize)),
   );
-  function navigate(path: string) {
-    setDirectory(path);
-    setQuery("");
+  function moveTo(path: string) {
+    navigate(path);
     setPage(1);
   }
-  const breadcrumbs = directory ? directory.split("/") : [];
   const selectedEntry = files.find((f) => f.path === selected);
   return (
     <Dialog title={"Dateien · " + backup.host_name} wide onClose={onClose}>
@@ -518,30 +494,15 @@ export function FileBrowser({
           </ul>
         </details>
       )}
-      <nav className="breadcrumbs" aria-label="Dateipfad">
-        <button
-          className="text-button"
-          onClick={() => navigate("")}
-          aria-current={!directory && !search ? "page" : undefined}
-        >
-          Alle Dateien
-        </button>
-        {breadcrumbs.map((part, i) => (
-          <span key={i}>
-            <ChevronRight size={13} aria-hidden="true" />
-            <button
-              className="text-button"
-              onClick={() => navigate(breadcrumbs.slice(0, i + 1).join("/"))}
-              aria-current={
-                i === breadcrumbs.length - 1 && !search ? "page" : undefined
-              }
-            >
-              {part}
-            </button>
-          </span>
-        ))}
-        {search && <span className="muted">Suche in allen Ordnern</span>}
-      </nav>
+      <FileNavigation
+        directory={directory}
+        query={query}
+        navigate={moveTo}
+        up={() => {
+          up();
+          setPage(1);
+        }}
+      />
       <div className="file-browser">
         <div className="file-list">
           <input
@@ -575,52 +536,63 @@ export function FileBrowser({
               visibleFiles
                 .slice((currentPage - 1) * pageSize, currentPage * pageSize)
                 .map((f) => (
-                  <button
-                    className={
-                      "file-entry" + (selected === f.path ? " selected" : "")
-                    }
-                    aria-label={
-                      f.type === "directory"
-                        ? "Ordner " + f.path + " öffnen"
-                        : f.path +
-                          " · " +
-                          (f.type === "symlink"
-                            ? "Verknüpfung"
-                            : bytes(f.size)) +
-                          (f.secret ? " · Geschützt" : "")
-                    }
-                    aria-pressed={
-                      f.type === "directory" ? undefined : selected === f.path
-                    }
-                    key={f.path}
-                    onClick={() =>
-                      f.type === "directory" ? navigate(f.path) : open(f.path)
-                    }
-                  >
-                    {f.type === "directory" ? (
-                      <Folder size={17} aria-hidden="true" />
-                    ) : f.type === "symlink" ? (
-                      <Link size={17} aria-hidden="true" />
-                    ) : (
-                      <File size={17} aria-hidden="true" />
-                    )}
-                    <span className="file-entry-name">
-                      <strong>{f.path.split("/").at(-1)}</strong>
-                      {search && <small className="mono">{f.path}</small>}
-                    </span>
-                    <span className="file-entry-meta">
-                      <span>
-                        {f.type === "directory"
-                          ? "Ordner"
-                          : f.type === "symlink"
-                            ? "Verknüpfung"
-                            : bytes(f.size)}
-                      </span>
-                      {f.secret && (
-                        <span className="state warning">Geschützt</span>
+                  <div className="file-result" key={f.path}>
+                    <button
+                      className={
+                        "file-entry" + (selected === f.path ? " selected" : "")
+                      }
+                      aria-label={
+                        f.type === "directory"
+                          ? "Ordner " + f.path + " öffnen"
+                          : f.path +
+                            " · " +
+                            (f.type === "symlink"
+                              ? "Verknüpfung"
+                              : bytes(f.size)) +
+                            (f.secret ? " · Geschützt" : "")
+                      }
+                      aria-pressed={
+                        f.type === "directory" ? undefined : selected === f.path
+                      }
+                      onClick={() =>
+                        f.type === "directory" ? moveTo(f.path) : open(f.path)
+                      }
+                    >
+                      {f.type === "directory" ? (
+                        <Folder size={17} aria-hidden="true" />
+                      ) : f.type === "symlink" ? (
+                        <Link size={17} aria-hidden="true" />
+                      ) : (
+                        <File size={17} aria-hidden="true" />
                       )}
-                    </span>
-                  </button>
+                      <span className="file-entry-name">
+                        <strong>{f.path.split("/").at(-1)}</strong>
+                        {search && <small className="mono">{f.path}</small>}
+                      </span>
+                      <span className="file-entry-meta">
+                        <span>
+                          {f.type === "directory"
+                            ? "Ordner"
+                            : f.type === "symlink"
+                              ? "Verknüpfung"
+                              : bytes(f.size)}
+                        </span>
+                        {f.secret && (
+                          <span className="state warning">Geschützt</span>
+                        )}
+                      </span>
+                    </button>
+                    {search && f.type !== "directory" && (
+                      <button
+                        type="button"
+                        className="text-button file-show-folder"
+                        onClick={() => moveTo(parentPath(f.path))}
+                        aria-label={"Im Ordner zeigen: " + f.path}
+                      >
+                        Im Ordner zeigen
+                      </button>
+                    )}
+                  </div>
                 ))
             )}
           </div>

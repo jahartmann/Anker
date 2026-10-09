@@ -21,6 +21,9 @@ async function setup(page: Page) {
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(base.backups[0].id);
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await page.getByLabel("etc/network/interfaces", { exact: true }).check();
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })
@@ -82,6 +85,9 @@ test("fresh inspection shows only necessary mappings before creating a plan", as
   expect(creates).toBe(0);
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await page.getByLabel("etc/network/interfaces", { exact: true }).uncheck();
   await expect(page.getByLabel("eno1 → Zielport", { exact: true })).toHaveCount(
     0,
@@ -115,6 +121,9 @@ test("failed inspection retries the same file draft and prevents duplicate or cl
     "Inventar nicht erreichbar",
   );
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/network/interfaces");
   await expect(
     page.getByLabel("etc/network/interfaces", { exact: true }),
   ).toBeChecked();
@@ -413,6 +422,7 @@ test("a late source file response cannot replace the newly selected backup", asy
   await page.getByLabel("Sicherung", { exact: true }).selectOption(first);
   await expect.poll(() => requested).toBe(true);
   await page.getByLabel("Sicherung", { exact: true }).selectOption(second);
+  await page.getByRole("button", { name: "Ordner etc öffnen" }).click();
   await expect(
     page.getByLabel("etc/current-source.conf", { exact: true }),
   ).toBeVisible();

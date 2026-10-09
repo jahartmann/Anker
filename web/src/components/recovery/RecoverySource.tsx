@@ -3,44 +3,62 @@ import { date, labels } from "../../api";
 import type { Entry, Status } from "../../api";
 import { Field, Pagination, LoadError } from "../shared";
 import type { RecoveryDraft } from "./useRecoveryDraft";
+import FileNavigation, { useFileNavigation } from "../files/FileNavigation";
+import { indexManifest, parentPath, visibleEntries } from "../files/manifest";
 function RestoreFiles({
   entries,
   files,
   onChange,
+  source,
 }: {
   entries: Entry[];
   files: string[];
   onChange: (files: string[]) => void;
+  source: string;
 }) {
-  const [query, setQuery] = useState("");
+  const { query, setQuery, directory, navigate, up } =
+    useFileNavigation(source);
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const selected = useMemo(() => new Set(files), [files]);
+  const indexed = useMemo(() => indexManifest(entries), [entries]);
   const matches = useMemo(
     () =>
-      entries
-        .filter(
-          (f) =>
-            f.type !== "directory" &&
-            f.path.toLowerCase().includes(query.trim().toLowerCase()) &&
-            (!selectedOnly || selected.has(f.path)),
-        )
-        .sort((a, b) =>
-          a.path.localeCompare(b.path, undefined, { numeric: true }),
-        ),
-    [entries, query, selectedOnly, selected],
+      selectedOnly
+        ? indexed
+            .filter(
+              (entry) => entry.type !== "directory" && selected.has(entry.path),
+            )
+            .sort((a, b) =>
+              a.path.localeCompare(b.path, undefined, { numeric: true }),
+            )
+        : visibleEntries(indexed, directory, query),
+    [indexed, directory, query, selectedOnly, selected],
   );
   useEffect(() => {
     setPage(1);
-  }, [query, selectedOnly, entries]);
+  }, [query, selectedOnly, entries, directory]);
   const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  function moveTo(path: string) {
+    navigate(path);
+    setPage(1);
+  }
   return (
     <fieldset className="file-selection restore-file-selection">
       <legend>Dateien auswählen · {files.length} ausgewählt</legend>
+      <FileNavigation
+        directory={directory}
+        query={query}
+        navigate={moveTo}
+        up={() => {
+          up();
+          setPage(1);
+        }}
+      />
       <div className="restore-selection-toolbar">
         <input
           aria-label="Wiederherstellungsdateien durchsuchen"
-          placeholder="Dateipfad suchen"
+          placeholder="Datei oder Ordner suchen"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -54,28 +72,58 @@ function RestoreFiles({
         </button>
       </div>
       <div className="restore-file-items">
-        {matches.slice((current - 1) * 25, current * 25).map((f) => (
-          <label className="check" key={f.path}>
-            <input
-              type="checkbox"
-              checked={selected.has(f.path)}
-              onChange={(e) =>
-                onChange(
-                  e.target.checked
-                    ? [...files, f.path]
-                    : files.filter((p) => p !== f.path),
-                )
-              }
-            />
-            <span className="mono">{f.path}</span>
-            {f.secret && <small className="muted">Geschützt</small>}
-          </label>
-        ))}
+        {matches.slice((current - 1) * 25, current * 25).map((f) =>
+          f.type === "directory" ? (
+            <button
+              type="button"
+              className="restore-folder"
+              key={f.path}
+              aria-label={"Ordner " + f.path + " öffnen"}
+              onClick={() => moveTo(f.path)}
+            >
+              <span aria-hidden="true">▸</span> {f.path.split("/").at(-1)}
+              {query.trim() && <small className="mono">{f.path}</small>}
+            </button>
+          ) : (
+            <div className="restore-file-result" key={f.path}>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  aria-label={f.path}
+                  checked={selected.has(f.path)}
+                  onChange={(e) =>
+                    onChange(
+                      e.target.checked
+                        ? [...files, f.path]
+                        : files.filter((p) => p !== f.path),
+                    )
+                  }
+                />
+                <span className="mono">
+                  {query.trim() || selectedOnly
+                    ? f.path
+                    : f.path.split("/").at(-1)}
+                </span>
+                {f.secret && <small className="muted">Geschützt</small>}
+              </label>
+              {query.trim() && !selectedOnly && (
+                <button
+                  type="button"
+                  className="text-button"
+                  aria-label={"Im Ordner zeigen: " + f.path}
+                  onClick={() => moveTo(parentPath(f.path))}
+                >
+                  Im Ordner zeigen
+                </button>
+              )}
+            </div>
+          ),
+        )}
         {!matches.length && (
           <p className="muted">
             {selectedOnly && !files.length
               ? "Noch keine Dateien ausgewählt."
-              : "Keine passenden Dateien."}
+              : "Keine passenden Einträge."}
           </p>
         )}
       </div>
@@ -160,6 +208,7 @@ export default function RecoverySource({
           entries={d.entries}
           files={d.files}
           onChange={d.changeFiles}
+          source={d.backup}
         />
       )}
       {d.scenario !== "files" && (

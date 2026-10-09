@@ -854,6 +854,22 @@ td strong {
 .file-items {
   overflow: auto;
 }
+.file-result {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-result .file-entry {
+  flex: 1;
+  min-width: 0;
+}
+.file-items .file-show-folder {
+  width: auto;
+  flex: none;
+  padding: 7px;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .file-items button {
   display: flex;
   align-items: center;
@@ -873,7 +889,7 @@ td strong {
   display: block;
   font-family: inherit;
   font-size: 10px;
-  color: #aaa99f;
+  color: #67675e;
   margin-top: 4px;
 }
 .file-items button.selected,
@@ -2085,6 +2101,22 @@ textarea {
   color: var(--ink);
   font-weight: 500;
 }
+.file-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  padding-bottom: 10px;
+}
+.file-location strong {
+  color: var(--ink);
+}
+.file-location .text-button {
+  min-height: 26px;
+}
 .file-entry > svg {
   flex-shrink: 0;
   color: #969990;
@@ -2244,6 +2276,43 @@ textarea {
 .restore-file-items .mono {
   overflow-wrap: anywhere;
 }
+.restore-folder {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 0;
+  background: #fff;
+  color: var(--accent);
+  text-align: left;
+}
+.restore-folder:hover {
+  background: var(--accent-soft);
+}
+.restore-folder small {
+  width: 100%;
+  padding-left: 17px;
+  color: var(--muted);
+}
+.restore-file-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.restore-file-result .check {
+  min-width: 0;
+  margin: 8px 0;
+}
+.restore-file-result .text-button {
+  flex: none;
+  color: var(--accent);
+  font-size: 12px;
+}
 .restore-selection-toolbar button[aria-pressed="true"] {
   background: var(--soft);
   border-color: var(--muted);
@@ -2263,6 +2332,14 @@ textarea {
   }
 }
 @media (max-width: 640px) {
+  .file-result,
+  .restore-file-result {
+    flex-wrap: wrap;
+  }
+  .file-items .file-show-folder,
+  .restore-file-result .text-button {
+    margin-left: 20px;
+  }
   .restore-plan-filters,
   .restore-selection-toolbar {
     flex-direction: column;
