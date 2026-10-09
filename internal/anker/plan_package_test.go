@@ -15,8 +15,12 @@ import (
 
 func exportedPlanPackage(t *testing.T) []byte {
 	t.Helper()
+	return exportedPlanPackageWithXAttrs(t, nil)
+}
+func exportedPlanPackageWithXAttrs(t *testing.T, attrs map[string]string) []byte {
+	t.Helper()
 	s := testService(t)
-	s.Collector = planExportCollector{}
+	s.Collector = planExportCollector{originalXAttrs: attrs}
 	b, err := s.CreateBackup(context.Background(), "host1")
 	if err != nil {
 		t.Fatal(err)
@@ -253,5 +257,112 @@ func TestPackageIndexMatchesTarTimestampRounding(t *testing.T) {
 	}
 	if len(index.Entries) != 1 || index.Entries[0].MTime != 1700000001 {
 		t.Fatalf("index lost serialized timestamp: %+v", index)
+	}
+}
+
+// Real backup -> plan -> tar export must preserve arbitrary xattr bytes while
+// using a JSON-safe lossless representation in the independent package index.
+func TestOfflinePlanPackagePreservesBinaryXAttrs(t *testing.T) {
+	for _, tc := range []struct{ name, raw, encoded string }{
+		{"text", "plain-text", "cGxhaW4tdGV4dA=="},
+		{"binary", "\x00\x01\xff\x80", "AAH/gA=="},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := exportedPlanPackageWithXAttrs(t, map[string]string{"user.test": tc.encoded})
+			r := tar.NewReader(bytes.NewReader(raw))
+			var index struct {
+				Entries []struct {
+					Path   string            `json:"path"`
+					XAttrs map[string]string `json:"xattrs_base64"`
+				} `json:"entries"`
+			}
+			var manifest Manifest
+			found := false
+			for {
+				h, err := r.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if h.Name == "original/original-files/etc/network/interfaces" {
+					found = true
+					value, ok := h.Xattrs["user.test"]
+					if tc.raw == "" {
+						value, ok = h.PAXRecords["SCHILY.xattr.user.test"]
+					}
+					if !ok || value != tc.raw {
+						t.Fatalf("raw tar xattr changed: %x, want %x", value, tc.raw)
+					}
+				}
+				if h.Name == packageIndexName {
+					if err = json.NewDecoder(r).Decode(&index); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if h.Name == "original/manifest.json" {
+					if err = json.NewDecoder(r).Decode(&manifest); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("original tar file missing")
+			}
+			found = false
+			for _, e := range manifest.Entries {
+				if e.Path == "etc/network/interfaces" {
+					found = true
+					if value, ok := e.XAttrs["user.test"]; !ok || value != tc.encoded {
+						t.Fatal("manifest base64 semantics changed")
+					}
+				}
+			}
+			if !found {
+				t.Fatal("original manifest entry missing")
+			}
+			result, err := VerifyPlanPackage(bytes.NewReader(raw))
+			if err != nil || result.Coverage != "complete" {
+				t.Errorf("unmodified exported xattr rejected: %+v %v", result, err)
+			}
+			found = false
+			for _, e := range index.Entries {
+				if e.Path == "original/original-files/etc/network/interfaces" {
+					found = true
+					value, ok := e.XAttrs["user.test"]
+					if !ok || value != tc.encoded {
+						t.Errorf("index xattr not lossless base64: %q, want %q", value, tc.encoded)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("index entry missing")
+			}
+			altered := rewritePackage(t, raw, func(h *tar.Header, b []byte) (*tar.Header, []byte) {
+				if h.Name == "original/original-files/etc/network/interfaces" {
+					if h.Xattrs == nil {
+						h.Xattrs = map[string]string{}
+					}
+					h.Xattrs["user.test"] = tc.raw + "\xfe"
+				}
+				return h, b
+			})
+			if _, err = VerifyPlanPackage(bytes.NewReader(altered)); err == nil {
+				t.Fatal("altered xattr accepted")
+			}
+			removed := rewritePackage(t, raw, func(h *tar.Header, b []byte) (*tar.Header, []byte) {
+				if h.Name == "original/original-files/etc/network/interfaces" {
+					delete(h.Xattrs, "user.test")
+					delete(h.PAXRecords, "SCHILY.xattr.user.test")
+				}
+				return h, b
+			})
+			if _, err = VerifyPlanPackage(bytes.NewReader(removed)); err == nil {
+				t.Fatal("removed xattr accepted")
+			}
+
+		})
 	}
 }

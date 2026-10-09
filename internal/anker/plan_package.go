@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,7 +38,7 @@ type packageEntry struct {
 	GID    int               `json:"gid"`
 	MTime  int64             `json:"mtime"`
 	Link   string            `json:"link,omitempty"`
-	XAttrs map[string]string `json:"xattrs,omitempty"`
+	XAttrs map[string]string `json:"xattrs_base64,omitempty"`
 	SHA256 string            `json:"sha256,omitempty"`
 }
 type packageIndex struct {
@@ -50,7 +51,26 @@ func packageMetadata(h *tar.Header) packageEntry {
 	if typ == tar.TypeRegA {
 		typ = tar.TypeReg
 	}
-	return packageEntry{Path: h.Name, Type: typ, Size: h.Size, Mode: h.Mode, UID: h.Uid, GID: h.Gid, MTime: h.ModTime.Unix(), Link: h.Linkname, XAttrs: h.Xattrs}
+	// Xattr values are arbitrary bytes. Standard padded base64 preserves them
+	// across JSON serialization, both when indexing and when verifying raw tar.
+	// Never mutate the header: original tar attributes retain their exact bytes.
+	xattrs := make(map[string]string, len(h.Xattrs))
+	// Go's tar reader leaves empty PAX xattrs out of Header.Xattrs but keeps
+	// their explicit records. Include that byte evidence, including empty values.
+	for key, value := range h.PAXRecords {
+		if name, ok := strings.CutPrefix(key, "SCHILY.xattr."); ok {
+			xattrs[name] = base64.StdEncoding.EncodeToString([]byte(value))
+		}
+	}
+	// The tar writer also gives Header.Xattrs precedence over PAXRecords.
+	for name, value := range h.Xattrs {
+		xattrs[name] = base64.StdEncoding.EncodeToString([]byte(value))
+	}
+	if len(xattrs) == 0 {
+		xattrs = nil
+	}
+
+	return packageEntry{Path: h.Name, Type: typ, Size: h.Size, Mode: h.Mode, UID: h.Uid, GID: h.Gid, MTime: h.ModTime.Unix(), Link: h.Linkname, XAttrs: xattrs}
 }
 
 type indexedPlanTar struct {

@@ -11,7 +11,10 @@ import (
 	"testing"
 )
 
-type planExportCollector struct{ fixtureCollector }
+type planExportCollector struct {
+	fixtureCollector
+	originalXAttrs map[string]string
+}
 
 func (c planExportCollector) Collect(ctx context.Context, h Host, dest string) (Collection, error) {
 	col, err := c.fixtureCollector.Collect(ctx, h, dest)
@@ -22,6 +25,9 @@ func (c planExportCollector) Collect(ctx context.Context, h Host, dest string) (
 	col.Entries[0].GID = 2345
 	col.Entries[0].MTime = 1700000000
 	col.Entries[0].XAttrs = map[string]string{"user.note": "b3JpZ2luYWw="}
+	if c.originalXAttrs != nil {
+		col.Entries[0].XAttrs = c.originalXAttrs
+	}
 	if err = os.WriteFile(filepath.Join(dest, "files/etc/example.conf"), []byte("enabled=yes\n"), 0600); err != nil {
 		return col, err
 	}
