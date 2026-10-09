@@ -199,6 +199,86 @@ test("changed human testimony refreshes only focused readiness and hides stale r
   expect(calls).toBe(2);
 });
 
+test("manifest loss hides successful human testimony before fresh readiness resolves", async ({
+  page,
+  request,
+}) => {
+  await page.context().addCookies(await demoCookies(request));
+  const base = await (await page.request.get("/api/status")).json();
+  const backup = { ...base.backups[0], id: "manifest-source" };
+  const host = { ...base.hosts[0], id: backup.host_id };
+  let unresolved = false;
+  await page.route("**/api/status", (r) =>
+    r.fulfill({
+      json: {
+        ...base,
+        hosts: [host],
+        jobs: [],
+        backups: [
+          {
+            ...backup,
+            evidence_revision: `same-date|same-id|same-sha|${unresolved ? "unresolved" : "valid"}`,
+          },
+        ],
+        references: {
+          [host.id]: {
+            host_id: host.id,
+            backup_id: backup.id,
+            manifest_sha: "same-sha",
+            updated_at: "same-date",
+            name: "Basis",
+            state: unresolved ? "unresolved" : "valid",
+          },
+        },
+      },
+    }),
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  await page.route("**/api/backups/manifest-source/readiness", async (r) => {
+    calls++;
+    if (unresolved) await gate;
+    await r.fulfill({
+      json: {
+        version: 1,
+        backup_id: backup.id,
+        items: [
+          {
+            id: "offline_drill",
+            state: unresolved ? "stale" : "ok",
+            title: "Offline-Probe",
+            detail: unresolved
+              ? "Bericht passt nicht zur Quelle"
+              : "Menschlicher Bericht erfolgreich",
+          },
+        ],
+        coverage: [],
+        dependencies: [],
+      },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Dateien" }).first().click();
+  await page.getByText("Quellnachweise und Abdeckung ansehen").click();
+  const readiness = page.getByRole("region", { name: "Quellnachweise" });
+  await expect(readiness).toContainText("Menschlicher Bericht erfolgreich");
+  unresolved = true;
+  await expect(readiness).not.toContainText(
+    "Menschlicher Bericht erfolgreich",
+    { timeout: 10000 },
+  );
+  release();
+  await expect(readiness).toContainText("Bericht passt nicht zur Quelle");
+  expect(calls).toBe(2);
+});
+
 test("changing reference comparison target drops an older summary response", async ({
   page,
   request,
@@ -259,6 +339,85 @@ test("changing reference comparison target drops an older summary response", asy
   await page.getByLabel("Vergleichsstand für Node A").selectOption("first");
   const response = page.waitForResponse((r) =>
     r.url().includes("/reference/compare?to=second"),
+  );
+  release();
+  await response;
+  await expect(
+    page.getByRole("heading", { name: "Sicherungsvergleich" }),
+  ).toHaveCount(0);
+});
+
+test("unresolved reference drops a pending direct comparison", async ({
+  page,
+  request,
+}) => {
+  await page.context().addCookies(await demoCookies(request));
+  const base = await (await page.request.get("/api/status")).json();
+  const host = { ...base.hosts[0], id: "reference-host", name: "Node A" };
+  const backups = ["old", "new"].map((id, i) => ({
+    ...base.backups[0],
+    id,
+    host_id: host.id,
+    host_name: host.name,
+    created_at: `2026-10-0${i + 1}T10:00:00Z`,
+  }));
+  let unresolved = false;
+  const reference = {
+    host_id: host.id,
+    backup_id: "old",
+    manifest_sha: "same",
+    updated_at: "2026-10-09T10:00:00Z",
+    name: "Basis",
+    state: "valid",
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({
+      json: {
+        ...base,
+        hosts: [host],
+        backups,
+        jobs: [],
+        references: {
+          [host.id]: {
+            ...reference,
+            state: unresolved ? "unresolved" : "valid",
+          },
+        },
+      },
+    }),
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/api/hosts/reference-host/reference/compare?to=new",
+    async (r) => {
+      await gate;
+      await r.fulfill({
+        json: {
+          reference,
+          to_id: "new",
+          changed: 1,
+          content: 1,
+          metadata: 0,
+          mtime_only: 0,
+        },
+      });
+    },
+  );
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Sicherungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Mit Referenz vergleichen" }).click();
+  unresolved = true;
+  await expect(page.getByText("Referenz: Basis · nicht auflösbar")).toBeVisible(
+    { timeout: 10000 },
+  );
+  const response = page.waitForResponse((r) =>
+    r.url().includes("/reference/compare?to=new"),
   );
   release();
   await response;

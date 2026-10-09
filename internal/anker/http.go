@@ -284,7 +284,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			references[h.ID] = ref
 			for i := range backups {
 				if backups[i].HostID == h.ID {
-					backups[i].EvidenceRevision = ref.UpdatedAt
+					backups[i].EvidenceRevision = ref.UpdatedAt + "|" + ref.BackupID + "|" + ref.ManifestSHA + "|" + ref.State
 				}
 			}
 		}

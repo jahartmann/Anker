@@ -3,6 +3,7 @@ package anker
 import (
 	"archive/tar"
 	"compress/gzip"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -276,6 +277,14 @@ func (s *Service) ArchiveBackup(id string) error {
 	b, err := s.Backup(id)
 	if err != nil {
 		return err
+	}
+	var ref BackupReference
+	refErr := s.Store.Get("backup_references", b.HostID, &ref)
+	if refErr != nil && !errors.Is(refErr, sql.ErrNoRows) {
+		return refErr
+	}
+	if refErr == nil && ref.HostID == b.HostID && ref.BackupID == b.ID {
+		return fail(409, "Benannte Referenz wird nicht archiviert")
 	}
 	if b.Archived {
 		return nil

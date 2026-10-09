@@ -35,11 +35,18 @@ export default function BackupReferencePanel({
   const [summary, setSummary] = useState<ReferenceChangeSummary | null>(null);
   const [targetID, setTargetID] = useState("");
   const comparisonGeneration = useRef(0);
+  const referenceState = useRef(reference?.state);
+  referenceState.current = reference?.state;
   useEffect(() => {
     comparisonGeneration.current++;
     setSummary(null);
     setBusy(false);
-  }, [reference?.backup_id, reference?.manifest_sha, reference?.updated_at]);
+  }, [
+    reference?.backup_id,
+    reference?.manifest_sha,
+    reference?.updated_at,
+    reference?.state,
+  ]);
   const current = reference?.state === "valid" ? reference : null;
   const targetOptions = [...backups]
     .filter((b) => b.id !== current?.backup_id)
@@ -117,7 +124,11 @@ export default function BackupReferencePanel({
         result.to_id !== target.id
       )
         throw new Error("Vergleich passt nicht zur Referenz.");
-      if (generation !== comparisonGeneration.current) return;
+      if (
+        generation !== comparisonGeneration.current ||
+        referenceState.current !== "valid"
+      )
+        return;
       setSummary(result);
       onCompare(current.backup_id!, target.id);
     } catch (e) {

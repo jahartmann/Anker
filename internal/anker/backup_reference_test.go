@@ -60,6 +60,77 @@ func TestProtectedReferenceSurvivesRetention(t *testing.T) {
 	}
 }
 
+func TestProtectedReferenceBlocksManualArchive(t *testing.T) {
+	s := testService(t)
+	b, err := s.CreateBackup(context.Background(), "host1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Pinned {
+		t.Fatal("fixture unexpectedly pinned")
+	}
+	if _, err = s.SaveProtectedReference("host1", b.ID, "Basis", "", nil, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ArchiveBackup(b.ID); err == nil {
+		t.Fatal("service archived current named reference")
+	}
+	if w := comparisonRequest(t, s, "POST", "/api/backups/"+b.ID+"/archive", map[string]any{}, nil); w.Code == 200 {
+		t.Fatal("route archived current named reference", w.Body.String())
+	}
+	got, err := s.Backup(b.ID)
+	if err != nil || got.Archived {
+		t.Fatal("reference archive state changed", got, err)
+	}
+	if _, err = os.Stat(filepath.Join(s.backupDir(b), "files/etc/network/interfaces")); err != nil {
+		t.Fatal("reference files removed", err)
+	}
+}
+
+func TestProtectedReferenceResolutionInvalidatesEvidenceRevision(t *testing.T) {
+	s := testService(t)
+	b, err := s.CreateBackup(context.Background(), "host1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SaveProtectedReference("host1", b.ID, "Basis", "", &ManualDrill{TestedAt: "2026-10-09T10:00:00Z", Outcome: "passed", Evidence: "Laborbericht"}, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	status := func() struct {
+		Backups    []Backup                   `json:"backups"`
+		References map[string]BackupReference `json:"references"`
+	} {
+		t.Helper()
+		w := comparisonRequest(t, s, "GET", "/api/status", nil, nil)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var v struct {
+			Backups    []Backup                   `json:"backups"`
+			References map[string]BackupReference `json:"references"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	before := status()
+	if before.References["host1"].State != "valid" || before.Backups[0].EvidenceRevision == "" {
+		t.Fatal(before)
+	}
+	if err = os.Remove(filepath.Join(s.backupDir(b), "manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+	after := status()
+	if after.References["host1"].State != "unresolved" || after.Backups[0].EvidenceRevision == before.Backups[0].EvidenceRevision {
+		t.Fatal("resolution did not invalidate readiness key", before, after)
+	}
+	r, err := s.BackupReadiness(b.ID)
+	if err != nil || readinessState(r.Items, "offline_drill") != "stale" {
+		t.Fatal(r, err)
+	}
+}
+
 func TestProtectedReferenceRoutesEnforceRoleAndExposeSummary(t *testing.T) {
 	s := testService(t)
 	a, _ := s.CreateBackup(context.Background(), "host1")
