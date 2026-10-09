@@ -192,7 +192,16 @@ func (s *Service) verifyAt(id, root string) error {
 	return s.verifyAtRecord(b, root)
 }
 func (s *Service) verifyAtRecord(b Backup, root string) error {
-	data, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	return verifyRecordBytes(b, func(p string) ([]byte, error) {
+		full, err := safeJoin(root, p)
+		if err != nil {
+			return nil, err
+		}
+		return os.ReadFile(full)
+	})
+}
+func verifyRecordBytes(b Backup, read func(string) ([]byte, error)) error {
+	data, err := read("manifest.json")
 	if err != nil {
 		return err
 	}
@@ -210,11 +219,10 @@ func (s *Service) verifyAtRecord(b Backup, root string) error {
 		if e.Type == "directory" {
 			continue
 		}
-		p, err := safeJoin(filepath.Join(root, "files"), e.Path)
-		if err != nil {
+		if err := ValidPath(e.Path); err != nil {
 			return err
 		}
-		d, err := os.ReadFile(p)
+		d, err := read("files/" + e.Path)
 		if err != nil {
 			return err
 		}
@@ -223,11 +231,7 @@ func (s *Service) verifyAtRecord(b Backup, root string) error {
 		}
 	}
 	for p, hash := range m.Artifacts {
-		full, err := safeJoin(root, p)
-		if err != nil {
-			return err
-		}
-		d, err := os.ReadFile(full)
+		d, err := read(p)
 		if err != nil {
 			return err
 		}
@@ -240,7 +244,7 @@ func (s *Service) verifyAtRecord(b Backup, root string) error {
 func (s *Service) extractArchive(b Backup) (string, error) {
 	temp, err := os.MkdirTemp(filepath.Join(s.Root, "staging"), "archive-")
 	if err != nil {
-		return "", err
+		return "", deferredVerificationError{err}
 	}
 	f, err := os.Open(filepath.Join(s.backupDir(b), "archive.tar.gz"))
 	if err != nil {

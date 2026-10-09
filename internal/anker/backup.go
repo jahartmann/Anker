@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -399,34 +399,55 @@ func (s *Service) Manifest(id string) (Manifest, error) {
 	return m, nil
 }
 func (s *Service) VerifyBackup(id string) error {
+	release, err := s.beginIntegrityOperation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	lock := s.backupLock(id)
-	lock.RLock()
-	defer lock.RUnlock()
+	lock.Lock()
+	defer lock.Unlock()
 	return s.verifyBackupUnlocked(id)
 }
 func (s *Service) verifyBackupUnlocked(id string) error {
-	err := s.checkBackupUnlocked(id)
-	b, getErr := s.Backup(id)
-	if getErr != nil {
-		return err
-	}
-	// Resource/access failures do not establish corruption.
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EACCES) {
-		return err
-	}
-	b.VerifiedAt = now()
+	b, err := s.Backup(id)
 	if err != nil {
-		b.Status, b.VerificationError = "damaged", err.Error()
+		return err
+	}
+	attempt := integrityAttempt{At: now(), State: "started"}
+	if err = s.Store.Put("integrity_attempts", id, attempt); err != nil {
+		return err
+	}
+	err = s.checkBackupUnlocked(id)
+	attempt.State = "ok"
+	if verificationDeferred(err) {
+		attempt.State = "deferred"
 	} else {
-		b.VerificationError = ""
-		if b.Status == "damaged" {
-			if m, e := s.Manifest(id); e == nil {
-				b.Status = m.Status
+		b.VerifiedAt = now()
+		if err != nil {
+			attempt.State = "failed"
+			b.Status, b.VerificationError = "damaged", err.Error()
+		} else {
+			b.VerificationError = ""
+			if b.Status == "damaged" {
+				if m, e := s.Manifest(id); e == nil {
+					b.Status = m.Status
+				}
 			}
 		}
 	}
-	if storeErr := s.Store.Put("backups", id, b); err == nil {
-		err = storeErr
+	b.VerificationAttempt = &attempt
+	if storeErr := s.Store.Put("backups", id, b); storeErr != nil {
+		return errors.Join(err, storeErr)
+	}
+	if storeErr := s.Store.Put("integrity_attempts", id, attempt); storeErr != nil {
+		return errors.Join(err, storeErr)
+	}
+	if attempt.State == "deferred" {
+		return err
+	}
+	if notifyErr := s.notifyIntegrity(b, err != nil, time.Now()); notifyErr != nil {
+		log.Printf("Anker Integritätsbenachrichtigung (%s): %v", b.ID, notifyErr)
 	}
 	return err
 }
@@ -436,6 +457,9 @@ func (s *Service) checkBackupUnlocked(id string) error {
 		return err
 	}
 	if b.Archived {
+		if err := s.CheckSpace(b.Size*2 + (64 << 20)); err != nil {
+			return deferredVerificationError{err}
+		}
 		temp, err := s.extractArchive(b)
 		if err != nil {
 			return err
@@ -443,40 +467,7 @@ func (s *Service) checkBackupUnlocked(id string) error {
 		defer os.RemoveAll(temp)
 		return nil
 	}
-	m, err := s.Manifest(id)
-	if err != nil {
-		return err
-	}
-	for _, e := range m.Entries {
-		if e.Type == "directory" {
-			continue
-		}
-		p, err := safeJoin(filepath.Join(s.backupDir(b), "files"), e.Path)
-		if err != nil {
-			return err
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		if Hash(data) != e.SHA256 {
-			return fmt.Errorf("Prüfsumme falsch: %s", e.Path)
-		}
-	}
-	for p, hash := range m.Artifacts {
-		full, err := safeJoin(s.backupDir(b), p)
-		if err != nil {
-			return err
-		}
-		data, err := os.ReadFile(full)
-		if err != nil {
-			return err
-		}
-		if Hash(data) != hash {
-			return fmt.Errorf("Prüfsumme falsch: %s", p)
-		}
-	}
-	return nil
+	return s.verifyAtRecord(b, s.backupDir(b))
 }
 func (s *Service) ReadFile(id, p string) ([]byte, Entry, error) {
 	release, err := s.readableLease(id)

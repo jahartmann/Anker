@@ -31,6 +31,9 @@ export default function BackupReadiness({
     backup?.status,
     backup?.verified_at,
     backup?.verification_error,
+    backup?.manifest_sha,
+    backup?.verification_attempt,
+    backup?.copy_verification,
   ]);
   const currentReadiness =
     readiness?.key === sourceKey ? readiness.value : null;
@@ -91,7 +94,7 @@ export default function BackupReadiness({
                 </div>
                 <p>{item.detail}</p>
                 <p className="field-hint">
-                  Herkunft: gespeicherter Stand ·{" "}
+                  Herkunft: {item.provenance || "gespeicherter Stand"} ·{" "}
                   {item.at
                     ? `Stand/Versuch: ${date(item.at)}`
                     : "Kein datierter Nachweis"}

@@ -24,6 +24,7 @@ type ReadinessItem struct {
 	Detail     string `json:"detail"`
 	At         string `json:"at,omitempty"`
 	NextAction string `json:"next_action,omitempty"`
+	Provenance string `json:"provenance,omitempty"`
 }
 type CoverageRoot struct {
 	Path      string `json:"path"`
@@ -39,7 +40,7 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 	}
 	r := BackupReadiness{Version: 1, BackupID: id, Items: []ReadinessItem{}, Coverage: []CoverageRoot{}, Dependencies: []DependencyEvidence{}}
 	add := func(id, state, title, detail, at, action string) {
-		r.Items = append(r.Items, ReadinessItem{id, state, title, detail, at, action})
+		r.Items = append(r.Items, ReadinessItem{ID: id, State: state, Title: title, Detail: detail, At: at, NextAction: action})
 	}
 	if b.Status == "damaged" || b.VerificationError != "" {
 		add("capture", "failed", "Erfassung", "Sicherung ist als beschädigt markiert.", b.CreatedAt, "Sicherung und Quelle prüfen")
@@ -70,7 +71,14 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		verificationDetail = "Letzter Integritätsprüfversuch war erfolgreich."
 		verificationAction = ""
 	}
-	add("verification", verification, "Integrität", verificationDetail, b.VerifiedAt, verificationAction)
+	verificationAt := b.VerifiedAt
+	if b.VerificationAttempt != nil && b.VerificationAttempt.State == "deferred" {
+		if verification != "failed" {
+			verification = "unknown"
+		}
+		verificationDetail, verificationAt, verificationAction = "Letzter Prüfversuch wegen Speicher- oder E/A-Problem zurückgestellt; keine neue Aussage zur Integrität.", b.VerificationAttempt.At, "Ablage prüfen und Prüfung wiederholen"
+	}
+	add("verification", verification, "Integrität", verificationDetail, verificationAt, verificationAction)
 	settings, settingsErr := s.Settings()
 	if at, parseErr := time.Parse(time.RFC3339, b.CreatedAt); parseErr == nil && settingsErr == nil && settings.StaleHours > 0 {
 		if time.Since(at) > time.Duration(settings.StaleHours)*time.Hour {
@@ -82,7 +90,24 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		add("age", "unknown", "Alter", "Aktualität kann nicht bestimmt werden.", b.CreatedAt, "Zeitstempel und Einstellung prüfen")
 	}
 	// Separate facts remain open until later evidence producers bind their own proofs.
-	add("independent_copy", "unknown", "Unabhängige Kopie", "Für diesen Stand liegt noch kein gebundener Prüfnachweis einer unabhängigen Kopie vor.", "", "Unabhängige Kopie prüfen")
+	copyState, copyDetail, copyAt := "unknown", "Kein gebundener lokaler Prüfnachweis vorhanden.", ""
+	if receipt := b.CopyVerification; receipt != nil && receipt.Version == 1 && receipt.Provenance == "local-byte-verifier-v1" {
+		copyAt = receipt.AttemptAt
+		if receipt.BackupID != b.ID || receipt.ManifestSHA != b.ManifestSHA || manifestErr != nil {
+			copyState, copyDetail = "stale", "Kopienachweis passt nicht zum aktuellen Quellmanifest; erneut prüfen."
+		} else if receipt.State == "ok" && receipt.VerifiedAt != "" {
+			copyState, copyDetail, copyAt = "ok", "Manifest, Dateien und Artefakte einer separaten Ablage wurden anhand tatsächlicher Bytes geprüft. Aussage gilt zum Prüfzeitpunkt.", receipt.VerifiedAt
+		} else if receipt.State == "failed" {
+			copyState, copyDetail = "failed", "Letzter Kopieprüfversuch hat keine vollständige separate Kopie bestätigt."
+		} else if receipt.State == "deferred" {
+			copyDetail = "Letzter Kopieprüfversuch wegen Speicher- oder E/A-Problem zurückgestellt; kein neuer Nachweis."
+		}
+	}
+	add("independent_copy", copyState, "Geprüfte Kopie", copyDetail, copyAt, "Lokal: anker backup verify-copy BACKUP /kopiepfad")
+	if b.CopyVerification != nil {
+		r.Items[len(r.Items)-1].Provenance = "Lokaler Byte-Prüfer"
+	}
+	add("copy_failure_domain", "unknown", "Physische Unabhängigkeit", "Ein separates Verzeichnis belegt keinen getrennten Datenträger oder Ausfallbereich.", "", "Datenträger und Ausfallbereich separat dokumentieren")
 	add("offline_drill", "unknown", "Offline-Probe", "Für diesen Stand liegt kein dokumentierter Offline-Test vor.", "", "Offline-Probe im isolierten Labor dokumentieren")
 	if manifestErr != nil {
 		for _, key := range []string{"pve_version", "users", "groups", "file_inventory"} {

@@ -119,6 +119,13 @@ func scheduledTime(h Host, settings Settings, local time.Time) (time.Time, error
 	return due, nil
 }
 func (s *Service) Maintain(at time.Time) error {
+	release, err := s.beginIntegrityOperation()
+	if err != nil {
+		return err
+	}
+	defer release()
+	s.maintenanceMu.Lock()
+	defer s.maintenanceMu.Unlock()
 	settings, err := s.Settings()
 	if err != nil {
 		return err
@@ -144,12 +151,15 @@ func (s *Service) Maintain(at time.Time) error {
 		if err != nil {
 			return err
 		}
-		// Verify the newest complete recovery source before retention chooses it.
+		// Exactly one newest complete source, then at most one older retained source.
+		checked := map[string]bool{}
 		for _, b := range backups {
 			if b.Status == "successful" {
-				if s.VerifyBackup(b.ID) == nil {
-					break
+				checked[b.ID] = true
+				if err := s.maintainIntegrity(b, at); err != nil {
+					return err
 				}
+				break
 			}
 		}
 		backups, err = s.ListBackups(h.ID)
@@ -195,6 +205,14 @@ func (s *Service) Maintain(at time.Time) error {
 			if b.Pinned || protected[b.ID] {
 				keep[b.ID] = true
 			}
+		}
+		if err := s.rotateIntegrity(backups, keep, protected, checked, at); err != nil {
+			return err
+		}
+		// Verification can change damage status; never archive using the earlier snapshot.
+		backups, err = s.ListBackups(h.ID)
+		if err != nil {
+			return err
 		}
 		for _, b := range backups {
 			if !keep[b.ID] {
@@ -278,7 +296,12 @@ func (s *Service) Reindex() (int, error) {
 		lock := s.backupLock(b.ID)
 		lock.Lock()
 		if current, e := s.Backup(b.ID); e == nil {
+			if current.ManifestSHA != b.ManifestSHA {
+				lock.Unlock()
+				return count, fmt.Errorf("Manifest-Prüfsumme weicht vom bekannten Stand ab: %s", b.ID)
+			}
 			b.Pinned = current.Pinned
+			b.CopyVerification = current.CopyVerification
 		}
 		_, err = os.Stat(filepath.Join(filepath.Dir(p), "files"))
 		b.Archived = os.IsNotExist(err)

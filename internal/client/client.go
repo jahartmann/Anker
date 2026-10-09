@@ -260,6 +260,11 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			return err
 		}
 		switch args[1] {
+		case "verify-copy":
+			if len(args) != 4 || !filepath.IsAbs(args[3]) {
+				return fmt.Errorf("Kopie prüfen: anker backup verify-copy BACKUP /absoluter/kopiepfad")
+			}
+			return call("POST", "local-copy-verification/"+url.PathEscape(args[2]), map[string]string{"copy_root": args[3]})
 		case "readiness":
 			return call("GET", "backups/"+args[2]+"/readiness", nil)
 		case "run":
@@ -547,6 +552,7 @@ Hosts und Sicherungen
   anker host list | probe HOST | remove HOST
   anker host trust ADRESSE --fingerprint SHA256:... [--port 22]
   anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
+  anker backup verify-copy BACKUP /absoluter/kopiepfad (lokal; entpackte Ablage)
   anker backup run HOST | list | files BACKUP | readiness BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
   anker diff ALT NEU
   anker export BACKUP ./sicherung.tar

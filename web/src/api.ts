@@ -63,6 +63,18 @@ export interface Host {
   probe_error?: string;
 }
 export interface Backup {
+  manifest_sha?: string;
+  verification_attempt?: { at: string; state: string };
+  copy_verification?: {
+    version: number;
+    backup_id: string;
+    manifest_sha: string;
+    state: string;
+    attempt_at: string;
+    verified_at?: string;
+    provenance: string;
+    failure_domain: "unknown";
+  };
   verified_at?: string;
   verification_error?: string;
   id: string;
@@ -86,6 +98,7 @@ export interface BackupReadiness {
     detail: string;
     at?: string;
     next_action?: string;
+    provenance?: string;
   }[];
   coverage: {
     path: string;

@@ -99,6 +99,33 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		// Filesystem selection is available exclusively on the private Unix socket.
+		if strings.HasPrefix(r.URL.Path, "/api/local-copy-verification/") {
+			if !local {
+				http.NotFound(w, r)
+				return
+			}
+			if r.Method != "POST" {
+				jsonError(w, fail(405, "POST erforderlich"))
+				return
+			}
+			var in struct {
+				CopyRoot string `json:"copy_root"`
+			}
+			if err := input(r, &in); err != nil {
+				jsonError(w, err)
+				return
+			}
+			id := strings.TrimPrefix(r.URL.Path, "/api/local-copy-verification/")
+			receipt, err := s.VerifyIndependentCopy(id, in.CopyRoot)
+			if err != nil {
+				jsonError(w, err)
+				return
+			}
+			s.LogAudit("local", "backup.verify-copy", id)
+			jsonOut(w, receipt)
+			return
+		}
 		if s.Updating() && r.Method != "GET" && r.Method != "HEAD" {
 			jsonError(w, fail(503, "Anker wird aktualisiert; bitte kurz warten"))
 			return

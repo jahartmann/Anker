@@ -129,19 +129,21 @@ type Manifest struct {
 	Dependencies  []DependencyEvidence `json:"dependencies,omitempty"`
 }
 type Backup struct {
-	VerifiedAt        string   `json:"verified_at,omitempty"`
-	VerificationError string   `json:"verification_error,omitempty"`
-	ID                string   `json:"id"`
-	HostID            string   `json:"host_id"`
-	HostName          string   `json:"host_name"`
-	CreatedAt         string   `json:"created_at"`
-	Status            string   `json:"status"`
-	Size              int64    `json:"size"`
-	Files             int      `json:"files"`
-	Pinned            bool     `json:"pinned"`
-	Archived          bool     `json:"archived"`
-	ManifestSHA       string   `json:"manifest_sha"`
-	Warnings          []string `json:"warnings"`
+	VerificationAttempt *integrityAttempt        `json:"verification_attempt,omitempty"`
+	CopyVerification    *CopyVerificationReceipt `json:"copy_verification,omitempty"`
+	VerifiedAt          string                   `json:"verified_at,omitempty"`
+	VerificationError   string                   `json:"verification_error,omitempty"`
+	ID                  string                   `json:"id"`
+	HostID              string                   `json:"host_id"`
+	HostName            string                   `json:"host_name"`
+	CreatedAt           string                   `json:"created_at"`
+	Status              string                   `json:"status"`
+	Size                int64                    `json:"size"`
+	Files               int                      `json:"files"`
+	Pinned              bool                     `json:"pinned"`
+	Archived            bool                     `json:"archived"`
+	ManifestSHA         string                   `json:"manifest_sha"`
+	Warnings            []string                 `json:"warnings"`
 }
 type Job struct {
 	ID           string `json:"id"`
@@ -307,6 +309,8 @@ type Collector interface {
 }
 type Service struct {
 	snapshotMu       sync.Mutex
+	maintenanceMu    sync.Mutex
+	integrityBusy    int
 	backupLocks      map[string]*sync.RWMutex
 	planLocks        map[string]*sync.RWMutex
 	hostMu           sync.Mutex

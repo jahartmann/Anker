@@ -4,6 +4,7 @@ import (
 	"anker/internal/anker"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -127,5 +128,37 @@ func TestCLIReadsAndRemovesJobHistory(t *testing.T) {
 	}
 	if _, err := s.Job(job.ID); err == nil {
 		t.Fatal("history survived deletion")
+	}
+}
+
+func TestCLIVerifiesCopyWithLocalPathAndRejectsExtraProof(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != "POST" || r.URL.Path != "/api/local-copy-verification/backup1" {
+			t.Errorf("unexpected route %s %s", r.Method, r.URL.Path)
+		}
+		var in map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Error(err)
+		}
+		if len(in) != 1 || in["copy_root"] != "/local/copy" {
+			t.Errorf("unexpected proof input: %v", in)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"state": "ok"})
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &out}
+	if err := c.Run(context.Background(), []string{"backup", "verify-copy", "backup1", "/local/copy"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"backup", "verify-copy", "backup1"}, {"backup", "verify-copy", "backup1", "relative"}, {"backup", "verify-copy", "backup1", "/local/copy", "2026-01-01"}} {
+		if c.Run(context.Background(), args) == nil {
+			t.Fatal("invalid local verification accepted", args)
+		}
+	}
+	if requests != 1 {
+		t.Fatal("invalid requests sent", requests)
 	}
 }

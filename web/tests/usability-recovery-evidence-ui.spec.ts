@@ -244,27 +244,52 @@ test("same source refresh hides old integrity evidence before a changed attempt 
   await expect(readiness).toContainText("Letzter Versuch fehlgeschlagen");
 });
 
-test("overview and host detail load only their latest source, not historical rows", async ({ page }) => {
+test("overview and host detail load only their latest source, not historical rows", async ({
+  page,
+}) => {
   const base = await (await page.request.get("/api/status")).json();
   const host = base.hosts[0];
   const backups = Array.from({ length: 120 }, (_, i) => ({
-    ...base.backups[0], id: `history-${i}`, host_id: host.id, host_name: host.name,
+    ...base.backups[0],
+    id: `history-${i}`,
+    host_id: host.id,
+    host_name: host.name,
     created_at: new Date(Date.UTC(2026, 9, 8, 0, i)).toISOString(),
   }));
   const requested: string[] = [];
-  await page.route("**/api/status", r => r.fulfill({ json: { ...base, backups, jobs: [] } }));
-  await page.route("**/api/backups/*/readiness", r => {
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, backups, jobs: [] } }),
+  );
+  await page.route("**/api/backups/*/readiness", (r) => {
     const id = r.request().url().split("/").at(-2)!;
     requested.push(id);
-    return r.fulfill({ json: { version: 1, backup_id: id, items: [], coverage: [], dependencies: [] } });
+    return r.fulfill({
+      json: {
+        version: 1,
+        backup_id: id,
+        items: [],
+        coverage: [],
+        dependencies: [],
+      },
+    });
   });
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Hauptnavigation" }).getByRole("button", { name: "Übersicht", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Quellnachweise" })).toContainText("history-119");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Übersicht", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Quellnachweise" }),
+  ).toContainText("history-119");
   expect(requested).toEqual(["history-119"]);
-  await page.getByRole("navigation", { name: "Hauptnavigation" }).getByRole("button", { name: "Hosts", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Hosts", exact: true })
+    .click();
   await page.getByRole("button", { name: host.name, exact: true }).click();
-  await expect(page.getByRole("region", { name: "Quellnachweise" })).toContainText("history-119");
+  await expect(
+    page.getByRole("region", { name: "Quellnachweise" }),
+  ).toContainText("history-119");
   expect(requested).toEqual(["history-119", "history-119"]);
 });
 
@@ -370,4 +395,147 @@ test("plan confirmation stays guarded through page back and main navigation", as
   await expect(
     page.getByRole("region", { name: "Wiederherstellungsplan" }),
   ).toBeVisible();
+});
+
+for (const changedEvidence of ["receipt", "manifest"]) {
+  test(`same source refresh invalidates changed copy ${changedEvidence} evidence`, async ({
+    page,
+  }) => {
+    const base = await (await page.request.get("/api/status")).json();
+    let failed = false;
+    const backup = {
+      ...base.backups[0],
+      id: "changing-source",
+      host_id: "h1",
+      host_name: "Node A",
+    };
+    await page.route("**/api/status", (r) =>
+      r.fulfill({
+        json: {
+          ...base,
+          backups: [
+            {
+              ...backup,
+              status: "successful",
+              manifest_sha:
+                failed && changedEvidence === "manifest"
+                  ? "new-manifest"
+                  : "old-manifest",
+              copy_verification: {
+                attempt_at:
+                  failed && changedEvidence === "receipt"
+                    ? "new-attempt"
+                    : "old-attempt",
+                state:
+                  failed && changedEvidence === "receipt" ? "failed" : "ok",
+              },
+              verified_at: "2026-10-08T10:00:00Z",
+              verification_error: "",
+            },
+          ],
+          jobs: [],
+        },
+      }),
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/backups/changing-source/readiness", async (r) => {
+      if (failed) await gate;
+      await r.fulfill({
+        json: {
+          version: 1,
+          backup_id: backup.id,
+          items: [
+            {
+              id: "independent_copy",
+              state: failed ? "failed" : "ok",
+              title: "Geprüfte Kopie",
+              detail: failed
+                ? "Kopienachweis veraltet"
+                : "Kopie anhand tatsächlicher Bytes geprüft",
+            },
+          ],
+          coverage: [],
+          dependencies: [],
+        },
+      });
+    });
+    await backupsPage(page);
+    await page.getByRole("button", { name: "Dateien" }).click();
+    await page.getByText("Quellnachweise und Abdeckung ansehen").click();
+    const readiness = page.getByRole("region", { name: "Quellnachweise" });
+    await expect(readiness).toContainText(
+      "Kopie anhand tatsächlicher Bytes geprüft",
+    );
+    failed = true;
+    await expect(readiness).not.toContainText(
+      "Kopie anhand tatsächlicher Bytes geprüft",
+      {
+        timeout: 10000,
+      },
+    );
+    release();
+    await expect(readiness).toContainText("Kopienachweis veraltet");
+  });
+}
+
+test("local CLI byte receipt appears with date and distinct unknown physical independence", async ({
+  page,
+}) => {
+  const { cp, mkdtemp, rm } = await import("node:fs/promises");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { fileURLToPath } = await import("node:url");
+  const run = promisify(execFile);
+  const base = await (await page.request.get("/api/status")).json();
+  const backup = base.backups[0];
+  expect(backup.archived).toBe(false);
+  const dataRoot = `/tmp/anker-browser-${process.env.ANKER_BROWSER_RUN_ID}`;
+  const copyRoot = await mkdtemp("/tmp/anker-copy-browser-");
+  try {
+    await cp(
+      `${dataRoot}/hosts/${backup.host_id}/backups/${backup.id}`,
+      copyRoot,
+      { recursive: true },
+    );
+    const { stdout } = await run(
+      fileURLToPath(new URL("../../bin/anker", import.meta.url)),
+      ["--data", dataRoot, "backup", "verify-copy", backup.id, copyRoot],
+    );
+    const receipt = JSON.parse(stdout);
+    expect(receipt.state).toBe("ok");
+    expect(receipt.failure_domain).toBe("unknown");
+    expect(stdout).not.toContain(copyRoot);
+    await backupsPage(page);
+    await page
+      .getByRole("button", { name: "Dateien", exact: true })
+      .first()
+      .click();
+    await page.getByText("Quellnachweise und Abdeckung ansehen").click();
+    const readiness = page.getByRole("region", { name: "Quellnachweise" });
+    await expect(readiness).toContainText("tatsächlicher Bytes geprüft");
+    await expect(readiness).toContainText("Lokaler Byte-Prüfer");
+    await expect(readiness).toContainText(
+      "Ein separates Verzeichnis belegt keinen getrennten Datenträger",
+    );
+    await expect(readiness).not.toContainText(copyRoot);
+    for (const [label, width, height] of [
+      ["desktop", 1440, 1000],
+      ["mobile", 390, 844],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await readiness.scrollIntoViewIfNeeded();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await page.screenshot({
+        path: `/tmp/anker-task5-${label}.png`,
+        fullPage: true,
+      });
+    }
+  } finally {
+    await rm(copyRoot, { recursive: true, force: true });
+  }
 });

@@ -3,7 +3,9 @@ package anker
 import (
 	"bytes"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -190,4 +192,42 @@ func (s *Service) SendNotification(settings Settings, message string) error {
 		return err
 	}
 	return nil
+}
+
+// A persistent incident/recovery pair per backup. Deferred checks never call this.
+func (s *Service) notifyIntegrity(b Backup, damaged bool, at time.Time) error {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	settings, err := s.Settings()
+	if err != nil {
+		return err
+	}
+	if settings.Webhook == "" && (settings.SMTPServer == "" || settings.MailTo == "") {
+		return nil
+	}
+	var notice staleNotice
+	if err = s.Store.Get("integrity_notifications", b.ID, &notice); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if notice.Alerted == damaged {
+		return nil
+	}
+	if previous, e := time.Parse(time.RFC3339Nano, notice.AttemptAt); e == nil && at.Sub(previous) < time.Hour {
+		return nil
+	}
+	message := "Anker: " + b.HostName + " — Integritätsprüfung fehlgeschlagen (" + b.ID + ")"
+	if !damaged {
+		message = "Anker: " + b.HostName + " — Integrität wieder erfolgreich geprüft (" + b.ID + ")"
+	}
+	// Persist the attempt before network I/O to throttle failures/crash retries.
+	notice.AttemptAt = at.UTC().Format(time.RFC3339Nano)
+	if err = s.Store.Put("integrity_notifications", b.ID, notice); err != nil {
+		return err
+	}
+	if err = s.sendOperationalNotification(settings, message); err != nil {
+		return err
+	}
+	notice.Alerted = damaged
+	notice.AttemptAt = ""
+	return s.Store.Put("integrity_notifications", b.ID, notice)
 }

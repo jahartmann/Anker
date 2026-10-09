@@ -18,7 +18,7 @@ func (s *Service) PrepareUpdate() error {
 	if s.connectingHostID != "" {
 		return errors.New("Hostanbindung zuerst abschließen")
 	}
-	if s.schedulerBusy {
+	if s.schedulerBusy || s.integrityBusy > 0 {
 		return errors.New("Laufende Aufbewahrungsprüfung zuerst beenden")
 	}
 	jobs, err := s.Jobs()
