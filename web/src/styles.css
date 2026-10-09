@@ -1586,7 +1586,7 @@ textarea {
   .file-preview {
     max-height: 260px;
   }
-  .file-preview:has(.empty) {
+  .file-preview-unselected {
     display: none;
   }
   .file-list-count {

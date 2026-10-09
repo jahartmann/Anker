@@ -57,6 +57,9 @@ function RestoreFiles({
           up();
           setPage(1);
         }}
+        scopeLabel={
+          selectedOnly ? "Ausgewählte Dateien aus allen Ordnern" : undefined
+        }
       />
       <div className="restore-selection-toolbar">
         <input

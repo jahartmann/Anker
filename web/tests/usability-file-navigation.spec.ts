@@ -33,7 +33,7 @@ test("backup search finds real and synthetic folders and offers file location", 
       json: {
         entry: entries.find((e) => e.path === path),
         content: "sensitive content",
-        masked: true,
+        masked: !route.request().url().includes("reveal=1"),
       },
     });
   });
@@ -63,6 +63,7 @@ test("backup search finds real and synthetic folders and offers file location", 
   await expect(
     dialog.getByRole("navigation", { name: "Dateipfad" }),
   ).not.toContainText("generated");
+  await page.setViewportSize({ width: 390, height: 844 });
   await search.fill("secret.conf");
   await dialog
     .getByRole("button", { name: "Im Ordner zeigen: etc/private/secret.conf" })
@@ -74,7 +75,12 @@ test("backup search finds real and synthetic folders and offers file location", 
     .getByRole("button", { name: /^etc\/private\/secret.conf/ })
     .click();
   await expect(dialog.getByText("Geschützter Inhalt")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Inhalt anzeigen" }),
+  ).toBeVisible();
   await expect(dialog.getByText("sensitive content")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Inhalt anzeigen" }).click();
+  await expect(dialog.locator(".file-preview pre")).toContainText("sensitive content");
   await dialog
     .getByRole("button", { name: "Alle Dateien", exact: true })
     .click();
@@ -183,6 +189,9 @@ test("recovery uses folders while selections survive navigation, search and page
   ).toBeVisible();
   await expect(files.getByRole("checkbox")).toHaveCount(0);
   await files.getByRole("button", { name: "Nur ausgewählte Dateien" }).click();
+  await expect(
+    files.getByText("Ausgewählte Dateien aus allen Ordnern"),
+  ).toBeVisible();
   await expect(files.getByRole("checkbox")).toHaveCount(0);
   await files
     .getByLabel("Wiederherstellungsdateien durchsuchen")

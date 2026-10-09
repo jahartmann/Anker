@@ -619,7 +619,11 @@ export function FileBrowser({
             </div>
           )}
         </div>
-        <div className="file-preview">
+        <div
+          className={
+            "file-preview" + (!selected ? " file-preview-unselected" : "")
+          }
+        >
           {busy ? (
             <p className="muted">Datei wird gelesen …</p>
           ) : previewError ? (

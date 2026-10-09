@@ -27,11 +27,13 @@ export default function FileNavigation({
   query,
   navigate,
   up,
+  scopeLabel,
 }: {
   directory: string;
   query: string;
   navigate: (path: string) => void;
   up: () => void;
+  scopeLabel?: string;
 }) {
   const parts = directory ? directory.split("/") : [];
   return (
@@ -64,7 +66,12 @@ export default function FileNavigation({
       </nav>
       <div className="file-location">
         <span>
-          Aktueller Ordner: <strong className="mono">{directory || "/"}</strong>
+          {scopeLabel || (
+            <>
+              Aktueller Ordner:{" "}
+              <strong className="mono">{directory || "/"}</strong>
+            </>
+          )}
         </span>
         <button
           type="button"
