@@ -236,7 +236,11 @@ Beginn, Ende und maximaler Startversatz der tatsächlichen Erfassungen stehen im
 Detail. „Vollständig“ beschreibt ausschließlich dieses zeitversetzte
 Erfassungsfenster, keinen atomaren Clusterstand, keine aktuelle Integrität und
 keinen gesunden/quoraten Cluster. Abweichungen und Pflichtlücken bleiben sichtbar.
-Unterbrochene Aufträge liefern ohne erfasste Ergebnisse keinen Quellnachweis.
+Unterbrochene Aufträge liefern keinen vollständigen Quellnachweis. Der endgültige
+Auftragsausgang wird zusätzlich und atomar mit dem Abschluss im Katalog gesichert,
+bleibt nach dem Entfernen des Auftrags erhalten und wird bei einem unterbrochenen
+Disaster-Import dauerhaft als unterbrochen vermerkt. Ein erfasster Stand ohne diesen
+Abschlussnachweis bleibt unbekannt/unvollständig; das gilt auch für ältere Sets.
 Gelöschte oder nicht mehr lesbare Quellmanifeste machen den Satz unvollständig;
 historische IDs bleiben erhalten. Originaldateien vor Verwendung separat prüfen.
 

@@ -1117,6 +1117,19 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 					object["state"] = json.RawMessage(`"interrupted"`)
 					object["error"] = json.RawMessage(`"Disaster-Import: Auftrag wird nicht fortgesetzt"`)
 					object["finished_at"], _ = json.Marshal(now())
+					// Imported active capture jobs receive durable interruption evidence
+					// in the same isolation transaction, independent of job removal.
+					raw, e := json.Marshal(object)
+					if e != nil {
+						return e
+					}
+					var interrupted Job
+					if e = json.Unmarshal(raw, &interrupted); e != nil {
+						return e
+					}
+					if e = putClusterSetOutcome(tx, interrupted); e != nil {
+						return e
+					}
 				}
 			}
 			data, err := json.Marshal(object)

@@ -110,3 +110,23 @@ func records[T any](s *Store, bucket string) ([]T, error) {
 	}
 	return out, rows.Err()
 }
+
+// Final job state and set outcome must publish together. No service mutex is
+// acquired here, preserving the set-admission -> jobMu lock order.
+func (s *Store) saveJob(j Job) error {
+	if j.SourceSetID == "" || !finishedJob(j) {
+		return s.Put("jobs", j.ID, j)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = txPut(tx, "jobs", j.ID, j); err != nil {
+		return err
+	}
+	if err = putClusterSetOutcome(tx, j); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

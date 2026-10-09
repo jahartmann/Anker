@@ -136,7 +136,9 @@ test("Echte Demo-Erfassung enthält neue Referenzen und bleibt bei unbekannter M
     (r) =>
       r.url().endsWith("/api/cluster-sets") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Neues Sicherungsset erfassen" }).click();
+  await page
+    .getByRole("button", { name: "Neues Sicherungsset erfassen" })
+    .click();
   const result = await (await captured).json();
   expect(result.members.length).toBeGreaterThan(1);
   await expect(
@@ -152,3 +154,54 @@ test("Echte Demo-Erfassung enthält neue Referenzen und bleibt bei unbekannter M
     page.getByRole("link", { name: "Quellreferenzen exportieren" }),
   ).toHaveAttribute("href", `/api/cluster-sets/${result.id}/export`);
 });
+
+for (const pending of [false, true])
+  test(`Erneute Auswahl desselben Sicherungssets behält Details (${pending ? "ausstehend" : "geladen"})`, async ({
+    page,
+    request,
+  }) => {
+    await page.context().addCookies(await demoCookies(request));
+    await page.route("**/api/cluster-sets", (r) =>
+      r.fulfill({ json: [sample("set1")] }),
+    );
+    let reached: () => void = () => {};
+    let release: () => void = () => {};
+    const started = new Promise<void>((r) => {
+      reached = r;
+    });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    await page.route("**/api/cluster-sets/set1", async (r) => {
+      reached();
+      if (pending) await gate;
+      await r.fulfill({ json: sample("set1") });
+    });
+    await page.goto("/");
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: "Sicherungen", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Cluster-Sicherungssets", exact: true })
+      .click();
+    const select = page.getByRole("button", { name: /set1/ });
+    const exported = page.getByRole("link", {
+      name: "Quellreferenzen exportieren",
+    });
+    await select.click();
+    await started;
+    if (!pending) await expect(exported).toBeVisible();
+    await select.click();
+    release();
+    await expect(
+      page.getByRole("heading", { name: "Sicherungsset set1" }),
+    ).toBeVisible();
+    await expect(exported).toHaveAttribute(
+      "href",
+      "/api/cluster-sets/set1/export",
+    );
+    await expect(
+      page.getByText("Sicherungsset wird geladen …", { exact: true }),
+    ).toHaveCount(0);
+  });

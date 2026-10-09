@@ -72,7 +72,7 @@ func (s *Service) RecoverJobs() error {
 			j.State = "interrupted"
 			j.Error = "Dienst wurde unterbrochen; tatsächlichen Hostzustand prüfen"
 			j.FinishedAt = now()
-			if err = s.Store.Put("jobs", j.ID, j); err != nil {
+			if err = s.Store.saveJob(j); err != nil {
 				return err
 			}
 		}
@@ -322,7 +322,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 	}
 }
 func (s *Service) persistJob(j Job) bool {
-	if err := s.Store.Put("jobs", j.ID, j); err != nil {
+	if err := s.Store.saveJob(j); err != nil {
 		log.Printf("Anker Auftrag %s: Status %s konnte nicht gespeichert werden: %v", j.ID, j.State, err)
 		return false
 	}

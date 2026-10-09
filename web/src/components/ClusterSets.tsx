@@ -16,6 +16,7 @@ const states: Record<string, string> = {
   cancelled: "Abgebrochen",
   failed: "Fehlgeschlagen",
   unavailable: "Quelle nicht verfügbar",
+  finalization_unknown: "Auftragsabschluss unbekannt",
   successful: "Kein Erfassungsnachweis",
 };
 export default function ClusterSets({
@@ -86,6 +87,7 @@ export default function ClusterSets({
     return () => clearTimeout(timer);
   }, [sets, detail]);
   function choose(id: string) {
+    if (id === selected) return;
     generation.current++;
     setSelected(id);
     setDetail(undefined);
@@ -160,7 +162,9 @@ export default function ClusterSets({
             </p>
           )}
           <button disabled={busy || !cluster} onClick={capture}>
-            {busy ? "Erfassung wird angefordert …" : "Neues Sicherungsset erfassen"}
+            {busy
+              ? "Erfassung wird angefordert …"
+              : "Neues Sicherungsset erfassen"}
           </button>
         </section>
       )}

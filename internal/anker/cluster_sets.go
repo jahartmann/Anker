@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,25 @@ import (
 	"strings"
 	"time"
 )
+
+// Terminal outcomes outlive removable job rows. A successful capture callback
+// alone is insufficient: the enclosing job may still be cancelled or interrupted.
+type clusterSetOutcome struct {
+	Version    int    `json:"version"`
+	JobID      string `json:"job_id"`
+	SetID      string `json:"set_id"`
+	HostID     string `json:"host_id"`
+	ResultID   string `json:"result_id,omitempty"`
+	State      string `json:"state"`
+	FinishedAt string `json:"finished_at"`
+}
+
+func putClusterSetOutcome(tx *sql.Tx, j Job) error {
+	if j.SourceSetID == "" || !finishedJob(j) {
+		return nil
+	}
+	return txPut(tx, "cluster-set-outcomes", j.ID, clusterSetOutcome{Version: 1, JobID: j.ID, SetID: j.SourceSetID, HostID: j.HostID, ResultID: j.ResultID, State: j.State, FinishedAt: j.FinishedAt})
+}
 
 type ClusterSetMember struct {
 	HostID          string   `json:"host_id"`
@@ -263,6 +283,24 @@ func (s *Service) ClusterSet(id string) (ClusterBackupSet, error) {
 	var first, last, end time.Time
 	for i := range v.Members {
 		m := &v.Members[i]
+		var outcome clusterSetOutcome
+		outcomeErr := s.Store.Get("cluster-set-outcomes", m.JobID, &outcome)
+		_, timeErr := time.Parse(time.RFC3339Nano, outcome.FinishedAt)
+		finalized := outcomeErr == nil && outcome.Version == 1 && outcome.JobID == m.JobID && outcome.SetID == id && outcome.HostID == m.HostID && timeErr == nil
+		if !finalized {
+			incomplete = true
+			if m.BackupID != "" {
+				m.State = "finalization_unknown"
+			}
+		} else if outcome.State != "successful" || outcome.ResultID != m.BackupID {
+			incomplete = true
+			switch outcome.State {
+			case "interrupted", "cancelled", "failed":
+				m.State = outcome.State
+			default:
+				m.State = "finalization_unknown"
+			}
+		}
 		job, e := s.Job(m.JobID)
 		if e == nil && job.SourceSetID == id && job.HostID == m.HostID {
 			if activeJob(job) {
@@ -328,7 +366,7 @@ func (s *Service) ClusterSet(id string) (ClusterBackupSet, error) {
 	}
 	if incomplete {
 		v.State = "incomplete"
-		v.Notes = append(v.Notes, "Ergebnisse oder erforderliche Identitäts-, Mitgliedschafts- oder Materialnachweise fehlen.")
+		v.Notes = append(v.Notes, "Ergebnisse oder erforderliche Abschluss-, Identitäts-, Mitgliedschafts- oder Materialnachweise fehlen.")
 	}
 	if divergent {
 		v.State = "divergent"

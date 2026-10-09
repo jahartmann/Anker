@@ -364,3 +364,205 @@ func TestClusterSetParallelResultsNeverLoseMembers(t *testing.T) {
 		}
 	}
 }
+
+// Reconstruct the persisted boundary after real backup publication and the set
+// callback, before executeJob writes its terminal result. No live worker exists.
+func publishedClusterSet(t *testing.T) (*Service, ClusterBackupSet, []Job) {
+	t.Helper()
+	s := setService(t, "")
+	hosts, e := s.Hosts()
+	if e != nil {
+		t.Fatal(e)
+	}
+	v := ClusterBackupSet{Version: 1, ID: ID(), ClusterID: "cluster1", Purpose: "manualSourcePlanning", CreatedAt: now()}
+	jobs := []Job{}
+	for _, h := range hosts {
+		j := Job{ID: ID(), SourceSetID: v.ID, HostID: h.ID, Kind: "backup", State: "running", CreatedAt: now(), StartedAt: now()}
+		jobs = append(jobs, j)
+		v.Members = append(v.Members, ClusterSetMember{HostID: h.ID, HostName: h.Name, JobID: j.ID, State: "queued"})
+	}
+	if e = s.Store.Put("cluster_sets", v.ID, v); e != nil {
+		t.Fatal(e)
+	}
+	for i, j := range jobs {
+		if e = s.Store.Put("jobs", j.ID, j); e != nil {
+			t.Fatal(e)
+		}
+		b, e := s.CreateBackup(t.Context(), j.HostID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = s.recordClusterCapture(v.ID, j.HostID, b.ID, true); e != nil {
+			t.Fatal(e)
+		}
+		jobs[i].ResultID = b.ID
+	}
+	// Other member finished normally; victim remains at the publication boundary.
+	jobs[1].State = "successful"
+	jobs[1].FinishedAt = now()
+	if !s.persistJob(jobs[1]) {
+		t.Fatal("finalize other member")
+	}
+	return s, v, jobs
+}
+func TestClusterSetTerminalProvenanceSurvivesJobDeletion(t *testing.T) {
+	for _, outcome := range []string{"interrupted", "cancelled", "failed", "successful"} {
+		t.Run(outcome, func(t *testing.T) {
+			s, v, jobs := publishedClusterSet(t)
+			j := jobs[0]
+			switch outcome {
+			case "interrupted":
+				if e := s.RecoverJobs(); e != nil {
+					t.Fatal(e)
+				}
+			case "cancelled":
+				j.State = "queued"
+				if e := s.Store.Put("jobs", j.ID, j); e != nil {
+					t.Fatal(e)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				s.executeJob(ctx, j, func(context.Context) (string, error) {
+					if e := s.recordClusterCapture(v.ID, j.HostID, j.ResultID, true); e != nil {
+						return j.ResultID, e
+					}
+					cancel()
+					return j.ResultID, nil
+				})
+			default:
+				j.State = outcome
+				j.FinishedAt = now()
+				if !s.persistJob(j) {
+					t.Fatal("terminal job write")
+				}
+			}
+			before, e := s.ClusterSet(v.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = s.DeleteJob(j.ID); e != nil {
+				t.Fatal(e)
+			}
+			after, e := s.ClusterSet(v.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			want := "incomplete"
+			if outcome == "successful" {
+				want = "complete"
+			}
+			if before.State != want || after.State != want {
+				t.Fatalf("terminal %s changed after removal: before=%s after=%s", outcome, before.State, after.State)
+			}
+			if outcome != "successful" && after.Members[0].State != outcome {
+				t.Fatalf("terminal reason lost: %+v", after.Members[0])
+			}
+		})
+	}
+}
+func TestClusterSetMissingFinalizationRemainsUnknown(t *testing.T) {
+	s, v, jobs := publishedClusterSet(t)
+	if e := s.Store.Delete("jobs", jobs[0].ID); e != nil {
+		t.Fatal(e)
+	}
+	got, e := s.ClusterSet(v.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if got.State != "incomplete" {
+		t.Fatalf("missing finalization promoted to %s", got.State)
+	}
+}
+func TestClusterSetColdInterruptedJobDeletionPreservesOutcome(t *testing.T) {
+	s, v, jobs := publishedClusterSet(t)
+	if e := EnsureDataMode(s.Root, false); e != nil {
+		t.Fatal(e)
+	}
+	var bundle bytes.Buffer
+	if e := ExportDisaster(s.Root, "", []byte("cluster-outcome-pass"), &bundle); e != nil {
+		t.Fatal(e)
+	}
+	dest := filepath.Join(t.TempDir(), "imported")
+	if _, e := ImportDisaster(&bundle, dest, []byte("cluster-outcome-pass")); e != nil {
+		t.Fatal(e)
+	}
+	store, e := OpenStore(filepath.Join(dest, "catalog.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	imported := &Service{Root: dest, Store: store}
+	if e = imported.DeleteJob(jobs[0].ID); e != nil {
+		t.Fatal(e)
+	}
+	got, e := imported.ClusterSet(v.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if got.State != "incomplete" || got.Members[0].State != "interrupted" {
+		t.Fatalf("imported interruption lost after job deletion: %+v", got)
+	}
+	if _, e = os.Stat(filepath.Join(dest, disasterIsolation)); e != nil {
+		t.Fatal("isolation lost", e)
+	}
+}
+
+func TestClusterSetTerminalJobAndOutcomeCommitTogether(t *testing.T) {
+	s, v, jobs := publishedClusterSet(t)
+	j := jobs[0]
+	j.State = "successful"
+	j.FinishedAt = now()
+	_, e := s.Store.db.Exec(`CREATE TRIGGER reject_set_outcome BEFORE INSERT ON records WHEN NEW.bucket='cluster-set-outcomes' BEGIN SELECT RAISE(ABORT,'outcome unavailable'); END`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Store.saveJob(j); e == nil {
+		t.Fatal("outcome failure ignored")
+	}
+	stored, e := s.Job(j.ID)
+	if e != nil || stored.State != "running" {
+		t.Fatalf("terminal job committed without outcome: %+v %v", stored, e)
+	}
+	if e = s.Store.Delete("jobs", j.ID); e != nil {
+		t.Fatal(e)
+	}
+	got, e := s.ClusterSet(v.ID)
+	if e != nil || got.State != "incomplete" {
+		t.Fatalf("failed finalization became complete: %+v %v", got, e)
+	}
+}
+func TestClusterSetSuccessfulOutcomeColdRoundTripAfterJobRemoval(t *testing.T) {
+	s, v, jobs := publishedClusterSet(t)
+	j := jobs[0]
+	j.State = "successful"
+	j.FinishedAt = now()
+	if !s.persistJob(j) {
+		t.Fatal("finalize victim")
+	}
+	for _, job := range jobs {
+		if e := s.DeleteJob(job.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := EnsureDataMode(s.Root, false); e != nil {
+		t.Fatal(e)
+	}
+	var bundle bytes.Buffer
+	if e := ExportDisaster(s.Root, "", []byte("successful-outcome-pass"), &bundle); e != nil {
+		t.Fatal(e)
+	}
+	dest := filepath.Join(t.TempDir(), "imported")
+	if _, e := ImportDisaster(&bundle, dest, []byte("successful-outcome-pass")); e != nil {
+		t.Fatal(e)
+	}
+	store, e := OpenStore(filepath.Join(dest, "catalog.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	imported := &Service{Root: dest, Store: store}
+	got, e := imported.ClusterSet(v.ID)
+	if e != nil || got.State != "complete" {
+		t.Fatalf("successful durable provenance lost during cold import: %+v %v", got, e)
+	}
+}
