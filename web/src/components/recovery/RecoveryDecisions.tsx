@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import type { FileDecision, RecoveryPreview } from "../../api";
 import FileComparison from "../FileComparison";
+import RecoveryRecipes from "./RecoveryRecipes";
 import RecoveryNetwork from "./RecoveryNetwork";
 import RecoveryMapping from "../RecoveryMapping";
 import { Field, Pagination } from "../shared";
@@ -27,6 +28,7 @@ export default function RecoveryDecisions({
         {d.openFiles + d.openMappings} offene Entscheidungen ·{" "}
         {d.selectedPaths.length} Dateien
       </p>
+      <RecoveryRecipes draft={d} />
       {!!(
         d.mappingInspection?.ports?.length ||
         d.mappingInspection?.storage?.length

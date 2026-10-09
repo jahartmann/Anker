@@ -253,3 +253,39 @@ func TestCLIRecoveryVerificationFixedRequest(t *testing.T) {
 		t.Fatal("invalid command reached server")
 	}
 }
+
+func TestCLIReviewedRecipeWorkflow(t *testing.T) {
+	paths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		if r.URL.Path == "/api/plans/inspect" {
+			json.NewEncoder(w).Encode(map[string]any{"snapshot_id": "fresh"})
+			return
+		}
+		if r.URL.Path == "/api/recovery-recipes/preview" {
+			var body struct {
+				Request anker.PlanRequest `json:"request"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			if body.Request.SnapshotID != "fresh" {
+				t.Error("fresh snapshot omitted")
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer server.Close()
+	c := &Client{HTTP: server.Client(), Base: server.URL}
+	if err := c.Run(t.Context(), []string{"restore", "recipe-save", "p", "--label", "Geprüfter Host", "--reviewed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Run(t.Context(), []string{"restore", "recipe-preview", "--recipe", "r", "--backup", "b", "--target", "t", "--files", "etc/hostname"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(paths, "|") != "POST /api/recovery-recipes|POST /api/plans/inspect|POST /api/recovery-recipes/preview" {
+		t.Fatal(paths)
+	}
+	before := len(paths)
+	if err := c.Run(t.Context(), []string{"restore", "recipe-save", "p", "--label", "Unchecked"}); err == nil || len(paths) != before {
+		t.Fatal("implicit review accepted")
+	}
+}

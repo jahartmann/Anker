@@ -4,6 +4,7 @@ import type {
   Entry,
   FileDecision,
   RecoveryInspection,
+  RecoveryRecipePreview,
   RecoveryNetworkMapping,
 } from "../../api";
 
@@ -30,6 +31,11 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
   const [inspectionStorageKey, setInspectionStorageKey] = useState("");
   const [inspection, setInspection] = useState<RecoveryInspection | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const [recipePreview, setRecipePreview] =
+    useState<RecoveryRecipePreview | null>(null);
+  const [recipeBusy, setRecipeBusy] = useState(false);
+  const recipeRequest = useRef(0);
+  const appliedRecipe = useRef(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!!initialBackup);
   const [loadError, setLoadError] = useState("");
@@ -74,7 +80,26 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       live = false;
     };
   }, [backup, reload]);
+  function clearRecipe() {
+    recipeRequest.current++;
+    setRecipeBusy(false);
+    setRecipePreview(null);
+  }
+  function clearRecipeChoices() {
+    if (!appliedRecipe.current) return;
+    appliedRecipe.current = false;
+    setInterfaces({});
+    setStorage({});
+    setNetwork({});
+    setHostname("");
+    setAddress("");
+    setDecisions({});
+    setConsoleOK(false);
+    setOffline(false);
+  }
   function invalidate() {
+    clearRecipe();
+    clearRecipeChoices();
     generation.current++;
     inspectionRequest.current++;
     setInspecting(false);
@@ -158,6 +183,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
   );
   const needsInspection = !!inspection && inspectionStorageKey !== storageKey;
   function changed(mappingChanged = false) {
+    clearRecipe();
     generation.current++;
     if (mappingChanged)
       setDecisions((old) =>
@@ -222,6 +248,63 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       source_offline: offline,
     };
   }
+  async function previewRecipe(recipeID: string, apply = false) {
+    if (!recipeID || !inspection?.snapshot_id || needsInspection) return;
+    const id = ++recipeRequest.current,
+      gen = generation.current;
+    setRecipeBusy(true);
+    setRecipePreview(null);
+    setError("");
+    // Revalidate private evidence on every application; a displayed result is not authority.
+    const body = requestBody();
+    clearRecipeChoices();
+    setConsoleOK(false);
+    setOffline(false);
+    try {
+      const result = await api<RecoveryRecipePreview>(
+        "recovery-recipes/preview",
+        "POST",
+        {
+          recipe_id: recipeID,
+          request: {
+            ...body,
+            decisions: {},
+            console_confirmed: false,
+            source_offline: false,
+          },
+        },
+      );
+      if (
+        !active.current ||
+        generation.current !== gen ||
+        recipeRequest.current !== id
+      )
+        return;
+      if (result.snapshot_id && result.snapshot_id !== body.snapshot_id) return;
+      setRecipePreview(result);
+      if (apply && result.applicable) {
+        generation.current++;
+        setInterfaces(result.suggestions.interfaces || {});
+        setStorage(result.suggestions.storage || {});
+        setNetwork(result.suggestions.network || {});
+        setHostname(result.suggestions.hostname || "");
+        setAddress(result.suggestions.address || "");
+        setDecisions({});
+        setConsoleOK(false);
+        setOffline(false);
+        appliedRecipe.current = true;
+      }
+    } catch (e) {
+      if (
+        active.current &&
+        generation.current === gen &&
+        recipeRequest.current === id
+      )
+        setError((e as Error).message);
+    } finally {
+      if (active.current && recipeRequest.current === id) setRecipeBusy(false);
+    }
+  }
   async function inspect() {
     if (
       inspecting ||
@@ -232,9 +315,15 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       (scenario === "files" && !files.length)
     )
       return;
+    const wasRecipe = appliedRecipe.current;
+    const inspectionBody = requestBody();
+    if (wasRecipe)
+      inspectionBody.mapping = { interfaces: {}, storage: {}, network: {} };
+    clearRecipe();
+    clearRecipeChoices();
     const id = ++inspectionRequest.current,
       gen = generation.current;
-    const inspectedStorageKey = storageKey;
+    const inspectedStorageKey = wasRecipe ? "[]" : storageKey;
     setInspecting(true);
     setInspection(null);
     setError("");
@@ -242,7 +331,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setOffline(false);
     try {
       const result = await api<RecoveryInspection>("plans/inspect", "POST", {
-        ...requestBody(),
+        ...inspectionBody,
         snapshot_id: undefined,
         decisions: {},
       });
@@ -401,6 +490,10 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       source_offline: undefined,
     }),
     inspect,
+    recipePreview,
+    recipeBusy,
+    previewRecipe,
+    clearRecipe,
     invalidate,
     reloadEntries: () => {
       invalidate();

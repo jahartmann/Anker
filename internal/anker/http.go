@@ -235,6 +235,9 @@ func redactPlan(p Plan, reveal bool) Plan {
 	return publicPlan(p)
 }
 func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Request) error {
+	if handled, err := s.recipeHTTP(u, w, r); handled {
+		return err
+	}
 	if handled, err := s.recoveryHTTP(u, w, r); handled {
 		return err
 	}

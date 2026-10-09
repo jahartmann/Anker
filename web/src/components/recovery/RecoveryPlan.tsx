@@ -11,6 +11,7 @@ import type {
 import { Download, Field, Pagination, State } from "../shared";
 import type { Notify } from "../shared";
 import FileComparisonView from "../FileComparison";
+import { SaveRecoveryRecipe } from "./RecoveryRecipes";
 import RecoveryEvidence from "./RecoveryEvidence";
 import RecoveryChecks from "./RecoveryChecks";
 
@@ -602,6 +603,14 @@ export default function RecoveryPlan({
         <p className="notice warning" role="alert">
           {formError}
         </p>
+      )}
+      {!legacy && user.role !== "reader" && (
+        <SaveRecoveryRecipe
+          key={plan.id}
+          planID={plan.id}
+          mapping={plan.mapping}
+          disabled={busy || uncertain || !!pendingJob || targetBusy}
+        />
       )}
       <footer className="dialog-footer">
         {onRevise &&

@@ -2702,8 +2702,8 @@ input[type="checkbox"] {
 /* Recovery keeps decisions focused and evidence collapsible. */
 .recovery-section-title { margin: 24px 0 14px; font-size: 13px; color: var(--muted); font-weight: 500; }
 .recovery-inspection-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0 8px; font-size: 13px; }
-.recovery-mapping { margin: 22px 0; }
-.recovery-mapping h3 { font-size: 14px; }
+.recovery-mapping, .recovery-recipes { margin: 22px 0; }
+.recovery-mapping h3, .recovery-recipes h3 { font-size: 14px; }
 .recovery-disclosure { margin: 16px 0; font-size: 12px; line-height: 1.7; }
 .recovery-disclosure summary { cursor: pointer; color: var(--muted); }
 .recovery-disclosure li { margin: 8px 0; overflow-wrap: anywhere; }

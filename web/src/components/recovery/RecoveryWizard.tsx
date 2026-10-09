@@ -61,6 +61,7 @@ export default function RecoveryWizard({
     };
   }, [busy, onBusyChange]);
   const decisionsReady =
+    !d.recipeBusy &&
     !!d.inspection &&
     !d.needsInspection &&
     !d.openFiles &&

@@ -409,8 +409,28 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 				return errors.New("anker restore rollback PLAN --confirm PLAN erforderlich")
 			}
 			return call("POST", "plans/"+args[2]+"/rollback", map[string]string{"confirmation": *confirmation})
-		case "plan", "inspect":
+		case "recipe-list":
+			if len(args) != 2 {
+				return errors.New("anker restore recipe-list")
+			}
+			return call("GET", "recovery-recipes", nil)
+		case "recipe-save":
+			if len(args) < 3 {
+				return errors.New("Plan-ID fehlt")
+			}
+			f := fs("restore recipe-save")
+			label := f.String("label", "", "Bezeichnung der Zuordnungsvorlage")
+			reviewed := f.Bool("reviewed", false, "Gespeicherte Planzuordnungen ausdrücklich geprüft")
+			if err := f.Parse(args[3:]); err != nil {
+				return err
+			}
+			if f.NArg() != 0 || strings.TrimSpace(*label) == "" || !*reviewed {
+				return errors.New("recipe-save PLAN --label TEXT --reviewed erforderlich")
+			}
+			return call("POST", "recovery-recipes", map[string]any{"plan_id": args[2], "label": *label, "reviewed": true})
+		case "plan", "inspect", "recipe-preview":
 			f := fs("restore " + args[1])
+			recipe := f.String("recipe", "", "Zuordnungsvorlage frisch prüfen")
 			var p anker.PlanRequest
 			var decisions, network []string
 			f.Func("network", "STANZA/FAMILIE=ADRESSE/CIDR|GATEWAY|DNS,DNS; wiederholbar", func(value string) error { network = append(network, value); return nil })
@@ -468,11 +488,17 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			if args[1] == "inspect" {
 				return call("POST", "plans/inspect", p)
 			}
+			if args[1] == "recipe-preview" && *recipe == "" {
+				return errors.New("--recipe ID erforderlich")
+			}
 			var inspection anker.RecoveryInspection
 			if err := c.Call(ctx, "POST", "plans/inspect", p, &inspection); err != nil {
 				return err
 			}
 			p.SnapshotID = inspection.SnapshotID
+			if args[1] == "recipe-preview" {
+				return call("POST", "recovery-recipes/preview", map[string]any{"recipe_id": *recipe, "request": p})
+			}
 			return call("POST", "plans", p)
 		}
 	case "jobs":
@@ -614,6 +640,9 @@ Hosts und Sicherungen
 
 Wiederherstellung und Aufträge
   anker restore list
+  anker restore recipe-list
+  anker restore recipe-save PLAN --label TEXT --reviewed
+  anker restore recipe-preview --recipe ID --backup ID --target HOST --files etc/hostname
   anker restore inspect --backup ID --target HOST --scenario files --files etc/test.conf
   anker restore plan --backup ID --target HOST --scenario files --files etc/test.conf --decision etc/test.conf=backup
   anker restore plan --backup ID --target HOST --scenario host --ports eno1=ens3 --console --source-offline

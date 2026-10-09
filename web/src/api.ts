@@ -561,3 +561,19 @@ export function hostState(h: Host, s: Status) {
     return { text: "Überfällig", tone: "warning", backup: b };
   return { text: "Gesichert", tone: "success", backup: b };
 }
+
+export interface RecoveryRecipe {
+  id: string;
+  version: number;
+  origin_plan_id: string;
+  label: string;
+  reviewed_by: string;
+  reviewed_at: string;
+}
+export interface RecoveryRecipePreview {
+  recipe: RecoveryRecipe;
+  snapshot_id: string;
+  applicable: boolean;
+  suggestions: NonNullable<Plan["mapping"]>;
+  mismatches: string[];
+}

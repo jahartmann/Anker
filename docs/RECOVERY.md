@@ -159,3 +159,48 @@ Pläne weiterhin für Hostzugriffe gesperrt. Hashes sind lokale Bindungen, keine
 Signaturen. Protokollversion ist kein Beleg für einen bestimmten Helfer-Build;
 Helfer-/Anker-Builddigests und reale Laborbelege müssen im Abnahmekit separat
 zugeordnet werden. Reale PVE-Abnahme bleibt offen.
+
+### Geprüfte Zuordnungsvorlagen
+
+Im gespeicherten Plan lassen sich die angezeigten Port-, Speicher-, Hostname- und
+Netzwerkzuordnungen nach ausdrücklicher Prüfung als benannte Vorlage speichern.
+Der Dienst übernimmt die Absicht aus dem privaten Originalplan und ergänzt
+Benutzer-ID, Prüfdatum und Vorlagenversion. Dateientscheidungen, Konsolenzugang,
+Quelltrennung, Aufgabenbestätigungen und maschinelle Prüfversuche gehören nicht zur Vorlage.
+
+Beim nächsten Entwurf zuerst das Ziel neu aufnehmen. Unter „Entscheidungen“ eine
+Vorlage auswählen und frisch prüfen; erst passende Zuordnungen einsetzen.
+Das Einsetzen prüft die privaten Nachweise erneut und leert Dateientscheidungen und
+Bestätigungen. Abweichungen halten die gesamte Vorlage zurück. Originalplanaufnahme,
+abgelaufene Aufnahme, geänderte Quelle, SSH-Verbindung einschließlich Leseschlüssel
+oder Hostschlüsseldatei, Identität, Name/MAC/PCI, Version, Topologie, Backing oder
+Volumebestand erlauben keine ungeprüfte Vorbelegung. Vorbereitung und Ausführung
+behalten alle bisherigen Prüfungen und getrennten Bestätigungen.
+
+Die Vorlage bindet die konkrete Sicherung einschließlich Manifest sowie die Auswahl
+und Situation. Fehlende Nachweise im Originalplan bleiben historisch ungeklärt, auch
+wenn eine spätere Aufnahme mehr Informationen liefert. Neue geprüfte Absicht dann
+in einem neuen Plan festhalten und daraus eine neue Vorlage speichern.
+
+Für automatische Vorbelegung von Speicherzuordnungen reicht eine gleiche Storage-ID
+oder Konfigurationszeile nicht: aktuell ist nur `dir` mit vollständig gelesener
+Storage-Konfiguration, erfolgreicher privater Datenträgerabfrage, genau passendem
+beobachteten Mount, Dateisystem-UUID/Datenträger-ID und erfolgreicher Volumeliste
+belegbar. Ein übergeordneter Mount reicht nicht. ZFS-/LVM-Namen, NFS/PBS-Endpunkte und
+andere Backends liefern mit dem aktuellen Collector keine stabile tatsächliche
+Backing-Identität; diese Vorlagen bleiben ungeklärt. `manual` bleibt eine manuelle
+Zuordnungsabsicht. Anker legt keine Volumes an und aktiviert kein Netzwerk.
+
+CLI (Dienst mit Wiederherstellungsberechtigung erforderlich):
+
+```sh
+anker restore recipe-list
+anker restore recipe-save PLAN --label "Geprüfter Zielhost" --reviewed
+anker restore recipe-preview --recipe VORLAGE --backup SICHERUNG --target ZIEL --files etc/hostname
+```
+
+`recipe-preview` nimmt das Ziel neu auf und liefert passende Vorschläge oder konkrete
+Abweichungen als JSON. Es erstellt keinen Plan und führt keine Wiederherstellung aus.
+Bei Speicherreferenzen muss die frische Aufnahme den benötigten Volumebestand enthalten;
+fehlende Belege werden ausdrücklich aufgeführt. Vorlagen- und Snapshot-Dateien bleiben
+privat; öffentliche Listen enthalten nur Bezeichnung, Ursprung und Review-Metadaten.
