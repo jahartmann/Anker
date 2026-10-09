@@ -295,3 +295,59 @@ test("action menu ignores a stale scroll event but closes after its anchor moves
     .not.toBe(before!.y);
   await expect(first).toHaveCount(0);
 });
+
+test("unknown and omitted inventory evidence stay distinct from failed and successful empty queries", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  const base = await (await page.request.get("/api/status")).json();
+  const host = {
+    ...base.hosts[0],
+    inventory: {
+      ...base.hosts[0].inventory,
+      interfaces: [],
+      disks: [],
+      query_states: {
+        interfaces: { state: "unknown" },
+        packages: { state: "unknown" },
+        zfs: { state: "not_applicable" },
+        storage: { state: "failed" },
+      },
+    },
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, hosts: [host] } }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await page.getByRole("button", { name: "Inventar", exact: true }).click();
+  await expect(
+    page.getByText(/Netzwerk · Abfragestatus unbekannt/),
+  ).toContainText("keine Abwesenheit");
+  await expect(
+    page.getByText(/Datenträger · Abfragestatus unbekannt/),
+  ).toContainText("keine Abwesenheit");
+  await expect(
+    page.getByRole("heading", { name: "Keine Schnittstellen erfasst" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Keine Datenträger erfasst" }),
+  ).toHaveCount(0);
+  await page.getByText("Erfasste Details", { exact: true }).click();
+  await expect(
+    page.getByText(/Pakete · Abfragestatus unbekannt/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Storage · Abfrage fehlgeschlagen", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("ZFS-Pools · Nicht anwendbar", { exact: true }),
+  ).toBeVisible();
+  for (const width of [1440, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({
+      path: `/tmp/anker-final-fix-evidence/inventory-${width}.png`,
+      fullPage: true,
+    });
+  }
+});

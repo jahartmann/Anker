@@ -12,11 +12,12 @@ import (
 )
 
 type RecoveryPort struct {
-	Name      string `json:"name"`
-	MAC       string `json:"mac"`
-	PCI       string `json:"pci"`
-	Reason    string `json:"reason"`
-	Suggested string `json:"suggested"`
+	Paths     []string `json:"paths"`
+	Name      string   `json:"name"`
+	MAC       string   `json:"mac"`
+	PCI       string   `json:"pci"`
+	Reason    string   `json:"reason"`
+	Suggested string   `json:"suggested"`
 }
 type RecoveryStorageBacking struct {
 	Path      string `json:"path,omitempty"`
@@ -29,6 +30,7 @@ type RecoveryStorageBacking struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 type RecoveryStorage struct {
+	Paths     []string               `json:"paths,omitempty"`
 	Backing   RecoveryStorageBacking `json:"backing"`
 	Content   []string               `json:"content,omitempty"`
 	Nodes     []string               `json:"nodes,omitempty"`
@@ -40,6 +42,7 @@ type RecoveryStorage struct {
 	Suggested string                 `json:"suggested"`
 }
 type RecoveryInspection struct {
+	NetworkStanzas        []RecoveryNetworkStanza         `json:"network_stanzas"`
 	Files                 []RecoveryReadFile              `json:"files"`
 	StorageVolumes        map[string]RecoveryVolumeResult `json:"storage_volumes"`
 	SnapshotID            string                          `json:"snapshot_id,omitempty"`
@@ -445,6 +448,7 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 	network := map[string]string{}
 	definitions := []RecoveryStorage{}
 	usedStorage := map[string]string{}
+	storagePaths := map[string][]string{}
 	selectedStorage := false
 	hasAutomaticFiles := false
 	for _, e := range m.Entries {
@@ -485,6 +489,7 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 			if strings.Contains(e.Path, "/qemu-server/") || strings.Contains(e.Path, "/lxc/") {
 				for _, id := range guestStorageReferences(string(data)) {
 					usedStorage[id] = e.Path
+					storagePaths[id] = appendUnique(storagePaths[id], e.Path)
 				}
 			}
 			if e.Path == "etc/fstab" {
@@ -496,11 +501,13 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 		i.Blockers = append(i.Blockers, "Ziel liefert keine Dateiprüfsummen für sichere Vorbedingungen")
 	}
 	names, issues := networkReferences(network, m.Inventory)
+	portPaths, stanzas := recoveryNetworkReferences(network, m.Inventory)
+	i.NetworkStanzas = stanzas
 	i.Blockers = append(i.Blockers, issues...)
 	for _, name := range names {
 		for _, p := range m.Inventory.Interfaces {
 			if p.Name == name {
-				i.Ports = append(i.Ports, RecoveryPort{Name: p.Name, MAC: p.MAC, PCI: p.PCI, Reason: "Von ausgewählter Netzwerkkonfiguration referenzierter physischer Port", Suggested: suggestedPort(p, m.Inventory, target, b.HostID == r.TargetID)})
+				i.Ports = append(i.Ports, RecoveryPort{Paths: portPaths[p.Name], Name: p.Name, MAC: p.MAC, PCI: p.PCI, Reason: "Von ausgewählter Netzwerkkonfiguration referenzierter physischer Port", Suggested: suggestedPort(p, m.Inventory, target, b.HostID == r.TargetID)})
 			}
 		}
 	}
@@ -509,12 +516,17 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 	}
 	for _, d := range definitions {
 		if selectedStorage || usedStorage[d.ID] != "" {
+			d.Paths = storagePaths[d.ID]
+			if selectedStorage {
+				d.Paths = appendUnique(d.Paths, "etc/pve/storage.cfg")
+			}
+			sort.Strings(d.Paths)
 			i.Storage = append(i.Storage, d)
 			delete(usedStorage, d.ID)
 		}
 	}
 	for id, path := range usedStorage {
-		i.Storage = append(i.Storage, RecoveryStorage{ID: id, Kind: "volume", Path: path, Reason: "Gast referenziert Storage-ID; Definition oder Zielzugriff manuell prüfen"})
+		i.Storage = append(i.Storage, RecoveryStorage{Paths: storagePaths[id], ID: id, Kind: "volume", Path: path, Reason: "Gast referenziert Storage-ID; Definition oder Zielzugriff manuell prüfen"})
 	}
 	sort.Slice(i.Storage, func(a, b int) bool { return i.Storage[a].ID < i.Storage[b].ID })
 	if len(i.Storage) > 0 {

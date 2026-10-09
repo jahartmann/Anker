@@ -344,6 +344,10 @@ func TestMigrationInputsAndUpdateTrustConfirmation(t *testing.T) {
 			t.Error("missing origin header")
 		}
 		json.NewDecoder(r.Body).Decode(&captured)
+		if r.URL.Path == "/api/plans/inspect" {
+			json.NewEncoder(w).Encode(map[string]any{"snapshot_id": "verified", "ports": []any{map[string]any{"name": "eno1", "paths": []string{"etc/network/interfaces"}}}, "target_ports": []any{map[string]any{"name": "ens3"}}})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "abcd", "state": "blocked", "blockers": []string{"source check"}})
 	}))
 	defer server.Close()

@@ -53,14 +53,27 @@ export default function Inventory({
         "file_metadata",
       ].includes(name),
   );
+  const queryLabel = (state?: string) =>
+    state === "not_applicable"
+      ? "Nicht anwendbar"
+      : state === "failed"
+        ? "Abfrage fehlgeschlagen"
+        : "Abfragestatus unbekannt – keine vollständigen Nachweise";
   const queryNotice = (name: string, title: string) =>
-    results[name]?.state === "failed" ? (
-      <p className="notice warning" role="alert">
-        {title}abfrage fehlgeschlagen:{" "}
-        {results[name].error || "Keine vollständigen Daten verfügbar."} Die
-        Anzeige belegt keine Abwesenheit.
+    results[name]?.state === "ok" ? null : (
+      <p
+        className={
+          results[name]?.state === "failed" ? "notice warning" : "notice"
+        }
+        role={results[name]?.state === "failed" ? "alert" : "status"}
+      >
+        {results[name]?.state === "failed"
+          ? `${title}abfrage fehlgeschlagen: Keine vollständigen Daten verfügbar.`
+          : `${title} · ${queryLabel(results[name]?.state)}.`}{" "}
+        {results[name]?.state !== "not_applicable" &&
+          "Die Anzeige belegt keine Abwesenheit."}
       </p>
-    ) : null;
+    );
   const missingDetails = Object.entries(results).filter(
     ([name, result]) =>
       !details.some(([key]) => key === name) &&
@@ -206,7 +219,7 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
-        ) : results.interfaces?.state === "failed" ? null : (
+        ) : results.interfaces?.state !== "ok" ? null : (
           <Empty
             title={
               networkQuery
@@ -332,7 +345,7 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
-        ) : results.disks?.state === "failed" ? null : (
+        ) : results.disks?.state !== "ok" ? null : (
           <Empty
             title={
               diskQuery
@@ -379,10 +392,7 @@ export default function Inventory({
               className={result.state === "failed" ? "notice warning" : "muted"}
               role={result.state === "failed" ? "alert" : undefined}
             >
-              {detailLabels[name] || name} ·{" "}
-              {result.state === "not_applicable"
-                ? "Nicht anwendbar"
-                : "Abfrage fehlgeschlagen"}
+              {detailLabels[name] || name} · {queryLabel(result.state)}
               {result.error ? ": " + result.error : ""}
             </p>
           ))}
@@ -392,9 +402,7 @@ export default function Inventory({
                 <span>{detailLabels[name] || name}</span>
                 {results[name]?.state && results[name].state !== "ok" && (
                   <span className="warning">
-                    {results[name].state === "not_applicable"
-                      ? "Nicht anwendbar"
-                      : "Abfrage fehlgeschlagen"}
+                    {queryLabel(results[name].state)}
                   </span>
                 )}
                 {detailCount(value) !== undefined && (

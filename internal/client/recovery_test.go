@@ -190,3 +190,34 @@ func TestCLIManualCheckNotRebootProof(t *testing.T) {
 		t.Fatalf("manual check became machine proof or lost trusted actor: %+v", got)
 	}
 }
+
+func TestCLISelectedNetworkStanzaPayload(t *testing.T) {
+	var payload anker.PlanRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&payload)
+		json.NewEncoder(w).Encode(map[string]any{"snapshot_id": "bound"})
+	}))
+	defer server.Close()
+	c := &Client{HTTP: server.Client(), Base: server.URL}
+	args := []string{"restore", "plan", "--backup", "b", "--target", "t", "--files", "etc/network/interfaces", "--decision", "etc/network/interfaces=prepared", "--network", "vmbr0/inet=198.51.100.9/24|198.51.100.1|192.0.2.53,2001:db8::53"}
+	if err := c.Run(t.Context(), args); err != nil {
+		t.Fatal(err)
+	}
+	v := payload.Mapping.Network["vmbr0/inet"]
+	if payload.SnapshotID != "bound" || v.AddressCIDR != "198.51.100.9/24" || len(v.DNSServers) != 2 {
+		t.Fatalf("typed network choice lost: %+v", payload)
+	}
+}
+
+func TestRelevantRecoveryMappingRetainsSharedManualReferences(t *testing.T) {
+	i := anker.RecoveryInspection{Ports: []anker.RecoveryPort{{Name: "eno1", Paths: []string{"kept", "manual"}}, {Name: "eno2", Paths: []string{"kept"}}}, Storage: []anker.RecoveryStorage{{ID: "shared", Paths: []string{"kept", "manual"}}, {ID: "only-kept", Paths: []string{"kept"}}}}
+	m := RelevantRecoveryMapping(anker.Mapping{Interfaces: map[string]string{"eno1": "ens3", "eno2": "ens4"}, Storage: map[string]string{"shared": "manual", "only-kept": "manual"}}, i, map[string]anker.FileDecision{"kept": anker.DecisionKeep, "manual": anker.DecisionManual})
+	if len(m.Interfaces) != 1 || m.Interfaces["eno1"] != "ens3" || len(m.Storage) != 1 || m.Storage["shared"] != "manual" {
+		t.Fatalf("shared manual requirement lost: %+v", m)
+	}
+	for _, invalid := range []string{"vmbr0=1|2|3", "vmbr0/inet=2001:db8::1/64||", "vmbr0/inet=192.0.2.1/24|2001:db8::1|", "vmbr0/inet=||bad-dns"} {
+		if _, err := ParseRecoveryNetwork([]string{invalid}); err == nil {
+			t.Fatalf("invalid typed input accepted: %s", invalid)
+		}
+	}
+}

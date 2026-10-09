@@ -360,7 +360,8 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 		case "plan", "inspect":
 			f := fs("restore " + args[1])
 			var p anker.PlanRequest
-			var decisions []string
+			var decisions, network []string
+			f.Func("network", "STANZA/FAMILIE=ADRESSE/CIDR|GATEWAY|DNS,DNS; wiederholbar", func(value string) error { network = append(network, value); return nil })
 			f.Func("decision", "PATH=backup|prepared|keep|manual; je Pfad einmal wiederholbar, ohne Auswahl manuell", func(value string) error { decisions = append(decisions, value); return nil })
 			files := f.String("files", "", "Kommaliste")
 			ports := f.String("ports", "", "eno1=ens3,eno2=ens4")
@@ -379,6 +380,10 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 				return errors.New("Unerwartete Planargumente")
 			}
 			var err error
+			p.Mapping.Network, err = ParseRecoveryNetwork(network)
+			if err != nil {
+				return err
+			}
 			p.Decisions, err = ParseRecoveryDecisions(decisions)
 			if err != nil {
 				return err

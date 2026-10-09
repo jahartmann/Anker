@@ -259,11 +259,15 @@ func TestTUIRecoveryLegacyPlanRemainsReadableWithoutApply(t *testing.T) {
 func TestTUIRecoveryStorageChoiceRequiresFreshSnapshot(t *testing.T) {
 	m, _ := connected(t)
 	m.openForm("plan", nil)
-	m.form.fields[3].value = "etc/sysctl.d/99-anker.conf"
+	m.form.fields[3].value = "etc/pve/storage.cfg,etc/sysctl.d/99-anker.conf"
 	m, cmd := key(m, "ctrl+s")
 	m = complete(t, m, cmd)
+	if recoveryInspection(m.form) == nil {
+		m, cmd = key(m, "ctrl+s")
+		m = complete(t, m, cmd)
+	}
 	first := str(recoveryInspection(m.form), "snapshot_id")
-	m.form.fields[7].value = "local=manual"
+	m.form.fields[7].value = "local=local,local-lvm=manual"
 	m.form.fields[10].value = "etc/sysctl.d/99-anker.conf=backup"
 	m, cmd = key(m, "ctrl+s")
 	if cmd == nil || m.pending != nil {
@@ -279,7 +283,7 @@ func TestTUIRecoveryStorageChoiceRequiresFreshSnapshot(t *testing.T) {
 		t.Fatal(m.err)
 	}
 	p := m.pending.input.(anker.PlanRequest)
-	if p.SnapshotID != second || p.Decisions["etc/sysctl.d/99-anker.conf"] != anker.DecisionBackup || p.Mapping.Storage["local"] != "manual" {
+	if p.SnapshotID != second || p.Decisions["etc/sysctl.d/99-anker.conf"] != anker.DecisionBackup || p.Mapping.Storage["local"] != "local" {
 		t.Fatal("recapture lost choice or submitted old evidence", p)
 	}
 }
@@ -314,5 +318,97 @@ func TestTUIRecoveryRecaptureInvalidatesTargetDependentChoices(t *testing.T) {
 				t.Fatal("target refresh discarded source/manual choice")
 			}
 		})
+	}
+}
+
+func TestTUIKeptReferencesBesideWritableFile(t *testing.T) {
+	m, s := connected(t)
+	m.openForm("plan", nil)
+	m.form.fields[3].value = "etc/network/interfaces,etc/pve/storage.cfg,etc/sysctl.d/99-anker.conf"
+	m, cmd := key(m, "ctrl+s")
+	m = complete(t, m, cmd)
+	m.form.fields[10].value = "etc/network/interfaces=keep,etc/pve/storage.cfg=keep,etc/sysctl.d/99-anker.conf=backup"
+	// Kept dependencies need no target mappings, even though inspection included them.
+	m.form.fields[4].value = ""
+	m.form.fields[7].value = ""
+	m, cmd = key(m, "ctrl+s")
+	if cmd != nil {
+		m = complete(t, m, cmd)
+		m, _ = key(m, "ctrl+s")
+	}
+	if m.pending == nil {
+		t.Fatalf("kept dependencies prevent plan: %s", m.err)
+	}
+	p := m.pending.input.(anker.PlanRequest)
+	if len(p.Mapping.Interfaces) != 0 || len(p.Mapping.Storage) != 0 {
+		t.Fatalf("kept-only mappings retained: %+v", p.Mapping)
+	}
+	m, cmd = key(m, "y")
+	m = complete(t, m, cmd)
+	saved, err := s.Plan(str(object(m.data["preview"]), "id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Blockers) > 0 {
+		t.Fatal(saved.Blockers)
+	}
+}
+
+func TestTUITypedNetworkPreparationStaysManual(t *testing.T) {
+	m, s := connected(t)
+	m.openForm("plan", nil)
+	m.form.fields[3].value = "etc/network/interfaces"
+	m, cmd := key(m, "ctrl+s")
+	m = complete(t, m, cmd)
+	if len(m.form.fields) < 15 {
+		t.Fatal("typed stanza controls missing")
+	}
+	found := false
+	for _, key := range m.form.fields[11].choices {
+		if key == "vmbr0/inet" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("captured source stanza unavailable")
+	}
+	m.form.fields[10].value = "etc/network/interfaces=prepared"
+	m.form.fields[11].value = "vmbr0/inet"
+	m.form.fields[12].value = "198.51.100.9/24"
+	m.form.fields[13].value = "198.51.100.1"
+	m.form.fields[14].value = "192.0.2.53,2001:db8::53"
+	m.form.fields[5].value = "ja"
+	i := recoveryInspection(m.form)
+	ports := []string{}
+	for _, raw := range list(i["ports"]) {
+		ports = append(ports, str(object(raw), "name")+"="+str(object(list(i["target_ports"])[0]), "name"))
+	}
+	m.form.fields[4].value = strings.Join(ports, ",")
+	m, _ = key(m, "ctrl+s")
+	if m.pending == nil {
+		t.Fatal(m.err)
+	}
+	r := m.pending.input.(anker.PlanRequest)
+	if r.Mapping.Network["vmbr0/inet"].AddressCIDR != "198.51.100.9/24" {
+		t.Fatal("typed choice dropped")
+	}
+	m, cmd = key(m, "y")
+	m = complete(t, m, cmd)
+	p, err := s.Plan(str(object(m.data["preview"]), "id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Steps[0].Action != "manual" || len(p.Steps[0].Effects) == 0 {
+		t.Fatalf("network authority/effects: %+v", p.Steps)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Root, "plans", p.ID, "prepared-files", "etc/network/interfaces"))
+	if err != nil || !strings.Contains(string(raw), "address 198.51.100.9/24") {
+		t.Fatalf("prepared bytes: %s %v", raw, err)
+	}
+	if len(p.Mapping.Network["vmbr0/inet"].DNSServers) != 2 {
+		t.Fatal("DNS intent lost")
+	}
+	if !strings.Contains(string(raw), "iface lo inet loopback") {
+		t.Fatal("unselected stanza changed")
 	}
 }

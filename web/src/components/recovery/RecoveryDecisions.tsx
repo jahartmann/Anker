@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FileDecision } from "../../api";
+import RecoveryNetwork from "./RecoveryNetwork";
 import RecoveryMapping from "../RecoveryMapping";
 import { Field, Pagination } from "../shared";
 import type { RecoveryDraft } from "./useRecoveryDraft";
@@ -22,9 +23,12 @@ export default function RecoveryDecisions({
         {d.openFiles + d.openMappings} offene Entscheidungen ·{" "}
         {d.selectedPaths.length} Dateien
       </p>
-      {!!(d.inspection.ports?.length || d.inspection.storage?.length) && (
+      {!!(
+        d.mappingInspection?.ports?.length ||
+        d.mappingInspection?.storage?.length
+      ) && (
         <RecoveryMapping
-          inspection={d.inspection}
+          inspection={d.mappingInspection!}
           interfaces={d.interfaces}
           storage={d.storage}
           onInterfaces={d.setInterfaces}
@@ -50,7 +54,8 @@ export default function RecoveryDecisions({
           />
         </Field>
       )}
-      {!!d.inspection.ports?.length && (
+      {<RecoveryNetwork draft={d} />}
+      {!!d.mappingInspection?.ports?.length && (
         <Field
           label="Gewünschte Adresse (manuell)"
           hint="Adresswünsche benötigen einen manuellen Netzwerkschritt."

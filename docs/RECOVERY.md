@@ -8,11 +8,22 @@
 4. **Plan prüfen:** Quelle → vorbereitet, Ziel → vorbereitet und Quelle → Ziel vergleichen. Inhalte, Metadaten, Änderungszeit, fehlende Seiten und geschützte Inhalte bleiben getrennt. Jede tatsächliche Feldänderung nennt Vorher/Nachher und Grund. Der Plan kopiert die geprüfte Zielaufnahme privat und bleibt nach deren Ablauf exportierbar. Vor Übernahme prüft Anker Integrität, Zielidentität, aktive Dateien und Abhängigkeiten erneut; Drift verlangt erneute Vorbereitung. Änderungen an behaltenen/unbeteiligten Dateien erzeugen keinen Schreibbedarf.
 5. **Übernehmen und prüfen:** Nur freigegebene gewöhnliche Einzeldateien nach exakter Plan-ID übernehmen. Identischer Inhalt und wirksame Metadaten ergeben kein erneutes Schreiben; reine MTime-Abweichung ist Vergleichsinformation. Journalabgleich, Rücksetzung, Dienst-/Erreichbarkeits-/Neustartprüfungen sind eigene Schritte. Benutzerbestätigungen tragen Benutzer und Zeitpunkt und ersetzen keinen maschinellen Nachweis.
 
-Web, CLI und Terminal verwenden dieselben Entscheidungen, Snapshots, Plan- und Journalregeln. Das Terminal bietet paginierte Vergleichslisten und Inhaltsvorschau; `Ctrl+R` öffnet den Vergleich, `Ctrl+E` wechselt Dateiliste und direkte Pfadeingabe. Lokale Socketverwaltung verwendet die administrativen Rechte des Socketzugangs.
+Web, CLI und Terminal verwenden dieselben Entscheidungen, Snapshots, Plan- und Journalregeln. Der Webvergleich bietet Suche und Seiteneinteilung. Im Terminal öffnet `c` auf einem gespeicherten Plan den einzelnen Dateivergleich mit wählbarer Vergleichsbasis; `Esc` führt zurück. `Ctrl+R` erneuert im Vorbereitungsformular die Zielprüfung, `Ctrl+E` wechselt Dateiliste und direkte Pfadeingabe. Einen paginierten Sicherungsvergleich bietet das Terminal derzeit nicht. Lokale Socketverwaltung verwendet die administrativen Rechte des Socketzugangs.
 
 ## Zuordnungen und Grenzen
 
 Portzuordnungen bearbeiten unterstützte Netzwerktokens einschließlich Bridge-/Bond-/VLAN-Abhängigkeiten. Statische Adresse/Präfix, Gateway und DNS werden nur in eindeutig unterstützten Quellstanzas vorbereitet; fehlende/mehrdeutige Felder, Hooks, dynamische Methoden oder unklare Zieltopologie erzeugen manuelle Aufgaben. Es gibt keinen allgemeinen Merge mit Zielstanzas. Hostname-/Hosts-Felder werden nur in unterstützten Formen vorbereitet. Immer den vollständigen Zielvergleich prüfen.
+
+Web und Terminal bieten die aus der Quelle erfasste Stanza mit IP-Familie (`inet`/`inet6`) zur ausdrücklichen Auswahl sowie getrennte Felder für Adresse/CIDR, Gateway und DNS. Leere Werte bleiben erhalten. Der Dienst prüft Syntax, Familie und tatsächliche Feldwirkung; fehlende Felder bleiben eine manuelle Aufgabe. Im Terminal wird pro Plan eine Stanza gewählt. Für mehrere Stanzas in einem Plan das Web mit mehreren Auswahlen verwenden oder in der CLI `--network` für unterschiedliche Stanzas wiederholen:
+
+```sh
+anker restore plan --backup ID --target HOST --scenario files \
+  --files etc/network/interfaces --decision etc/network/interfaces=prepared \
+  --ports eno1=ens3 --console \
+  --network 'vmbr0/inet=192.0.2.10/24|192.0.2.1|192.0.2.53,2001:db8::53'
+```
+
+`--address` bleibt ein freier manueller Adresswunsch. Nur Referenzen nicht behaltener Dateien benötigen Zuordnungen; gemeinsam mit einer manuell zu bearbeitenden Datei verwendete Referenzen bleiben nötig. Ändert sich die relevante Storageauswahl durch „Ziel behalten“, muss eine neue Zielaufnahme diese reduzierte Auswahl binden.
 
 Storagezuordnung bearbeitet Gastreferenzen nur bei nachgewiesen kompatiblem Backing, Inhaltstyp, Nodeanwendbarkeit und exakt vorhandenem passenden Volume. Unbekannte oder fremde Gastzuordnung, MAC-/PCI-/Bridge-/Hookabhängigkeiten bleiben ausdrücklich offen. Gleiche Storage-IDs sind kein Nachweis. Anker formatiert, erzeugt, benennt oder verschiebt keine Pools, Datenträger oder Volumes. PBS und Gastdaten werden separat wiederhergestellt. Nodepfade werden nicht geraten.
 
@@ -29,6 +40,8 @@ Alte Sicherungen bleiben lesbar/exportierbar. Alte Pläne und vorhandene Hostjou
 Der Host sichert Originale und schreibt ein synchronisiertes Journal unter `/var/lib/anker-host/rollback/<Plan-ID>/journal.json`. Eine lokale Exklusivsperre verhindert parallele Helfermutationen. Jede Datei wird unmittelbar vor Austausch und danach nach Inhalt und Metadaten geprüft. Betroffene Dienste und andere Schreiber für die Übernahme anhalten: Ankers Sperre kann fremde Programme nicht sperren, und mehrere Dateien bilden keine globale Transaktion.
 
 Bei einem gewöhnlichen Schreibfehler setzt der Helfer eigene bereits geänderte Dateien kontrolliert zurück. Zwischenzeitliche Fremdänderungen bleiben erhalten und erscheinen als Rücksetzungskonflikt. Bei Verbindungsabbruch oder Prozessende keine zweite Übernahme starten. **Hostzustand abgleichen** liest nur das Journal. Auch wenn eine verlorene Anfrage noch einen bereiten Schema-2-Plan hinterlässt, kann der Abgleich mit passenden Zielverbindungsnachweisen und ohne anstehende/laufende Zielaufträge das authentifizierte Journal lesen. Ein bestätigt fehlendes Journal verbraucht diesen Plan als `interrupted`: **keine erneute Übernahme mit derselben Plan-ID**. Zuerst Zielkonsole und laufende Aufträge prüfen, dann Vergleich und Plan neu vorbereiten. Dies ist kein globaler Nachweis, dass nie geschrieben wurde. Lese-/Transportfehler und geänderte Verbindungen liefern keine solche Entscheidung. Ein später gefundenes passendes Journal kann erneut abgeglichen werden. Ein vorhandenes beschädigtes Journal blockiert weitere Schreiboperationen.
+
+Ein erfolgreich abgeglichenes, passendes Journal darf weiterhin `interrupted` melden. Mit vorhandenem Rücksetzbeleg und ohne aktive Zielaufträge wird dann die getrennt bestätigte Rücksetzung verfügbar, auch nach Schließen und Wiederöffnen des Plandialogs. Eine erneute Übernahme bleibt gesperrt. Fehlendes, ungültiges oder nicht lesbares Journal erlaubt diesen Weg nicht.
 
 **Dateien zurücksetzen** verlangt die Plan-ID erneut. Die Rücksetzung prüft für jede Datei den eigenen Nachherzustand oder den bereits wiederhergestellten Vorherzustand. Fremde Inhalte oder Rechte werden nicht überschrieben. Originalkopien und Protokoll erst nach bestätigter Betriebsprüfung entfernen. Alte Rollbackordner ohne Journal müssen vor einer neuen automatischen Übernahme manuell geprüft werden; nicht ungeprüft löschen.
 

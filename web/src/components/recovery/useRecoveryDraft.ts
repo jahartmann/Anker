@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import type { Entry, FileDecision, RecoveryInspection } from "../../api";
+import type {
+  Entry,
+  FileDecision,
+  RecoveryInspection,
+  RecoveryNetworkMapping,
+} from "../../api";
 
 // In-memory only: navigation retains intent without persisting private contents.
 export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
@@ -17,6 +22,9 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
   const [storage, setStorage] = useState<Record<string, string>>({});
   const [hostname, setHostname] = useState("");
   const [address, setAddress] = useState("");
+  const [network, setNetwork] = useState<
+    Record<string, RecoveryNetworkMapping>
+  >({});
   const [consoleOK, setConsoleOK] = useState(false);
   const [offline, setOffline] = useState(false);
   const [inspectionStorageKey, setInspectionStorageKey] = useState("");
@@ -88,6 +96,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setStorage({});
     setHostname("");
     setAddress("");
+    setNetwork({});
   }
   function changeTarget(value: string) {
     previousInspection.current = null;
@@ -97,6 +106,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setStorage({});
     setHostname("");
     setAddress("");
+    setNetwork({});
     setDecisions((old) =>
       Object.fromEntries(
         Object.entries(old).filter(([, v]) => v === "backup" || v === "manual"),
@@ -131,14 +141,31 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
         (scenario !== "files" || selectedFiles.has(e.path)),
     )
     .map((e) => e.path);
+  const required = (paths?: string[]) =>
+    !paths?.length ||
+    paths.some((p) => selectedPaths.includes(p) && decisions[p] !== "keep");
+  const mappingInspection = inspection && {
+    ...inspection,
+    ports: (inspection.ports || []).filter((p) => required(p.paths)),
+    storage: (inspection.storage || []).filter((s) => required(s.paths)),
+    network_stanzas: (inspection.network_stanzas || []).filter((s) =>
+      required([s.path]),
+    ),
+  };
   const storageKey = JSON.stringify(
     Object.entries(storage)
       .filter(
-        ([id, value]) => value && inspection?.storage?.some((s) => s.id === id),
+        ([id, value]) =>
+          value && mappingInspection?.storage?.some((s) => s.id === id),
       )
       .sort(([a], [b]) => a.localeCompare(b)),
   );
   const needsInspection = !!inspection && inspectionStorageKey !== storageKey;
+  function changed() {
+    generation.current++;
+    setConsoleOK(false);
+    setOffline(false);
+  }
   function changeStorage(value: Record<string, string>) {
     generation.current++;
     setStorage(value);
@@ -157,12 +184,12 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       ),
       mapping: {
         interfaces: Object.fromEntries(
-          (inspection?.ports || [])
+          (mappingInspection?.ports || [])
             .filter((p) => interfaces[p.name])
             .map((p) => [p.name, interfaces[p.name]]),
         ),
         storage: Object.fromEntries(
-          (inspection?.storage || [])
+          (mappingInspection?.storage || [])
             .filter((s) => storage[s.id])
             .map((s) => [s.id, storage[s.id]]),
         ),
@@ -171,7 +198,20 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
         )
           ? { hostname: hostname.trim() }
           : {}),
-        ...(inspection?.ports?.length ? { address: address.trim() } : {}),
+        ...(mappingInspection?.ports?.length
+          ? { address: address.trim() }
+          : {}),
+        network: Object.fromEntries(
+          (mappingInspection?.network_stanzas || [])
+            .filter((s) => network[s.key])
+            .map((s) => [
+              s.key,
+              {
+                ...network[s.key],
+                dns_servers: network[s.key].dns_servers?.filter(Boolean),
+              },
+            ]),
+        ),
       },
       console_confirmed: consoleOK,
       source_offline: offline,
@@ -253,6 +293,11 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
           ]),
         ),
       );
+      if (
+        previous &&
+        JSON.stringify(previous.files) !== JSON.stringify(result.files)
+      )
+        setNetwork({});
       const excluded = new Set(result.preserved?.map((p) => p.path) || []);
       setDecisions((old) =>
         Object.fromEntries(
@@ -279,14 +324,14 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
         setInspecting(false);
     }
   }
-  const portValues = (inspection?.ports || [])
+  const portValues = (mappingInspection?.ports || [])
     .map((p) => interfaces[p.name])
     .filter(Boolean);
   const duplicatePorts = new Set(portValues).size !== portValues.length;
   const openFiles = selectedPaths.filter((p) => !decisions[p]).length;
   const openMappings =
-    (inspection?.ports || []).filter((p) => !interfaces[p.name]).length +
-    (inspection?.storage || []).filter((s) => !storage[s.id]).length;
+    (mappingInspection?.ports || []).filter((p) => !interfaces[p.name]).length +
+    (mappingInspection?.storage || []).filter((s) => !storage[s.id]).length;
   return {
     backup,
     target,
@@ -296,17 +341,35 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     files,
     entries,
     decisions,
-    setDecisions,
+    setDecisions: (value: Parameters<typeof setDecisions>[0]) => {
+      changed();
+      setDecisions(value);
+    },
     interfaces,
-    setInterfaces,
+    setInterfaces: (value: Record<string, string>) => {
+      changed();
+      setInterfaces(value);
+    },
     storage,
     setStorage: changeStorage,
     needsInspection,
     snapshotID: needsInspection ? undefined : inspection?.snapshot_id,
     hostname,
-    setHostname,
+    setHostname: (value: string) => {
+      changed();
+      setHostname(value);
+    },
     address,
-    setAddress,
+    setAddress: (value: string) => {
+      changed();
+      setAddress(value);
+    },
+    network,
+    setNetwork: (value: Record<string, RecoveryNetworkMapping>) => {
+      changed();
+      setNetwork(value);
+    },
+    mappingInspection,
     consoleOK,
     setConsoleOK,
     offline,

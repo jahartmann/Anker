@@ -1449,3 +1449,216 @@ test("reopening the selected comparison preserves its loaded evidence", async ({
   ).toBeVisible();
   expect(reads).toBe(1);
 });
+
+test("authenticated interrupted journal allows separately confirmed rollback after reopen", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  let plan = {
+    id: "journal-plan",
+    backup_id: base.backups[0].id,
+    target_id: base.hosts[0].id,
+    scenario: "files",
+    created_at: "2026-10-07T10:00:00Z",
+    state: "interrupted",
+    source: base.hosts[0].inventory,
+    target: base.hosts[0].inventory,
+    steps: [{ path: "etc/sysctl.conf", action: "apply", reason: "" }],
+    blockers: [],
+    manual: [],
+    mapping: { interfaces: {}, storage: {} },
+    result: {
+      state: "interrupted",
+      operation_id: "journal-plan",
+      applied: ["etc/sysctl.conf"],
+      rollback_path: "/var/lib/anker/rollback/journal-plan",
+      checks: [],
+      reboot_verified: false,
+    },
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, demo: false, plans: [plan] } }),
+  );
+  await page.route("**/api/plans/journal-plan", (r) =>
+    r.fulfill({ json: plan }),
+  );
+  await page.route("**/api/plans/journal-plan/reconcile", (r) => {
+    plan = {
+      ...plan,
+      state: "interrupted",
+      result: { ...plan.result, state: "interrupted" },
+    };
+    return r.fulfill({ json: plan });
+  });
+  let confirmation = "";
+  await page.route("**/api/plans/journal-plan/rollback", (r) => {
+    confirmation = r.request().postDataJSON().confirmation;
+    return r.fulfill({
+      json: { id: "rollback-job", state: "queued", kind: "rollback" },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Dateien zurücksetzen", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Hostjournal abgeglichen: Ausführung unterbrochen",
+  );
+  for (const width of [1440, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page
+      .getByRole("button", { name: "Dateien zurücksetzen", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `/tmp/anker-final-fix-evidence/interrupted-${width}.png`,
+    });
+  }
+  await page
+    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien zurücksetzen", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Dateien zurücksetzen", exact: true })
+    .click();
+  const field = page.getByLabel("Plan-ID zur Rücksetzung eingeben", {
+    exact: true,
+  });
+  await expect(field).toHaveValue("");
+  await field.fill("wrong-plan");
+  await expect(
+    page.getByRole("button", { name: "Rücksetzung bestätigen", exact: true }),
+  ).toBeDisabled();
+  await field.fill("journal-plan");
+  await page
+    .getByRole("button", { name: "Rücksetzung bestätigen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Auftrag läuft" }),
+  ).toBeVisible();
+  expect(confirmation).toBe("journal-plan");
+  await expect(
+    page.getByRole("button", { name: "Dateien zurücksetzen", exact: true }),
+  ).toBeDisabled();
+});
+
+for (const failure of [
+  "not_found",
+  "writing",
+  "rolling_back",
+  "read-error",
+  "invalid",
+  "active-job",
+])
+  test(`interrupted rollback stays blocked after ${failure} reconciliation`, async ({
+    page,
+  }) => {
+    const base = await (await page.request.get("/api/status")).json();
+    const id = "uncertain-final";
+    let plan = {
+      id,
+      schema_version: 2,
+      backup_id: base.backups[0].id,
+      target_id: base.hosts[0].id,
+      scenario: "files",
+      created_at: "2026-10-09T10:00:00Z",
+      state: "interrupted",
+      source: base.hosts[0].inventory,
+      target: base.hosts[0].inventory,
+      steps: [],
+      blockers: [],
+      manual: [],
+      mapping: { interfaces: {}, storage: {} },
+      result: {
+        operation_id: id,
+        state: "interrupted",
+        applied: [],
+        rollback_path: "/var/lib/anker-host/rollback/" + id,
+      },
+    };
+    let fail = false;
+    await page.route("**/api/status", (r) =>
+      r.fulfill({
+        json: {
+          ...base,
+          demo: false,
+          plans: [plan],
+          jobs:
+            failure === "active-job"
+              ? [
+                  {
+                    id: "active-final",
+                    host_id: plan.target_id,
+                    state: "running",
+                    kind: "backup",
+                  },
+                ]
+              : [],
+        },
+      }),
+    );
+    await page.route(`**/api/plans/${id}`, (r) => r.fulfill({ json: plan }));
+    await page.route(`**/api/plans/${id}/reconcile`, (r) => {
+      if (fail && (failure === "read-error" || failure === "invalid"))
+        return r.fulfill({
+          status: 500,
+          json: {
+            error:
+              failure === "invalid"
+                ? "Hostprotokoll gehört nicht zu diesem Wiederherstellungsplan"
+                : "Hostprotokoll nicht lesbar",
+          },
+        });
+      if (fail && failure !== "active-job")
+        plan = { ...plan, result: { ...plan.result, state: failure } };
+      return r.fulfill({ json: plan });
+    });
+    await page.goto("/");
+    await page
+      .getByRole("navigation", { name: "Hauptnavigation" })
+      .getByRole("button", { name: "Wiederherstellung", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Plan ansehen", exact: true })
+      .click();
+    const rollback = page.getByRole("button", {
+      name: "Dateien zurücksetzen",
+      exact: true,
+    });
+    await expect(rollback).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
+      .click();
+    if (failure !== "active-job") await expect(rollback).toBeEnabled();
+    fail = true;
+    await page
+      .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
+      .click();
+    await expect(rollback).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Dialog schließen", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Plan ansehen", exact: true })
+      .click();
+    await expect(rollback).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+    ).toHaveCount(0);
+  });

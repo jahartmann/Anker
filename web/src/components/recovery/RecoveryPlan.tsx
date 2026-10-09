@@ -18,6 +18,7 @@ export interface RecoveryOperation {
   pendingJob: string;
   uncertain: boolean;
   reconcileRefused?: boolean;
+  interruptedJournal?: string;
 }
 export default function RecoveryPlan({
   plan,
@@ -71,6 +72,18 @@ export default function RecoveryPlan({
     ["interrupted", "unknown"].includes(plan.state) ||
     ["interrupted", "unknown", "writing", "not_found"].includes(
       journalState || "",
+    );
+  const rollbackUncertain =
+    uncertain &&
+    !(
+      !refreshNeeded &&
+      !operation.uncertain &&
+      !journalConflict &&
+      plan.state === "interrupted" &&
+      journalState === "interrupted" &&
+      plan.result?.operation_id === plan.id &&
+      !!plan.result?.rollback_path &&
+      operation.interruptedJournal === JSON.stringify(plan.result)
     );
   const reconcileRefused =
     !!operation.reconcileRefused && plan.state === "ready";
@@ -164,7 +177,8 @@ export default function RecoveryPlan({
           plan.state !== "ready")) ||
       (action === "rollback" && rollbackConfirmation !== plan.id) ||
       pendingJob ||
-      (action !== "reconcile" && (uncertain || targetBusy))
+      (action !== "reconcile" &&
+        ((action === "rollback" ? rollbackUncertain : uncertain) || targetBusy))
     )
       return;
     refreshGeneration.current++;
@@ -180,6 +194,18 @@ export default function RecoveryPlan({
         const p = await api<Plan>("plans/" + id + "/reconcile", "POST");
         if (!mounted.current) return;
         setPlan(p);
+        onOperationChange({ pendingJob: "", uncertain: true });
+        if (
+          p.state === "interrupted" &&
+          p.result?.state === "interrupted" &&
+          p.result.operation_id === id &&
+          p.result.rollback_path
+        )
+          onOperationChange({
+            pendingJob: "",
+            uncertain: false,
+            interruptedJournal: JSON.stringify(p.result),
+          });
         if (
           [
             "applied",
@@ -219,6 +245,12 @@ export default function RecoveryPlan({
           e.status !== undefined &&
           e.status >= 400 &&
           e.status < 500;
+        if (action === "reconcile")
+          onOperationChange({
+            ...operation,
+            uncertain: true,
+            interruptedJournal: undefined,
+          });
         if (action !== "reconcile" && !rejected)
           onOperationChange({ pendingJob: acceptedJob, uncertain: true });
         if (
@@ -286,7 +318,7 @@ export default function RecoveryPlan({
         <strong>
           {plan.source.hostname} → {plan.target.hostname}
         </strong>
-        <State value={uncertain ? "unknown" : plan.state} />
+        <State value={rollbackUncertain ? "unknown" : plan.state} />
       </div>
       {journalState && (
         <p className="field-hint">
@@ -395,8 +427,9 @@ export default function RecoveryPlan({
           plan.state,
         )) && (
         <p className="notice warning">
-          Den aktuellen Hostzustand über das Journal abgleichen. Eine unklare
-          Übernahme wird nicht automatisch wiederholt.
+          {uncertain && !rollbackUncertain
+            ? "Hostjournal abgeglichen: Ausführung unterbrochen. Kontrollierte Rücksetzung separat bestätigen; eine erneute Übernahme bleibt gesperrt."
+            : "Den aktuellen Hostzustand über das Journal abgleichen. Eine unklare Übernahme wird nicht automatisch wiederholt."}
         </p>
       )}
       {reconcileRefused && (
@@ -443,7 +476,7 @@ export default function RecoveryPlan({
             disabled={
               busy ||
               !!pendingJob ||
-              uncertain ||
+              rollbackUncertain ||
               targetBusy ||
               rollbackConfirmation !== plan.id
             }
@@ -516,7 +549,7 @@ export default function RecoveryPlan({
           ].includes(plan.state) && (
             <button
               className="secondary"
-              disabled={busy || !!pendingJob || uncertain || targetBusy}
+              disabled={busy || !!pendingJob || rollbackUncertain || targetBusy}
               onClick={() => {
                 setRollbackOpen(true);
                 setRollbackConfirmation("");

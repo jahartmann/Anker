@@ -367,3 +367,47 @@ func TestRecoveryReadyJournalReservationExcludesQueueAndChangedConnection(t *tes
 		})
 	}
 }
+
+func TestRecoveryAuthenticAbandonedJournalStaysInterruptedAndRollsBack(t *testing.T) {
+	s, r, root := localRecoveryHelper(t)
+	p := localPlan(t, s, r)
+	os.WriteFile(filepath.Join(root, "lose-reply"), nil, 0600)
+	p, err := s.ApplyPlan(t.Context(), p.ID, p.ID)
+	if err == nil || p.State != "interrupted" {
+		t.Fatalf("expected lost reply: %s %v", p.State, err)
+	}
+	// Model termination immediately before final journal completion. All file and
+	// rollback evidence comes from the actual helper's durable application journal.
+	journalPath := filepath.Join(root, "var/lib/anker-host/rollback", p.ID, "journal.json")
+	raw, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var journal map[string]any
+	json.Unmarshal(raw, &journal)
+	journal["state"] = "writing"
+	raw, _ = json.Marshal(journal)
+	if err = os.WriteFile(journalPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.ReconcilePlan(t.Context(), p.ID)
+	if err != nil || p.State != "interrupted" || p.Result.State != "interrupted" || p.Result.RollbackPath == "" {
+		t.Fatalf("abandoned journal %+v %v", p, err)
+	}
+	if _, err = s.ApplyPlan(t.Context(), p.ID, p.ID); err == nil {
+		t.Fatal("interrupted replay accepted")
+	}
+	// Reload saved plan and re-read authentic journal before separate rollback.
+	p, err = s.Plan(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.RollbackPlan(t.Context(), p.ID, p.ID)
+	if err != nil || p.State != "rolled_back" {
+		t.Fatalf("rollback %+v %v", p, err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, r.Files[0]))
+	if string(got) != "vm.swappiness=60\n" {
+		t.Fatalf("wrong restored original %q", got)
+	}
+}

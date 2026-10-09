@@ -2,6 +2,7 @@ package tui
 
 import (
 	"anker/internal/anker"
+	"anker/internal/client"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -9,7 +10,35 @@ import (
 )
 
 func recoveryIdentity(f *form) string {
-	return anker.Hash([]byte(strings.Join([]string{f.fields[0].value, f.fields[1].value, f.fields[2].value, f.fields[3].value, f.fields[7].value}, "\x00")))
+	return anker.Hash([]byte(strings.Join([]string{f.fields[0].value, f.fields[1].value, f.fields[2].value, f.fields[3].value, recoveryStorageIdentity(f)}, "\x00")))
+}
+func typedRecoveryInspection(raw map[string]any) anker.RecoveryInspection {
+	data, _ := json.Marshal(raw)
+	var result anker.RecoveryInspection
+	json.Unmarshal(data, &result)
+	return result
+}
+func recoveryFileDecisions(f *form) map[string]anker.FileDecision {
+	decisions, _ := client.ParseRecoveryDecisions(strings.Split(f.fields[10].value, ","))
+	return decisions
+}
+func recoveryReferenceNeeded(raw map[string]any, decisions map[string]anker.FileDecision) bool {
+	paths := []string{}
+	for _, p := range list(raw["paths"]) {
+		paths = append(paths, fmt.Sprint(p))
+	}
+	return client.RecoveryReferenceNeeded(paths, decisions)
+}
+func recoveryStorageIdentity(f *form) string {
+	storage, err := parseRecoveryPairs(f.fields[7].value, "Storage")
+	if err != nil {
+		return f.fields[7].value
+	}
+	if raw := object(f.original["inspection"]); raw != nil {
+		storage = client.RelevantRecoveryMapping(anker.Mapping{Storage: storage}, typedRecoveryInspection(raw), recoveryFileDecisions(f)).Storage
+	}
+	data, _ := json.Marshal(storage)
+	return string(data)
 }
 func recoveryPurpose(f *form) string {
 	return "recoveryInspect:" + strconv.Itoa(f.generation) + ":" + recoveryIdentity(f)
@@ -31,7 +60,7 @@ func (m Model) visibleFormFields() []int {
 		if f.kind == "plan" && index >= 4 {
 			switch index {
 			case 4:
-				if len(list(i["ports"])) == 0 {
+				if !hasRelevantRecoveryReference(i, "ports", f) {
 					continue
 				}
 			case 5:
@@ -43,11 +72,19 @@ func (m Model) visibleFormFields() []int {
 					continue
 				}
 			case 7:
-				if len(list(i["storage"])) == 0 {
+				if !hasRelevantRecoveryReference(i, "storage", f) {
 					continue
 				}
 			case 8, 9:
 				if i == nil || f.fields[2].value == "files" {
+					continue
+				}
+			case 11:
+				if i == nil || len(relevantRecoveryStanzas(f, i)) == 0 {
+					continue
+				}
+			case 12, 13, 14:
+				if i == nil || f.fields[11].value == "" {
 					continue
 				}
 			case 10:
@@ -134,6 +171,7 @@ func (m *Model) receiveRecoveryInspection(v commandResult) bool {
 	if f.fields[8].value == "" {
 		f.fields[8].value = str(object(i["target"]), "hostname")
 	}
+	updateRecoveryNetworkChoices(f, i)
 	f.title = "Ziel geprüft · Zuordnungen und manuelle Entscheidungen"
 	f.focus = 4
 	if len(m.visibleFormFields()) <= 4 {
@@ -162,6 +200,11 @@ func clearChangedTargetChoices(f *form, before, after map[string]any) {
 		return out
 	}
 	old, current := evidence(before), evidence(after)
+	if len(f.fields) > 14 && !equalRecoveryEvidence(old, current) {
+		for n := 11; n <= 14; n++ {
+			f.fields[n].value = ""
+		}
+	}
 	retained := []string{}
 	for _, value := range strings.Split(f.fields[10].value, ",") {
 		pair := strings.Split(value, "=")
@@ -203,7 +246,7 @@ func recoveryMayHaveJournal(p map[string]any) bool {
 func clearRecoveryDecisions(f *form) {
 	delete(f.original, "inspection")
 	delete(f.original, "inspection_key")
-	for _, index := range []int{4, 7, 8, 9} {
+	for _, index := range []int{4, 7, 8, 9, 11, 12, 13, 14} {
 		f.fields[index].value = ""
 	}
 	f.fields[5].value, f.fields[6].value = "nein", "nein"
@@ -291,5 +334,52 @@ func (m *Model) refreshRecoveryPreview() {
 			m.detail = planText(p, *m)
 			return
 		}
+	}
+}
+
+func hasRelevantRecoveryReference(i map[string]any, key string, f *form) bool {
+	for _, raw := range list(i[key]) {
+		if recoveryReferenceNeeded(object(raw), recoveryFileDecisions(f)) {
+			return true
+		}
+	}
+	return false
+}
+func equalRecoveryEvidence(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for p, v := range a {
+		if b[p] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func relevantRecoveryStanzas(f *form, i map[string]any) []string {
+	keys := []string{}
+	decisions := recoveryFileDecisions(f)
+	for _, raw := range list(i["network_stanzas"]) {
+		stanza := object(raw)
+		if decisions[str(stanza, "path")] != anker.DecisionKeep {
+			keys = append(keys, str(stanza, "key"))
+		}
+	}
+	return keys
+}
+func updateRecoveryNetworkChoices(f *form, i map[string]any) {
+	if len(f.fields) <= 14 {
+		return
+	}
+	choices := append([]string{""}, relevantRecoveryStanzas(f, i)...)
+	f.fields[11].choices = choices
+	for _, choice := range choices {
+		if choice == f.fields[11].value {
+			return
+		}
+	}
+	for n := 11; n <= 14; n++ {
+		f.fields[n].value = ""
 	}
 }

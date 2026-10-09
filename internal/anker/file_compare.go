@@ -45,9 +45,6 @@ func compareFiles(before, after []byte, beforeEntry, afterEntry *Entry, beforeLa
 	return compareFilesVisible(before, after, beforeEntry, afterEntry, beforeLabel, afterLabel, false)
 }
 func comparisonSecret(data []byte, e *Entry) bool {
-	if len(data) > comparisonBytes {
-		data = data[:comparisonBytes]
-	}
 	if publicSecretText(string(data)) {
 		return true
 	}

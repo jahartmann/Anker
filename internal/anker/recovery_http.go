@@ -423,3 +423,14 @@ func publicRecoveryError(err error) error {
 	}
 	return errors.New("Geschützte Diagnose; private Nachweise prüfen")
 }
+
+// Lists/default previews share the comparison metadata boundary. Originals are
+// preserved privately and returned only through explicit authorized disclosure.
+func publicBackupEntry(e Entry) Entry {
+	e.Secret = comparisonSecret(nil, &e)
+	if e.Secret {
+		e.XAttrs = nil
+		e.Link = ""
+	}
+	return redactRecovery(e)
+}

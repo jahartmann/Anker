@@ -292,7 +292,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 				return b, err
 			}
 			e.SHA256 = Hash(data)
-			e.Secret = e.Secret || secretContent(data)
+			e.Secret = comparisonSecret(data, e)
 			e.Size = int64(len(data))
 			if err = os.Chmod(p, 0600); err != nil {
 				return b, err
@@ -514,6 +514,6 @@ func (s *Service) readFileUnlocked(id, p string, limit int64) ([]byte, Entry, er
 	if err == nil && Hash(data) != selected.SHA256 {
 		err = errors.New("Datei-Prüfsumme falsch")
 	}
-	selected.Secret = selected.Secret || isSecret(selected.Path) || secretContent(data)
+	selected.Secret = comparisonSecret(data, selected)
 	return data, *selected, err
 }

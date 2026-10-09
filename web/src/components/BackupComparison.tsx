@@ -383,24 +383,22 @@ export default function BackupComparison({
                       )}
                     {comparison && selected && (
                       <div className="comparison-actions">
-                        {canDownload &&
-                          comparison.state !== "missing_before" && (
-                            <Download
-                              path={`backups/${from}/file-download?path=${encodeURIComponent(selected)}`}
-                              notify={notify}
-                            >
-                              Original vorher
-                            </Download>
-                          )}
-                        {canDownload &&
-                          comparison.state !== "missing_after" && (
-                            <Download
-                              path={`backups/${to}/file-download?path=${encodeURIComponent(selected)}`}
-                              notify={notify}
-                            >
-                              Original nachher
-                            </Download>
-                          )}
+                        {canDownload && selectedRow?.change !== "added" && (
+                          <Download
+                            path={`backups/${from}/file-download?path=${encodeURIComponent(selected)}`}
+                            notify={notify}
+                          >
+                            Original vorher
+                          </Download>
+                        )}
+                        {canDownload && selectedRow?.change !== "removed" && (
+                          <Download
+                            path={`backups/${to}/file-download?path=${encodeURIComponent(selected)}`}
+                            notify={notify}
+                          >
+                            Original nachher
+                          </Download>
+                        )}
                         {user.role !== "reader" && (
                           <button
                             className="secondary"

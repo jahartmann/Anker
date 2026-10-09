@@ -108,6 +108,10 @@ func (m *Model) openForm(kind string, v map[string]any) {
 			textField("Hostidentität (manuell)", "", "Gewünschter Hostname; keine automatische Configänderung", false),
 			textField("Adresse (manuell)", "", "Gewünschte Adresse; keine automatische Netzwerkaktivierung", false),
 			textField("Dateientscheidungen", str(v, "decisions"), "PATH=backup|prepared|keep|manual, kommagetrennt; leer bleibt manuell", false),
+			{label: "Quellstanza / IP-Familie", choices: []string{""}, hint: "Optional ausdrücklich wählen; Aktivierung bleibt manuell"},
+			textField("Adresse/CIDR", "", "Leere Werte beibehalten; z. B. 192.0.2.10/24", false),
+			textField("Gateway", "", "Passende IPv4- oder IPv6-Adresse", false),
+			textField("DNS-Server", "", "IP-Adressen, kommagetrennt", false),
 		}
 	case "recoveryCompare":
 		paths := []string{}
@@ -258,6 +262,12 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 					delta = -1
 				}
 				entry.value = entry.choices[(idx+delta+len(entry.choices))%len(entry.choices)]
+				if f.kind == "plan" && entry.value != previous && f.focus == 11 {
+					for n := 12; n <= 14; n++ {
+						f.fields[n].value = ""
+					}
+					f.fields[5].value, f.fields[6].value = "nein", "nein"
+				}
 				if f.kind == "plan" && entry.value != previous && f.focus <= 3 {
 					clearRecoveryDecisions(f)
 					if f.focus == 0 {
@@ -285,6 +295,12 @@ func (m *Model) formKey(k tea.KeyMsg) tea.Cmd {
 			if len(entry.value) < 4096 {
 				entry.value += " "
 			}
+		}
+		if f.kind == "plan" && entry.value != previousValue && f.focus == 10 {
+			updateRecoveryNetworkChoices(f, object(f.original["inspection"]))
+		}
+		if f.kind == "plan" && entry.value != previousValue && f.focus >= 10 {
+			f.fields[5].value, f.fields[6].value = "nein", "nein"
 		}
 		if f.kind == "plan" && f.focus == 3 && entry.value != previousValue {
 			clearRecoveryDecisions(f)
@@ -410,6 +426,18 @@ func (m *Model) submitForm() tea.Cmd {
 				return nil
 			}
 		}
+		if value(11) != "" {
+			p.Mapping.Network, err = client.ParseRecoveryNetwork([]string{value(11) + "=" + value(12) + "|" + value(13) + "|" + value(14)})
+			if err != nil {
+				m.err = err.Error()
+				f.focus = 11
+				return nil
+			}
+		}
+		rawInspection := object(f.original["inspection"])
+		if rawInspection != nil {
+			p.Mapping = client.RelevantRecoveryMapping(p.Mapping, typedRecoveryInspection(rawInspection), p.Decisions)
+		}
 		inspection := recoveryInspection(f)
 		if inspection == nil {
 			return m.request(action{title: "Ziel und benötigte Zuordnungen prüfen", method: "POST", path: "plans/inspect", input: p, purpose: recoveryPurpose(f)})
@@ -417,7 +445,7 @@ func (m *Model) submitForm() tea.Cmd {
 		p.SnapshotID = str(inspection, "snapshot_id")
 		for _, raw := range list(inspection["ports"]) {
 			name := str(object(raw), "name")
-			if ports[name] == "" {
+			if recoveryReferenceNeeded(object(raw), p.Decisions) && p.Mapping.Interfaces[name] == "" {
 				m.err = "Benötigten Netzwerkport " + name + " einem geprüften Zielport zuordnen."
 				f.focus = 4
 				return nil
@@ -425,7 +453,7 @@ func (m *Model) submitForm() tea.Cmd {
 		}
 		for _, raw := range list(inspection["storage"]) {
 			name := str(object(raw), "id")
-			if storage[name] == "" {
+			if recoveryReferenceNeeded(object(raw), p.Decisions) && p.Mapping.Storage[name] == "" {
 				m.err = "Manuelle Storage-Entscheidung für " + name + " angeben."
 				f.focus = 7
 				return nil

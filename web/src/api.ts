@@ -211,6 +211,7 @@ export interface Plan {
   };
 }
 export interface RecoveryStorage {
+  paths?: string[];
   backing?: Record<string, string>;
   content?: string[];
   nodes?: string[];
@@ -222,7 +223,18 @@ export interface RecoveryStorage {
   suggested?: string;
 }
 export type FileDecision = "backup" | "prepared" | "keep" | "manual";
+export interface RecoveryNetworkMapping {
+  address_cidr?: string;
+  gateway?: string;
+  dns_servers?: string[];
+}
 export interface RecoveryInspection {
+  network_stanzas?: {
+    key: string;
+    path: string;
+    name: string;
+    family: string;
+  }[];
   snapshot_id?: string;
   comparison_complete?: boolean;
   preserved?: { path: string; reason: string }[];
@@ -235,7 +247,7 @@ export interface RecoveryInspection {
   }[];
   source: Inventory;
   target: Inventory;
-  ports: (Port & { reason: string; suggested?: string })[];
+  ports: (Port & { reason: string; suggested?: string; paths?: string[] })[];
   target_ports: Port[];
   storage: RecoveryStorage[];
   target_storage: RecoveryStorage[];

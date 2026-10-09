@@ -541,7 +541,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			if err != nil {
 				return err
 			}
-			return jsonOut(w, m.Inventory)
+			return jsonOut(w, redactRecovery(m.Inventory))
 		case "files":
 			if method != "GET" {
 				break
@@ -550,7 +550,11 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			if err != nil {
 				return err
 			}
-			return jsonOut(w, m.Entries)
+			entries := make([]Entry, len(m.Entries))
+			for i, entry := range m.Entries {
+				entries[i] = publicBackupEntry(entry)
+			}
+			return jsonOut(w, entries)
 		case "file":
 			if method != "GET" {
 				break
@@ -570,7 +574,11 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			if e.Secret && !reveal {
 				text = "[Verdeckter Inhalt · ausdrückliche Freigabe erforderlich]"
 			}
-			return jsonOut(w, map[string]any{"entry": e, "content": text, "masked": e.Secret && !reveal})
+			masked := e.Secret && !reveal
+			if !reveal {
+				e = publicBackupEntry(e)
+			}
+			return jsonOut(w, map[string]any{"entry": e, "content": text, "masked": masked})
 		case "verify":
 			if method != "POST" {
 				break

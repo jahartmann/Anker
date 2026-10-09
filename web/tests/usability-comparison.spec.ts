@@ -463,3 +463,44 @@ test("missing comparison sides disable only their download and retain exact line
     view.getByRole("link", { name: "Original vorher", exact: true }),
   ).toBeVisible();
 });
+
+for (const state of ["binary", "too_large"])
+  test(`missing ${state} comparison sides retain original download presence including reveal`, async ({
+    page,
+  }) => {
+    await page.route("**/api/backups/compare/file", (r) =>
+      r.fulfill({
+        json: comparison(r.request().postDataJSON().path, {
+          state: r.request().postDataJSON().reveal ? state : "masked",
+          masked: !r.request().postDataJSON().reveal,
+        }),
+      }),
+    );
+    const view = await setup(page, [
+      row("etc/added", { change: "added", secret: true }),
+      row("etc/removed", { change: "removed", secret: true }),
+    ]);
+    for (const [path, absent, present] of [
+      ["added", "Original vorher", "Original nachher"],
+      ["removed", "Original nachher", "Original vorher"],
+    ]) {
+      await view
+        .getByRole("button", { name: new RegExp(`^etc/${path}`) })
+        .click();
+      await expect(
+        view.getByRole("link", { name: absent, exact: true }),
+      ).toHaveCount(0);
+      await view
+        .getByRole("button", {
+          name: "Geschützten Inhalt anzeigen",
+          exact: true,
+        })
+        .click();
+      await expect(
+        view.getByRole("link", { name: absent, exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        view.getByRole("link", { name: present, exact: true }),
+      ).toBeVisible();
+    }
+  });

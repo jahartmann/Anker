@@ -595,3 +595,140 @@ test("cleared decision becomes manual through bulk action", async ({
     page.getByRole("button", { name: "Weiter zur Planprüfung", exact: true }),
   ).toBeEnabled();
 });
+
+test("kept network and storage prune only their mappings and recapture storage binding", async ({
+  page,
+}) => {
+  await start(page);
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  for (const path of ["etc/network/interfaces", "etc/pve/storage.cfg"])
+    await page.getByLabel(path, { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await inspect(page);
+  for (const select of await page.locator(".recovery-mapping select").all()) {
+    const options = await select
+      .locator("option")
+      .evaluateAll((nodes) => nodes.map((n) => (n as HTMLOptionElement).value));
+    await select.selectOption(
+      options.includes("manual") ? "manual" : options[1],
+    );
+  }
+  await page
+    .getByRole("button", { name: "Zuordnungen prüfen", exact: true })
+    .click();
+  for (const path of ["etc/network/interfaces", "etc/pve/storage.cfg"])
+    await page
+      .getByLabel(`Entscheidung für ${path}`, { exact: true })
+      .selectOption("keep");
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("backup");
+  await expect(page.locator(".recovery-mapping select")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Weiter zur Planprüfung", exact: true }),
+  ).toHaveCount(0);
+  const inspection = page.waitForRequest(
+    (r) => r.url().endsWith("/api/plans/inspect") && r.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Zuordnungen prüfen", exact: true })
+    .click();
+  expect((await inspection).postDataJSON().mapping.storage).toEqual({});
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  for (const box of await page
+    .getByRole("region", { name: "Planprüfung", exact: true })
+    .getByRole("checkbox")
+    .all())
+    await box.check();
+  const saved = page.waitForResponse(
+    (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  const response = await saved;
+  expect(response.ok()).toBe(true);
+  const body = response.request().postDataJSON();
+  expect(body.mapping.interfaces).toEqual({});
+  expect(body.mapping.storage).toEqual({});
+  expect((await response.json()).blockers).toEqual([]);
+});
+
+test("typed source network stanza prepares effects and remains manual with keyboard and narrow layouts", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await start(page);
+  await page.getByRole("button", { name: "Zurück", exact: true }).click();
+  await page.getByLabel("etc/network/interfaces", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Weiter zum Ziel", exact: true })
+    .click();
+  await inspect(page);
+  for (const select of await page.locator(".recovery-mapping select").all())
+    await select.selectOption({ index: 1 });
+  await page
+    .getByLabel("Entscheidung für etc/network/interfaces", { exact: true })
+    .selectOption("prepared");
+  await page
+    .getByLabel("Entscheidung für etc/sysctl.d/99-anker.conf", { exact: true })
+    .selectOption("keep");
+  await page.getByLabel("Stanza vmbr0/inet anpassen", { exact: true }).focus();
+  await page.keyboard.press("Space");
+  await page
+    .getByLabel("Adresse/CIDR für vmbr0/inet", { exact: true })
+    .fill("198.51.100.9/24");
+  await page
+    .getByLabel("Gateway für vmbr0/inet", { exact: true })
+    .fill("198.51.100.1");
+  await page
+    .getByLabel("DNS-Server für vmbr0/inet", { exact: true })
+    .fill("192.0.2.53,2001:db8::53");
+  for (const width of [1440, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page
+      .getByLabel("Adresse/CIDR für vmbr0/inet", { exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    await page.screenshot({
+      path: `/tmp/anker-final-fix-evidence/network-${width}.png`,
+    });
+  }
+  await page
+    .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
+    .click();
+  await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
+  const saved = page.waitForResponse(
+    (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  const response = await saved;
+  expect(response.ok()).toBe(true);
+  expect(response.request().postDataJSON().mapping.network).toEqual({
+    "vmbr0/inet": {
+      address_cidr: "198.51.100.9/24",
+      gateway: "198.51.100.1",
+      dns_servers: ["192.0.2.53", "2001:db8::53"],
+    },
+  });
+  const plan = await response.json();
+  const step = plan.steps.find((s: any) => s.path === "etc/network/interfaces");
+  expect(step.action).toBe("manual");
+  expect(step.effects.length).toBeGreaterThan(0);
+  const comparison = await (
+    await page.request.get(
+      `/api/plans/${plan.id}/comparison?path=etc/network/interfaces&basis=source`,
+    )
+  ).json();
+  const changes = comparison.hunks
+    .flatMap((h: any) => h.lines)
+    .filter((l: any) => l.kind !== "context")
+    .map((l: any) => l.text)
+    .join("");
+  expect(changes).toContain("address 198.51.100.9/24");
+  expect(changes).not.toContain("iface lo inet loopback");
+  expect(errors).toEqual([]);
+});
