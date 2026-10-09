@@ -13,6 +13,7 @@ import {
 } from "../components/shared";
 import type { Notify } from "../components/shared";
 import { BackupTable } from "./Backups";
+import BackupReadiness from "../components/BackupReadiness";
 import Inventory from "../components/Inventory";
 import ActiveJobs from "../components/ActiveJobs";
 export function HostForm({
@@ -777,6 +778,13 @@ export default function Hosts({
                   {host.probe_error}
                 </p>
               )}
+              <BackupReadiness
+                backup={
+                  status.backups
+                    .filter((b) => b.host_id === host.id)
+                    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+                }
+              />
               <div className="section-rule" />
               <h3>Wiederherstellung vorbereiten</h3>
               <p className="muted">

@@ -22,6 +22,7 @@ import ActiveJobs from "./components/ActiveJobs";
 import Jobs from "./views/Jobs";
 import Hosts, { HostForm } from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
+import BackupReadiness from "./components/BackupReadiness";
 import Restore from "./views/Restore";
 import Settings from "./views/Settings";
 import { useUpdateReload } from "./useUpdateReload";
@@ -99,6 +100,7 @@ export default function App() {
   const [page, setPage] = useState("Hosts");
   const [nav, setNav] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryDirty, setRecoveryDirty] = useState(false);
   const [connectTarget, setConnectTarget] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingPage, setPendingPage] = useState("");
@@ -198,7 +200,10 @@ export default function App() {
       setNav(false);
       return;
     }
-    if (page === "Einstellungen" && settingsDirty) {
+    if (
+      (page === "Einstellungen" && settingsDirty) ||
+      (page === "Wiederherstellung" && recoveryDirty)
+    ) {
       setPendingPage(p);
       setNav(false);
       return;
@@ -394,6 +399,7 @@ export default function App() {
                 notify={notify}
                 refresh={refresh}
                 onBusyChange={setRecoveryBusy}
+                onDirtyChange={setRecoveryDirty}
                 onConnectTarget={() => {
                   setConnectTarget(true);
                   setPage("Hosts");
@@ -466,6 +472,14 @@ export default function App() {
                     )}
                   </p>
                 </section>
+                <BackupReadiness
+                  backup={
+                    [...status.backups].sort((a, b) =>
+                      b.created_at.localeCompare(a.created_at),
+                    )[0]
+                  }
+                  compact
+                />
                 <section>
                   <div className="section-heading">
                     <div className="section-heading-title">
@@ -626,7 +640,9 @@ export default function App() {
           onClose={() => setPendingPage("")}
         >
           <p className="dialog-intro">
-            Deine Änderungen an den Einstellungen sind noch offen.
+            {page === "Wiederherstellung"
+              ? "Eingaben auf der Planseite sind noch offen."
+              : "Deine Änderungen an den Einstellungen sind noch offen."}
           </p>
           <footer className="dialog-footer">
             <button
@@ -635,6 +651,14 @@ export default function App() {
                 setPage(pendingPage);
                 setPendingPage("");
                 setSettingsDirty(false);
+                setRecoveryDirty(false);
+                if (page === "Wiederherstellung") {
+                  setPlanRequest(null);
+                  setRestoreRequest((old) => ({
+                    id: "",
+                    sequence: (old?.sequence || 0) + 1,
+                  }));
+                }
               }}
             >
               Änderungen verwerfen

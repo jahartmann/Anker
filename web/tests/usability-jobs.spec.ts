@@ -55,7 +55,9 @@ test("recovery job result links to reconciliation", async ({ page }) => {
     .click();
   await expect(page).toHaveTitle("Wiederherstellung · Anker");
   await expect(
-    page.getByRole("dialog").getByRole("link", { name: "Plan herunterladen" }),
+    page
+      .getByRole("region", { name: "Wiederherstellungsplan" })
+      .getByRole("link", { name: "Plan herunterladen" }),
   ).toHaveAttribute("href", `/api/plans/${plan.id}/download`);
   await expect(
     page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),

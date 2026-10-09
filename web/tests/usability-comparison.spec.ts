@@ -67,6 +67,7 @@ async function setup(page: Page, rows: ReturnType<typeof row>[]) {
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Stände vergleichen" }).click();
   await page.getByLabel("Vergleich von").selectOption("older");
   await page.getByLabel("Vergleich bis").selectOption("newer");
   await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
@@ -277,14 +278,12 @@ test("table selection and keyboard reach responsive diff without clipping", asyn
   const path =
     "etc/pve/nodes/a-very-long-hostname/qemu-server/100-custom-configuration.conf";
   const view = await setup(page, [row(path)]);
+  await page.getByRole("button", { name: "Zurück zu Sicherungen" }).click();
   await page.getByRole("button", { name: /^Aktionen für Ziel/ }).click();
   await page
     .getByRole("button", { name: "Als Ausgangsstand", exact: true })
     .click();
-  await page.getByRole("button", { name: /^Aktionen für Quelle/ }).click();
-  await page
-    .getByRole("button", { name: "Als Vergleichsstand", exact: true })
-    .click();
+  await view.getByLabel("Vergleich bis").selectOption("older");
   await expect(view.getByLabel("Vergleich von")).toHaveValue("newer");
   await view.getByRole("button", { name: "Vergleichen", exact: true }).click();
   const file = view.getByRole("button", { name: new RegExp("^" + path) });

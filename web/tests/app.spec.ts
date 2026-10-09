@@ -423,12 +423,21 @@ test("selected file carries into a fresh restore request", async ({ page }) => {
   await page
     .getByRole("button", { name: "Datei wiederherstellen", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Nur ausgewählte Dateien", exact: true })
+    .click();
   await expect(
     page.getByRole("checkbox", {
       name: "etc/sysctl.d/99-anker.conf",
       exact: true,
     }),
   ).toBeChecked();
+  await page
+    .getByRole("button", { name: "Nur ausgewählte Dateien", exact: true })
+    .click();
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/hostname");
   await expect(
     page.getByRole("checkbox", { name: "etc/hostname", exact: true }),
   ).not.toBeChecked();
@@ -510,6 +519,7 @@ test("comparison cannot retain the same source and destination", async ({
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
   const { backups } = await (await page.request.get("/api/status")).json();
+  await page.getByRole("button", { name: "Stände vergleichen" }).click();
   await page.getByLabel("Vergleich von").selectOption(backups[0].id);
   await page.getByLabel("Vergleich bis").selectOption(backups[1].id);
   await page.getByLabel("Vergleich von").selectOption(backups[1].id);
@@ -682,6 +692,9 @@ test("a running plan request cannot be dismissed or submitted twice", async ({
   await page
     .getByLabel("Sicherung", { exact: true })
     .selectOption(status.backups[0].id);
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/sysctl.d/99-anker.conf");
   await page
     .getByRole("checkbox", { name: "etc/sysctl.d/99-anker.conf", exact: true })
     .check();
@@ -1174,6 +1187,9 @@ test("file restore plans and executes only after exact confirmation", async ({
       a.created_at.localeCompare(b.created_at),
     )[0];
   await page.getByLabel("Sicherung", { exact: true }).selectOption(b.id);
+  await page
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("etc/sysctl.d/99-anker.conf");
   await page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }).check();
   await page
     .getByRole("button", { name: "Weiter zum Ziel", exact: true })
@@ -1191,7 +1207,7 @@ test("file restore plans and executes only after exact confirmation", async ({
     .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
+    page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "In Demo anwenden" }),
@@ -1216,9 +1232,11 @@ test("file restore plans and executes only after exact confirmation", async ({
   ).toBeDisabled();
   await page.getByLabel("Plan-ID zur Ausführung eingeben").fill(plan.id);
   await page.getByRole("button", { name: "In Demo anwenden" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Demo angewendet");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Demo angewendet");
   await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
     .click();
   await page
     .getByRole("navigation")
@@ -1254,6 +1272,7 @@ test("backup queue and changed-file comparison use the service", async ({
     .sort((a: { created_at: string }, b: { created_at: string }) =>
       a.created_at.localeCompare(b.created_at),
     );
+  await page.getByRole("button", { name: "Stände vergleichen" }).click();
   await page.getByLabel("Vergleich von").selectOption(backups[0].id);
   await page.getByLabel("Vergleich bis").selectOption(backups[1].id);
   await page.getByRole("button", { name: "Vergleichen", exact: true }).click();

@@ -383,6 +383,14 @@ export const date = (v?: string) =>
         timeZone: displayTimezone,
       }).format(new Date(v))
     : "—";
+export const preciseDate = (v?: string) =>
+  v
+    ? new Intl.DateTimeFormat("de-DE", {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: displayTimezone,
+      }).format(new Date(v))
+    : "—";
 export function bytes(v: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;

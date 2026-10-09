@@ -176,7 +176,7 @@ test("ordinary files avoid irrelevant mappings", async ({ page }) => {
   expect(body.decisions).toEqual({ "etc/sysctl.d/99-anker.conf": "backup" });
   expect(body.snapshot_id).toBeTruthy();
   await expect(
-    page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
+    page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
 });
 
@@ -244,7 +244,7 @@ test("all four situations save explicit decisions through real demo endpoints", 
       plan.steps.every((s: { action: string }) => s.action !== "apply"),
     ).toBe(true);
     await expect(
-      page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
+      page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
     ).toBeVisible();
   }
 });
@@ -408,7 +408,7 @@ test("starting another plan returns to source selection with its draft", async (
     .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Plan erstellen", exact: true })
@@ -444,22 +444,22 @@ test("saved plan comparison and checks remain readable with keyboard at desktop 
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
-  const dialog = page.getByRole("dialog", {
+  const planPage = page.getByRole("region", {
     name: "Wiederherstellungsplan",
     exact: true,
   });
-  await expect(dialog).toBeVisible();
+  await expect(planPage).toBeVisible();
   await page
     .getByRole("button", { name: "Meldung schließen", exact: true })
     .click();
-  const compare = dialog.getByRole("button", {
+  const compare = planPage.getByRole("button", {
     name: "Vergleich öffnen: etc/sysctl.d/99-anker.conf",
     exact: true,
   });
   await compare.focus();
   await page.keyboard.press("Enter");
   await expect(
-    dialog.getByText("Inhalt und Metadaten stimmen überein", { exact: true }),
+    planPage.getByText("Inhalt und Metadaten stimmen überein", { exact: true }),
   ).toBeVisible();
   await expect(page).toHaveTitle("Wiederherstellung · Anker");
   expect(new URL(page.url()).origin).toBe("http://127.0.0.1:8088");
@@ -470,18 +470,18 @@ test("saved plan comparison and checks remain readable with keyboard at desktop 
     ["mobile", 390, 844],
   ] as const) {
     await page.setViewportSize({ width, height });
-    await dialog
+    await planPage
       .getByLabel("Vergleichsbasis", { exact: true })
       .scrollIntoViewIfNeeded();
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
-    const box = await dialog.boundingBox();
+    const box = await planPage.boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width);
     await page.screenshot({
       path: `/tmp/anker-task9-${name}-comparison.png`,
       fullPage: false,
     });
-    await dialog
+    await planPage
       .getByLabel("Nachweis für Dienste prüfen", { exact: true })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -489,17 +489,17 @@ test("saved plan comparison and checks remain readable with keyboard at desktop 
       fullPage: false,
     });
   }
-  await dialog
-    .getByRole("button", { name: "Dialog schließen", exact: true })
+  await planPage
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
     .focus();
   await page.keyboard.press("Tab");
-  await expect(dialog.locator("summary").first()).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(
-    dialog.getByLabel("Plandateien durchsuchen", { exact: true }),
+    planPage.getByRole("link", { name: "Nachweise", exact: true }),
   ).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
+  await planPage
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
+    .click();
+  await expect(planPage).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -578,9 +578,9 @@ test("real demo task confirmations remain user attestations including reboot", a
     saved.tasks.every((t: { state: string }) => t.state === "user_confirmed"),
   ).toBe(true);
   expect(saved.state).toBe("manual");
-  await expect(page.getByRole("dialog")).toContainText(
-    "Neustart maschinell nicht nachgewiesen",
-  );
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Neustart maschinell nicht nachgewiesen");
   await expect(
     page.getByText(/Herkunft: Benutzerbestätigung, kein maschineller Nachweis/),
   ).toHaveCount(3);

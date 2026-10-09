@@ -278,7 +278,7 @@ test("freshly inspected target ports are mapped before the first plan without lo
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
   await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "Wiederherstellungsplan", exact: true }),
+    page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
   expect(payload.mapping.interfaces).toEqual({ eno1: "enp7s0" });
   expect(payload.files).toEqual(["etc/network/interfaces"]);

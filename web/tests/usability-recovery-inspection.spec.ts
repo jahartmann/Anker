@@ -8,6 +8,17 @@ test.beforeAll(async ({ request }) => {
 test.beforeEach(async ({ page }) => {
   await page.context().addCookies(cookies);
 });
+async function closePlan(page: Page) {
+  await page
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
+    .click();
+  if (
+    await page
+      .getByText("Eingaben auf dieser Planseite sind noch offen.")
+      .isVisible()
+  )
+    await page.getByRole("button", { name: "Eingaben verwerfen" }).click();
+}
 async function setup(page: Page) {
   const base = await (await page.request.get("/api/status")).json();
   await page.goto("/");
@@ -283,7 +294,9 @@ test("uncertain host state is reconciled without reapply and rollback requires a
   await page
     .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("Dateien übernommen");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Dateien übernommen");
   await page
     .getByRole("button", { name: "Dateien zurücksetzen", exact: true })
     .click();
@@ -786,10 +799,12 @@ test("plan compares actual target against prepared content", async ({
 
 test("keep files and preserved system parts are explicit", async ({ page }) => {
   await savedPlan(page);
-  await expect(page.getByRole("dialog")).toContainText(
-    "Ziel behalten · kein Schreiben",
-  );
-  await expect(page.getByRole("dialog")).toContainText("Erhaltene Systemteile");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Ziel behalten · kein Schreiben");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Erhaltene Systemteile");
   await page.getByText("Erhaltene Systemteile · 1", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Erhaltene Systemteile" }),
@@ -797,7 +812,9 @@ test("keep files and preserved system parts are explicit", async ({ page }) => {
   await page
     .getByText("Anpassungen an etc/sysctl.conf · 1", { exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("hostname: old → new");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("hostname: old → new");
 });
 
 test("checks never imply verified reboot", async ({ page }) => {
@@ -867,17 +884,19 @@ test("checks never imply verified reboot", async ({ page }) => {
     })
     .click();
   expect(confirmed).toBe(true);
-  await expect(page.getByRole("dialog")).toContainText(
-    "Vom Benutzer bestätigt · authenticated-user",
-  );
-  await expect(page.getByRole("dialog")).toContainText(
-    "Neustart maschinell nicht nachgewiesen",
-  );
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Vom Benutzer bestätigt · authenticated-user");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Neustart maschinell nicht nachgewiesen");
 });
 
 test("legacy plan requires new preparation", async ({ page }) => {
   await savedPlan(page, { schema_version: 1, target_snapshot_id: undefined });
-  await expect(page.getByRole("dialog")).toContainText(
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText(
     "Für eine neue Freigabe ist eine neue Vorbereitung erforderlich",
   );
   await expect(
@@ -906,9 +925,7 @@ test("lost apply reply remains uncertain after reopen", async ({ page }) => {
     .getByRole("button", { name: "Dateien übernehmen", exact: true })
     .click();
   await expect(page.getByRole("alert")).toContainText("nicht erreichbar");
-  await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
-    .click();
+  await closePlan(page);
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
@@ -931,7 +948,9 @@ test("journal uncertainty overrides a ready server plan after reopen", async ({
       reboot_verified: false,
     },
   });
-  await expect(page.getByRole("dialog")).toContainText("Hostzustand ungeklärt");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Hostzustand ungeklärt");
   await page
     .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
     .fill("review-plan");
@@ -1175,15 +1194,15 @@ test("a completed accepted job refreshes server evidence across reopen without r
   await expect(
     page.getByRole("status").filter({ hasText: "Auftrag läuft" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
-    .click();
+  await closePlan(page);
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
   ).toBeDisabled();
   phase = "done";
-  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend", {
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Prüfung ausstehend", {
     timeout: 10000,
   });
   await expect(
@@ -1238,9 +1257,9 @@ test("check API failures retain an open task and its evidence without claiming c
     "Prüfung nicht gespeichert",
   );
   await expect(page.getByText(/Vom Benutzer bestätigt ·/)).toHaveCount(0);
-  await expect(page.getByRole("dialog")).toContainText(
-    "Neustart maschinell nicht nachgewiesen",
-  );
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Neustart maschinell nicht nachgewiesen");
 });
 
 test("an active plan mutation protects navigation logout and dialog close", async ({
@@ -1259,7 +1278,9 @@ test("an active plan mutation protects navigation logout and dialog close", asyn
   await page
     .getByRole("button", { name: "Dateien übernehmen", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toHaveAttribute("aria-busy", "true");
   const hosts = page
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Hosts", exact: true });
@@ -1275,10 +1296,12 @@ test("an active plan mutation protects navigation logout and dialog close", asyn
     page.getByRole("button", { name: "Abmelden", exact: true }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Dialog schließen", exact: true }),
+    page.getByRole("button", { name: "Zurück zu Plänen", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toBeVisible();
   release();
   await expect(
     page.getByRole("alert").filter({ hasText: "Antwort ungeklärt" }),
@@ -1316,15 +1339,15 @@ test("a lost reply with ready server and refused reconcile gives console guidanc
   await page
     .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText(
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText(
     "Über die Zielkonsole das Hostjournal zur Recovery-ID review-plan und laufende Anker-Aufträge prüfen",
   );
   await expect(
     page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
   ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
-    .click();
+  await closePlan(page);
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
@@ -1375,7 +1398,9 @@ test("failed authoritative detail refresh keeps apply blocked and retries identi
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
   ).toBeDisabled();
   await expect.poll(() => detailReads, { timeout: 10000 }).toBe(2);
-  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Prüfung ausstehend");
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
   ).toHaveCount(0);
@@ -1418,7 +1443,9 @@ test("a current authoritative detail reply delayed across equivalent jobs polls 
   await expect.poll(() => detailReads, { timeout: 10000 }).toBe(1);
   await expect.poll(() => polls, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
   release();
-  await expect(page.getByRole("dialog")).toContainText("Prüfung ausstehend");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Prüfung ausstehend");
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
   ).toHaveCount(0);
@@ -1522,9 +1549,9 @@ test("authenticated interrupted journal allows separately confirmed rollback aft
   await expect(
     page.getByRole("button", { name: "Dateien zurücksetzen", exact: true }),
   ).toBeEnabled();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Hostjournal abgeglichen: Ausführung unterbrochen",
-  );
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toContainText("Hostjournal abgeglichen: Ausführung unterbrochen");
   for (const width of [1440, 1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page
@@ -1534,9 +1561,7 @@ test("authenticated interrupted journal allows separately confirmed rollback aft
       path: `/tmp/anker-final-fix-evidence/interrupted-${width}.png`,
     });
   }
-  await page
-    .getByRole("button", { name: "Dialog schließen", exact: true })
-    .click();
+  await closePlan(page);
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dateien zurücksetzen", exact: true }),
@@ -1661,9 +1686,7 @@ for (const failure of [
       .getByRole("button", { name: "Hostzustand abgleichen", exact: true })
       .click();
     await expect(rollback).toBeDisabled();
-    await page
-      .getByRole("button", { name: "Dialog schließen", exact: true })
-      .click();
+    await closePlan(page);
     await page
       .getByRole("button", { name: "Plan ansehen", exact: true })
       .click();

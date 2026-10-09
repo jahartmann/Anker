@@ -18,6 +18,7 @@ export default function Restore({
   refresh,
   onConnectTarget,
   onBusyChange,
+  onDirtyChange,
 }: {
   status: Status;
   initialBackup: string;
@@ -28,6 +29,7 @@ export default function Restore({
   refresh: () => void;
   onConnectTarget: () => void;
   onBusyChange: (busy: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [wizard, setWizard] = useState(!!initialBackup);
   const draft = useRecoveryDraft(initialBackup, initialFile);
@@ -135,7 +137,7 @@ export default function Restore({
   );
   return (
     <>
-      {!wizard && (
+      {!wizard && !plan && (
         <>
           {formError && (
             <p className="notice warning" role="alert">
@@ -311,6 +313,7 @@ export default function Restore({
           setPlan={setPlan}
           onClose={() => setPlan(null)}
           onBusyChange={onBusyChange}
+          onDirtyChange={onDirtyChange}
           operation={
             operations[plan.id] || { pendingJob: "", uncertain: false }
           }

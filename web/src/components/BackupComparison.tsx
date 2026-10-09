@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, date } from "../api";
+import { api, preciseDate } from "../api";
 import type { Backup, FileComparison, FileDiff, User } from "../api";
 import { Download, Empty, LoadError, Pagination } from "./shared";
 import type { Notify } from "./shared";
@@ -9,6 +9,7 @@ export interface ComparisonSelection {
   side: "from" | "to";
   id: string;
   sequence: number;
+  pairedId?: string;
 }
 const changeLabel = {
   added: "Hinzugefügt",
@@ -16,7 +17,7 @@ const changeLabel = {
   changed: "Geändert",
 };
 function stand(b: Backup) {
-  return `${b.host_name} · ${date(b.created_at)} · ${b.id}`;
+  return `${b.host_name} · ${preciseDate(b.created_at)} · ${b.id.slice(0, 10)}`;
 }
 export default function BackupComparison({
   backups,
@@ -72,7 +73,13 @@ export default function BackupComparison({
     }
   }
   useEffect(() => {
-    if (selection) select(selection.side, selection.id);
+    if (!selection) return;
+    if (selection.pairedId && selection.side === "to") {
+      invalidate();
+      setFrom(selection.pairedId);
+      setTo(selection.id);
+      void compare(selection.pairedId, selection.id);
+    } else select(selection.side, selection.id);
   }, [selection]);
   useEffect(
     () => () => {
@@ -173,8 +180,8 @@ export default function BackupComparison({
     >
       <h3>Stände vergleichen</h3>
       <p className="muted">
-        Zwei Stände bewusst wählen. Die Richtung zeigt Änderungen vom
-        Ausgangsstand zum Vergleichsstand.
+        Richtung: Ausgangsstand → Vergleichsstand. Die Auswahl einer
+        Wiederherstellungsquelle erfolgt getrennt.
       </p>
       <div className="comparison-selectors">
         <label>
@@ -239,19 +246,41 @@ export default function BackupComparison({
             <div>
               <small>Ausgangsstand · Vorher</small>
               <strong>{before.host_name}</strong>
-              <span>{date(before.created_at)}</span>
-              <code>{before.id}</code>
+              <span>
+                {preciseDate(before.created_at)} ·{" "}
+                <code>{before.id.slice(0, 10)}</code>
+              </span>
+              <details>
+                <summary>Vollständige ID</summary>
+                <code>{before.id}</code>
+              </details>
             </div>
             <span aria-hidden="true">→</span>
             <div>
               <small>Vergleichsstand · Nachher</small>
               <strong>{after.host_name}</strong>
-              <span>{date(after.created_at)}</span>
-              <code>{after.id}</code>
+              <span>
+                {preciseDate(after.created_at)} ·{" "}
+                <code>{after.id.slice(0, 10)}</code>
+              </span>
+              <details>
+                <summary>Vollständige ID</summary>
+                <code>{after.id}</code>
+              </details>
             </div>
           </div>
           {before.host_id !== after.host_id && (
             <p className="warning">Hostübergreifender Vergleich</p>
+          )}
+          {user.role !== "reader" && (
+            <div className="comparison-actions comparison-restore-actions">
+              <button className="secondary" onClick={() => onRestore(from)}>
+                Ausgangsstand zur Wiederherstellung wählen
+              </button>
+              <button className="secondary" onClick={() => onRestore(to)}>
+                Vergleichsstand zur Wiederherstellung wählen
+              </button>
+            </div>
           )}
         </>
       )}
@@ -398,14 +427,6 @@ export default function BackupComparison({
                           >
                             Original nachher
                           </Download>
-                        )}
-                        {user.role !== "reader" && (
-                          <button
-                            className="secondary"
-                            onClick={() => onRestore(to)}
-                          >
-                            Vergleichsstand zur Wiederherstellung wählen
-                          </button>
                         )}
                       </div>
                     )}

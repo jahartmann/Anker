@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { date } from "../../api";
 import type { Plan, RecoveryTask } from "../../api";
 import { Field, Pagination } from "../shared";
@@ -29,12 +29,18 @@ export default function RecoveryChecks({
   plan,
   onConfirm,
   disabled = false,
+  onDirtyChange,
 }: {
   plan: Plan;
-  onConfirm?: (task: RecoveryTask, evidence: string) => void;
+  onConfirm?: (task: RecoveryTask, evidence: string) => Promise<boolean>;
   disabled?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [evidence, setEvidence] = useState<Record<string, string>>({});
+  useEffect(() => {
+    onDirtyChange?.(Object.values(evidence).some((value) => !!value.trim()));
+  }, [evidence, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const tasks = useMemo(() => orderedTasks(plan.tasks || []), [plan.tasks]);
@@ -154,7 +160,12 @@ export default function RecoveryChecks({
                           !value.trim() ||
                           new TextEncoder().encode(value).length > 4096
                         }
-                        onClick={() => onConfirm(task, value)}
+                        onClick={() => {
+                          void onConfirm(task, value).then((saved) => {
+                            if (saved)
+                              setEvidence((old) => ({ ...old, [task.id]: "" }));
+                          });
+                        }}
                       >
                         Schritt bestätigen: {task.title}
                       </button>

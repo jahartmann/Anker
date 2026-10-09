@@ -8,7 +8,7 @@ import type {
   Status,
   User,
 } from "../../api";
-import { Dialog, Download, Field, Pagination, State } from "../shared";
+import { Download, Field, Pagination, State } from "../shared";
 import type { Notify } from "../shared";
 import FileComparisonView from "../FileComparison";
 import RecoveryEvidence from "./RecoveryEvidence";
@@ -32,6 +32,7 @@ export default function RecoveryPlan({
   onBusyChange,
   operation,
   onOperationChange,
+  onDirtyChange,
 }: {
   plan: Plan;
   status: Status;
@@ -44,6 +45,7 @@ export default function RecoveryPlan({
   onBusyChange: (busy: boolean) => void;
   operation: RecoveryOperation;
   onOperationChange: (operation: RecoveryOperation) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { pendingJob } = operation;
   const latestSignature = JSON.stringify(
@@ -97,6 +99,13 @@ export default function RecoveryPlan({
   const [confirmation, setConfirmation] = useState("");
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checksDirty, setChecksDirty] = useState(false);
+  const [leavePrompt, setLeavePrompt] = useState(false);
+  const dirty = !!confirmation || !!rollbackConfirmation || checksDirty;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const activeRequest = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -107,16 +116,24 @@ export default function RecoveryPlan({
   }, []);
   useEffect(() => {
     onBusyChange(busy);
-    if (!busy) return;
+    return () => onBusyChange(false);
+  }, [busy, onBusyChange]);
+  useEffect(() => {
+    if (!busy && !dirty) return;
     const protect = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", protect);
-    return () => {
-      window.removeEventListener("beforeunload", protect);
-      onBusyChange(false);
-    };
-  }, [busy, onBusyChange]);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, [busy, dirty]);
+  function back() {
+    if (activeRequest.current || busy) return;
+    if (dirty) {
+      setLeavePrompt(true);
+      return;
+    }
+    onClose();
+  }
   const refreshGeneration = useRef(0);
   const refreshKey =
     latestSignature + (finishedJob ? `|finished:${pendingJob}` : "");
@@ -276,7 +293,8 @@ export default function RecoveryPlan({
     }
   }
   async function confirmTask(task: RecoveryTask, evidence: string) {
-    if (activeRequest.current || uncertain || pendingJob || targetBusy) return;
+    if (activeRequest.current || uncertain || pendingJob || targetBusy)
+      return false;
     refreshGeneration.current++;
     activeRequest.current = true;
     onBusyChange(true);
@@ -292,11 +310,13 @@ export default function RecoveryPlan({
         setPlan(updated);
         refresh();
       }
+      return true;
     } catch (e) {
       if (mounted.current) {
         setFormError((e as Error).message);
         refresh();
       }
+      return false;
     } finally {
       activeRequest.current = false;
       if (mounted.current) {
@@ -306,14 +326,40 @@ export default function RecoveryPlan({
     }
   }
   return (
-    <Dialog
-      title="Wiederherstellungsplan"
-      wide
-      busy={busy}
-      onClose={() => {
-        if (!activeRequest.current) onClose();
-      }}
+    <section
+      className="recovery-workspace recovery-plan-page"
+      aria-label="Wiederherstellungsplan"
+      aria-busy={busy}
     >
+      <button className="back-button" onClick={back} disabled={busy}>
+        <span aria-hidden="true">←</span> Zurück zu Plänen
+      </button>
+      <header className="page-heading">
+        <div>
+          <h1>Wiederherstellungsplan</h1>
+          <p>
+            Gespeicherter Plan · <code>{plan.id}</code>
+          </p>
+        </div>
+      </header>
+      {leavePrompt && (
+        <div className="notice warning" role="alert">
+          <p>Eingaben auf dieser Planseite sind noch offen.</p>
+          <div className="comparison-actions">
+            <button className="secondary" onClick={() => setLeavePrompt(false)}>
+              Weiter bearbeiten
+            </button>
+            <button
+              onClick={() => {
+                onDirtyChange?.(false);
+                onClose();
+              }}
+            >
+              Eingaben verwerfen
+            </button>
+          </div>
+        </div>
+      )}
       <div className="plan-meta">
         <strong>
           {plan.source.hostname} → {plan.target.hostname}
@@ -330,6 +376,20 @@ export default function RecoveryPlan({
         {labels[plan.scenario]} · Quelle {plan.source.pve_version} · Ziel{" "}
         {plan.target.pve_version}
       </p>
+      <div className="plan-next-task">
+        <strong>Nächste Aufgabe</strong>
+        <p>
+          {plan.tasks?.find((task) => task.state !== "user_confirmed")?.title ||
+            (plan.state === "ready"
+              ? "Dateiübernahme prüfen und gesondert bestätigen"
+              : "Planstatus und Hostnachweise prüfen")}
+        </p>
+      </div>
+      <nav className="plan-section-nav" aria-label="Planabschnitte">
+        <a href="#plan-evidence">Nachweise</a>
+        <a href="#plan-files">Dateien</a>
+        <a href="#plan-tasks">Aufgaben</a>
+      </nav>
       {plan.blockers?.map((s, i) => (
         <p className="notice warning" key={i}>
           {s}
@@ -353,20 +413,21 @@ export default function RecoveryPlan({
         Vergleiche verwenden die gespeicherte Zielaufnahme. Vor der Übernahme
         prüft Anker erneut auf Änderungen am Ziel.
       </p>
-      {!!plan.preserved?.length && (
-        <RecoveryEvidence
-          title="Erhaltene Systemteile"
-          items={plan.preserved.map((p) => `${p.path} · ${p.reason}`)}
-        />
-      )}
-      {!!plan.manual?.length && (
-        <RecoveryEvidence
-          title="Manuelle Schritte"
-          items={plan.manual}
-          ordered
-        />
-      )}
-      <PlanFiles key={plan.id} plan={plan} user={user} />
+      <section id="plan-evidence" aria-label="Plannachweise">
+        <h3>Nachweise und Hinweise</h3>
+        {!!plan.preserved?.length && (
+          <RecoveryEvidence
+            title="Erhaltene Systemteile"
+            items={plan.preserved.map((p) => `${p.path} · ${p.reason}`)}
+          />
+        )}
+        {!!plan.manual?.length && (
+          <RecoveryEvidence
+            title="Manuelle Schritte"
+            items={plan.manual}
+            ordered
+          />
+        )}
       {targetBusy && (
         <p className="notice" role="status">
           Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
@@ -417,11 +478,18 @@ export default function RecoveryPlan({
           )}
         </div>
       )}
-      <RecoveryChecks
-        plan={plan}
-        onConfirm={user.role !== "reader" ? confirmTask : undefined}
-        disabled={busy || !!pendingJob || uncertain || targetBusy}
-      />
+      </section>
+      <div id="plan-files">
+        <PlanFiles key={plan.id} plan={plan} user={user} />
+      </div>
+      <div id="plan-tasks">
+        <RecoveryChecks
+          plan={plan}
+          onConfirm={user.role !== "reader" ? confirmTask : undefined}
+          disabled={busy || !!pendingJob || uncertain || targetBusy}
+          onDirtyChange={setChecksDirty}
+        />
+      </div>
       {(uncertain ||
         ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
           plan.state,
@@ -579,7 +647,7 @@ export default function RecoveryPlan({
           </button>
         )}
       </footer>
-    </Dialog>
+    </section>
   );
 }
 

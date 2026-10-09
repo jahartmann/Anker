@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { api, bytes, date } from "../api";
+import { api, bytes, date, preciseDate } from "../api";
 import type { Backup, Entry, Status, User } from "../api";
 import {
   ActionMenu,
@@ -24,6 +24,7 @@ import type { Notify } from "../components/shared";
 import ActiveJobs from "../components/ActiveJobs";
 import BackupComparison from "../components/BackupComparison";
 import type { ComparisonSelection } from "../components/BackupComparison";
+import BackupReadiness from "../components/BackupReadiness";
 export function BackupTable({
   backups,
   notify,
@@ -34,6 +35,8 @@ export function BackupTable({
   onRestore,
   filterKey = "",
   onCompare,
+  onComparePrevious,
+  comparisonPool,
 }: {
   backups: Backup[];
   notify: Notify;
@@ -44,6 +47,8 @@ export function BackupTable({
   onRestore: (id: string) => void;
   filterKey?: string;
   onCompare?: (side: "from" | "to", id: string) => void;
+  onComparePrevious?: (id: string, previous: string) => void;
+  comparisonPool?: Backup[];
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -51,6 +56,18 @@ export function BackupTable({
   const sorted = [...backups].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
   );
+  const previous = (backup: Backup) => {
+    const selectedAt = Date.parse(backup.created_at);
+    if (!Number.isFinite(selectedAt)) return undefined;
+    return [...(comparisonPool || sorted)]
+      .filter(
+        (candidate) =>
+          candidate.host_id === backup.host_id &&
+          Number.isFinite(Date.parse(candidate.created_at)) &&
+          Date.parse(candidate.created_at) < selectedAt,
+      )
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  };
   const currentPage = Math.min(
     page,
     Math.max(1, Math.ceil(sorted.length / pageSize)),
@@ -87,7 +104,7 @@ export function BackupTable({
   return backups.length ? (
     <div>
       <div className="table-scroll">
-        <table className="backup-table">
+        <table className="backup-table" aria-label="Sicherungen">
           <thead>
             <tr>
               <th>Host / Zeitpunkt</th>
@@ -104,7 +121,8 @@ export function BackupTable({
                   <td>
                     <strong>{b.host_name}</strong>
                     <div className="secondary-line">
-                      {date(b.created_at)}
+                      {preciseDate(b.created_at)} ·{" "}
+                      <code>{b.id.slice(0, 10)}</code>
                       {b.pinned ? " · Geschützt" : ""}
                       {b.archived ? " · Archiv" : ""}
                     </div>
@@ -143,6 +161,21 @@ export function BackupTable({
                       >
                         Dateien
                       </button>
+                      {onComparePrevious && previous(b) && (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            onComparePrevious(b.id, previous(b)!.id)
+                          }
+                        >
+                          Mit vorherigem Stand vergleichen
+                        </button>
+                      )}
+                      {onComparePrevious && !previous(b) && (
+                        <span className="secondary-line">
+                          Kein älterer Stand dieses Hosts
+                        </span>
+                      )}
                       {onCompare && !canEdit && (
                         <ActionMenu
                           label={
@@ -266,6 +299,7 @@ export default function Backups({
   const [protection, setProtection] = useState("");
   const [comparisonSelection, setComparisonSelection] =
     useState<ComparisonSelection>();
+  const [comparing, setComparing] = useState(false);
   const hostBackups = status.backups
     .filter((b) => !host || b.host_id === host)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -286,11 +320,35 @@ export default function Backups({
   for (const b of status.backups)
     if (!knownHosts.has(b.host_id))
       knownHosts.set(b.host_id, b.host_name + " · entfernt");
-  return (
+  return comparing ? (
+    <div className="comparison-workspace">
+      <button className="back-button" onClick={() => setComparing(false)}>
+        <span aria-hidden="true">←</span> Zurück zu Sicherungen
+      </button>
+      <Heading
+        title="Sicherungsvergleich"
+        description="Änderungen zwischen ausdrücklich gewählten Quellen prüfen."
+      />
+      <BackupComparison
+        backups={[...status.backups].sort((a, b) =>
+          b.created_at.localeCompare(a.created_at),
+        )}
+        user={user}
+        notify={props.notify}
+        onRestore={props.onRestore}
+        selection={comparisonSelection}
+      />
+    </div>
+  ) : (
     <>
       <Heading
         title="Sicherungen"
         description="Lesbare Konfigurationen. Jeder Stand mit Inventar und Prüfsummen."
+        action={
+          <button className="secondary" onClick={() => setComparing(true)}>
+            Stände vergleichen
+          </button>
+        }
       />
       <div className="toolbar backup-filters">
         <div className="search-field">
@@ -354,27 +412,29 @@ export default function Backups({
         </Empty>
       ) : (
         <BackupTable
-          onCompare={(side, id) =>
+          onComparePrevious={(id, previous) => {
+            setComparisonSelection((current) => ({
+              side: "to",
+              id,
+              pairedId: previous,
+              sequence: (current?.sequence || 0) + 1,
+            }));
+            setComparing(true);
+          }}
+          onCompare={(side, id) => {
             setComparisonSelection((current) => ({
               side,
               id,
               sequence: (current?.sequence || 0) + 1,
-            }))
-          }
+            }));
+            setComparing(true);
+          }}
           filterKey={[host, query, state, protection].join("|")}
+          comparisonPool={status.backups}
           backups={backups}
           {...props}
         />
       )}
-      <BackupComparison
-        backups={[...status.backups].sort((a, b) =>
-          b.created_at.localeCompare(a.created_at),
-        )}
-        user={user}
-        notify={props.notify}
-        onRestore={props.onRestore}
-        selection={comparisonSelection}
-      />
     </>
   );
 }
@@ -702,6 +762,10 @@ export function FileBrowser({
           </button>
         )}
       </footer>
+      <details className="backup-notes backup-readiness-disclosure">
+        <summary>Quellnachweise und Abdeckung ansehen</summary>
+        <BackupReadiness backup={backup} />
+      </details>
     </Dialog>
   );
 }
