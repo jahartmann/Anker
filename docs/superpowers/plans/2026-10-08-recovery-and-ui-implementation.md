@@ -251,6 +251,4 @@ Fertig ist die lokale Umsetzung, wenn:
 
 ## Ausführungsentscheidung
 
-Planstatus: vom Benutzer freigegeben; Umsetzung mit Subagenten am 8. Oktober 2026 begonnen.
-
-Empfehlung: direkte Umsetzung hier im Chat (`superpowers:executing-plans`) Aufgabe für Aufgabe mit frischer unabhängiger Abschlussprüfung. Die Aufgaben hängen stark von denselben Snapshot-, Plan- und Vergleichsschnittstellen ab; eine durchgehende Implementierung vermeidet konkurrierende Modelländerungen. Alternativ kann der Benutzer delegierte Umsetzung mit einzelnen Implementierungs- und Reviewagenten pro Aufgabe wählen (`superpowers:subagent-driven-development`). Vor der Umsetzung muss der Benutzer den Plan prüfen und eine Methode wählen.
+Planstatus: vom Benutzer freigegeben; die gewählte delegierte Umsetzung begann am 8. Oktober 2026 und wurde Aufgabe für Aufgabe integriert. Die frühere Methodenempfehlung ist damit erledigt. Frische unabhängige Task- und Gesamtprüfung folgen der Abschlussintegration; lokale Nachweise und verbleibende reale Abnahme stehen in `docs/IMPLEMENTATION_STATUS.md`, `docs/RECOVERY_REVIEW.md` und `docs/SUPPORT.md`. Umfang und Sicherheitsgrenzen des freigegebenen Plans gelten weiter.

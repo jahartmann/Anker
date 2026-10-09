@@ -4,6 +4,8 @@ Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Die Sic
 
 VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker sichert Hostkonfigurationen, keine kompletten Festplattenimages. Für den zentralen Dienst einen eigenen Linux-Server, eine VM oder einen LXC-Container mit systemd verwenden.
 
+Wiederherstellung führt durch fünf Schritte: Quelle/Situation, Zielvergleich, Dateientscheidungen, Planprüfung sowie Übernahme und Betriebsprüfung. Vorbereitete Änderungen nennen ihre Wirkung; Ziel behalten und manuelle Aufgaben bleiben ausdrücklich sichtbar. Gewöhnliche Einzeldateien verwenden das Hostjournal. Netzwerk, Boot, Storageverwaltung und vollständige Host-/Cluster-Recovery bleiben manuell. [Ablauf und Grenzen](docs/RECOVERY.md) · [Unterstützungsstand](docs/SUPPORT.md).
+
 ## Installation
 
 Auf Debian 13 mit systemd, als root:

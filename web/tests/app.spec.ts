@@ -593,11 +593,15 @@ test("settings load failure offers retry and changes have a visible saved state"
   await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
   await page.getByLabel("Tagesstände").fill("37");
   await expect(
-    page.getByText("Ungespeicherte Änderungen", { exact: true }),
+    page
+      .locator(".form-footer")
+      .getByText("Ungespeicherte Änderungen", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Einstellungen speichern" }).click();
   await expect(
-    page.getByText("Alle Änderungen gespeichert", { exact: true }),
+    page
+      .locator(".form-footer")
+      .getByText("Alle Änderungen gespeichert", { exact: true }),
   ).toBeVisible();
 });
 
@@ -1164,7 +1168,11 @@ test("file restore plans and executes only after exact confirmation", async ({
     .click();
   const status = await (await page.request.get("/api/status")).json();
   // Use the older differing stand: an identical latest stand must stay no-write.
-  const b = status.backups.filter((b: { host_name: string }) => b.host_name === "pve-berlin-01").sort((a: {created_at:string}, b: {created_at:string}) => a.created_at.localeCompare(b.created_at))[0];
+  const b = status.backups
+    .filter((b: { host_name: string }) => b.host_name === "pve-berlin-01")
+    .sort((a: { created_at: string }, b: { created_at: string }) =>
+      a.created_at.localeCompare(b.created_at),
+    )[0];
   await page.getByLabel("Sicherung", { exact: true }).selectOption(b.id);
   await page.getByLabel("etc/sysctl.d/99-anker.conf", { exact: true }).check();
   await page
@@ -1203,7 +1211,9 @@ test("file restore plans and executes only after exact confirmation", async ({
     (p: { backup_id: string }) => p.backup_id === b.id,
   );
   await page.getByLabel("Plan-ID zur Ausführung eingeben").fill("wrong-plan");
-  await expect(page.getByRole("button", { name: "In Demo anwenden" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "In Demo anwenden" }),
+  ).toBeDisabled();
   await page.getByLabel("Plan-ID zur Ausführung eingeben").fill(plan.id);
   await page.getByRole("button", { name: "In Demo anwenden" }).click();
   await expect(page.getByRole("dialog")).toContainText("Demo angewendet");
@@ -2026,12 +2036,17 @@ test("password settings and eight-character account changes use the saved policy
       .getByRole("button", { name: "Einstellungen speichern", exact: true })
       .click();
     await expect(
-      page.getByText("Alle Änderungen gespeichert", { exact: true }),
+      page
+        .locator(".form-footer")
+        .getByText("Alle Änderungen gespeichert", { exact: true }),
     ).toBeVisible();
     expect(
       await (await page.request.get("/api/settings")).json(),
     ).toMatchObject({ password_min_length: 12 });
     await page.getByRole("button", { name: "Aktionen für " + name }).click();
+    await expect(
+      page.getByRole("button", { name: "Passwort ändern", exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Passwort ändern", exact: true })
       .click();
@@ -2051,9 +2066,14 @@ test("password settings and eight-character account changes use the saved policy
       .getByRole("button", { name: "Einstellungen speichern", exact: true })
       .click();
     await expect(
-      page.getByText("Alle Änderungen gespeichert", { exact: true }),
+      page
+        .locator(".form-footer")
+        .getByText("Alle Änderungen gespeichert", { exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Aktionen für " + name }).click();
+    await expect(
+      page.getByRole("button", { name: "Passwort ändern", exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Passwort ändern", exact: true })
       .click();

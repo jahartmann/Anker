@@ -33,6 +33,30 @@ func redactRecovery[T any](value T) T {
 func scrubRecoveryValue(v any, key string) any {
 	switch x := v.(type) {
 	case map[string]any:
+		delete(x, "query_states") // Never trust a caller-supplied projection.
+		// Rebuild public provenance only from the internal allowlisted query evidence.
+		// Never forward remote diagnostics, command output or arbitrary keys.
+		if details, ok := x["details"].(map[string]any); ok {
+			delete(x, "query_states")
+			if results, ok := details["command_results"].(map[string]any); ok {
+				states := map[string]any{}
+				for _, name := range []string{"pve_version", "interfaces", "disks", "addresses", "routes", "packages", "manual_packages", "storage", "zfs", "lvm", "guests", "containers", "cluster", "ceph", "pci", "boot", "boot_id", "file_inventory", "users", "groups"} {
+					if result, exists := results[name]; exists {
+						state := "unknown"
+						if r, ok := result.(map[string]any); ok {
+							switch r["state"] {
+							case "ok", "failed", "not_applicable":
+								state = r["state"].(string)
+							}
+						}
+						states[name] = map[string]any{"state": state}
+					}
+				}
+				if len(states) > 0 {
+					x["query_states"] = states
+				}
+			}
+		}
 		// Effects can contain a secret value without a credential assignment prefix.
 		if field, ok := x["field"].(string); ok && publicSecretText(field+"=value") {
 			x["before"] = "[Verdeckter Inhalt]"

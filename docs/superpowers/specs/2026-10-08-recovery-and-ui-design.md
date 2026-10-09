@@ -1,6 +1,6 @@
 # Wiederherstellung und Oberfläche neu aufbauen
 
-Stand: 8. Oktober 2026. Vom Benutzer am 8. Oktober 2026 freigegeben; noch nicht implementiert.
+Stand: 9. Oktober 2026. Vom Benutzer am 8. Oktober 2026 freigegeben; lokale Recovery-/UI-Implementierung integriert. Abschlussnachweise und unabhängige Nachprüfung werden in RECOVERY_REVIEW.md und IMPLEMENTATION_STATUS.md geführt. Reale Proxmox-Abnahme bleibt offen.
 
 ## Ziel und Umfang
 

@@ -86,3 +86,40 @@ func TestRestartMarksRollbackInterruptedAndDoesNotRetry(t *testing.T) {
 		t.Fatal("status missing")
 	}
 }
+
+func TestPublicInventoryQueryStatesPreserveInternalEvidence(t *testing.T) {
+	s, p := recoveryReadyPlan(t, &recoveryResultCollector{})
+	h, _ := s.Host(p.TargetID)
+	h.Inventory = &Inventory{}
+	h.Inventory.Details = map[string]json.RawMessage{"command_results": json.RawMessage(`{"interfaces":{"state":"failed","error":"password=private","stdout":"raw"},"disks":{"state":"ok"},"zfs":{"state":"not_applicable"},"packages":{"state":"invented"},"attacker":{"state":"ok"}}`), "users": json.RawMessage(`{"0":"root"}`)}
+	before, _ := json.Marshal(h.Inventory)
+	fingerprint := Fingerprint(*h.Inventory)
+	if err := s.Store.Put("hosts", h.ID, h); err != nil {
+		t.Fatal(err)
+	}
+	a := NewAuth(s.Store)
+	if err := a.CreateUser("query-reader", "long-test-password", "reader", false); err != nil {
+		t.Fatal(err)
+	}
+	token, _, _ := a.Login("query-reader", "long-test-password")
+	for _, path := range []string{"/api/status", "/api/hosts"} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.AddCookie(&http.Cookie{Name: "anker_session", Value: token})
+		w := httptest.NewRecorder()
+		Handler(s, a, false).ServeHTTP(w, r)
+		raw := w.Body.String()
+		if w.Code != 200 || !strings.Contains(raw, `"query_states":{"disks":{"state":"ok"},"interfaces":{"state":"failed"},"packages":{"state":"unknown"},"zfs":{"state":"not_applicable"}}`) {
+			t.Fatalf("missing safe projection: %d %s", w.Code, raw)
+		}
+		for _, forbidden := range []string{`"details"`, "password=", `"stdout"`, "attacker", `"users"`} {
+			if strings.Contains(raw, forbidden) {
+				t.Fatalf("public leak %s: %s", forbidden, raw)
+			}
+		}
+	}
+	got, _ := s.Host(h.ID)
+	after, _ := json.Marshal(got.Inventory)
+	if string(before) != string(after) || Fingerprint(*got.Inventory) != fingerprint {
+		t.Fatal("public projection changed stored evidence/fingerprint")
+	}
+}

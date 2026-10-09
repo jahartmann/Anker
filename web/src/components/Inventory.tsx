@@ -40,7 +40,7 @@ export default function Inventory({
     diskPage,
     Math.max(1, Math.ceil(disks.length / diskSize)),
   );
-  const results = (inventory.details?.command_results || {}) as Record<
+  const results = (inventory.query_states || {}) as Record<
     string,
     { state?: string; error?: string }
   >;

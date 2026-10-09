@@ -382,3 +382,84 @@ test("changing the stand invalidates late summary responses", async ({
     view.getByRole("button", { name: "Vergleichen", exact: true }),
   ).toBeDisabled();
 });
+
+test("compact filters distinguish content added removed and protected files", async ({
+  page,
+}) => {
+  const view = await setup(page, [
+    row("etc/content"),
+    row("etc/added", { change: "added" }),
+    row("etc/removed", { change: "removed" }),
+    row("etc/secret", { secret: true, content_changed: false }),
+  ]);
+  for (const [filter, paths] of [
+    ["content", ["etc/content", "etc/added", "etc/removed"]],
+    ["added", ["etc/added"]],
+    ["removed", ["etc/removed"]],
+    ["secret", ["etc/secret"]],
+  ] as const) {
+    await view.getByLabel("Änderungsart").selectOption(filter);
+    await expect(view.locator(".comparison-items > button")).toHaveCount(
+      paths.length,
+    );
+    for (const path of paths)
+      await expect(view.locator(".comparison-items")).toContainText(path);
+  }
+});
+
+test("missing comparison sides disable only their download and retain exact line numbers", async ({
+  page,
+}) => {
+  await page.route("**/api/backups/compare/file", (r) => {
+    const path = r.request().postDataJSON().path;
+    return r.fulfill({
+      json: comparison(path, {
+        state: path === "etc/added" ? "missing_before" : "missing_after",
+        hunks: [
+          {
+            before_start: 7,
+            after_start: 11,
+            lines: [
+              {
+                kind: "context",
+                text: "context\n",
+                before_line: 7,
+                after_line: 11,
+              },
+              { kind: "remove", text: "old\n", before_line: 8 },
+              { kind: "add", text: "new", after_line: 12 },
+            ],
+          },
+        ],
+      }),
+    });
+  });
+  const view = await setup(page, [
+    row("etc/added", { change: "added" }),
+    row("etc/removed", { change: "removed" }),
+  ]);
+  await view.getByRole("button", { name: /^etc\/added/ }).click();
+  await expect(
+    view.getByRole("link", { name: "Original vorher", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    view.getByRole("link", { name: "Original nachher", exact: true }),
+  ).toBeVisible();
+  await expect(view.locator(".diff-context .diff-number")).toHaveText([
+    "7",
+    "11",
+  ]);
+  await expect(view.locator(".diff-remove .diff-number")).toHaveText(["8", ""]);
+  await expect(view.locator(".diff-add .diff-number")).toHaveText(["", "12"]);
+  await expect(view.locator(".diff-add .diff-no-newline")).toHaveText(
+    "Kein Zeilenumbruch am Dateiende",
+  );
+  await expect(view.locator(".diff-remove .diff-no-newline")).toHaveCount(0);
+  await view.getByRole("button", { name: /^etc\/removed/ }).click();
+  await expect(
+    view.getByRole("link", { name: "Original nachher", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    view.getByRole("link", { name: "Original vorher", exact: true }),
+  ).toBeVisible();
+});

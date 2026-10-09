@@ -189,11 +189,13 @@ export function ActionMenu({
     top: number;
   } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const positionedAnchor = useRef<DOMRect | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   useLayoutEffect(() => {
     if (!open || !trigger.current || !panel.current) return;
     const anchor = trigger.current.getBoundingClientRect();
+    positionedAnchor.current = anchor;
     const bounds = panel.current.getBoundingClientRect();
     setPosition({
       left: Math.max(
@@ -211,7 +213,9 @@ export function ActionMenu({
   }, [open]);
   useLayoutEffect(() => {
     if (open && position)
-      panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      panel.current
+        ?.querySelector<HTMLButtonElement>("button")
+        ?.focus({ preventScroll: true });
   }, [open, position]);
   useEffect(() => {
     if (!open) return;
@@ -223,7 +227,20 @@ export function ActionMenu({
         setOpen(false);
     }
     function moved(e: Event) {
-      if (!(e.target instanceof Node) || !panel.current?.contains(e.target))
+      if (e.target instanceof Node && panel.current?.contains(e.target)) return;
+      // A scroll that brought the trigger into view may be delivered after the
+      // menu opens. Its current anchor was already used for positioning.
+      const before = positionedAnchor.current;
+      const current = trigger.current?.getBoundingClientRect();
+      if (
+        e.type === "resize" ||
+        !before ||
+        !current ||
+        before.top !== current.top ||
+        before.left !== current.left ||
+        before.bottom !== current.bottom ||
+        before.right !== current.right
+      )
         setOpen(false);
     }
     document.addEventListener("pointerdown", outside);

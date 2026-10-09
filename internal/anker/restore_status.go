@@ -75,8 +75,17 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	if err != nil {
 		return p, err
 	}
-	if p.State == "ready" || p.State == "manual" || p.State == "blocked" || p.State == "demo_applied" {
+	ready := p.State == "ready"
+	if (ready && (p.SchemaVersion != 2 || len(p.Blockers) > 0 || s.Demo)) || p.State == "manual" || p.State == "blocked" || p.State == "demo_applied" {
 		return p, errors.New("Für diesen Plan ist keine ungeklärte Hostausführung gespeichert")
+	}
+	if ready {
+		// Queue admission and this reservation have one order. A queued request can
+		// still begin later, so the ordinary running-target lock alone is insufficient.
+		if err = s.reserveReadyReconciliation(p.TargetID); err != nil {
+			return p, err
+		}
+		defer func() { s.jobMu.Lock(); delete(s.reconciling, p.TargetID); s.jobMu.Unlock() }()
 	}
 	if err = s.acquire(p.TargetID); err != nil {
 		return p, err
@@ -90,6 +99,20 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	if err != nil {
 		return p, err
 	}
+	var connection string
+	if ready {
+		snapshot, loadErr := s.loadPlanSnapshot(p)
+		if loadErr != nil {
+			return p, loadErr
+		}
+		connection, err = s.recoveryConnectionSHA(h)
+		if err != nil {
+			return p, err
+		}
+		if connection != snapshot.ConnectionSHA {
+			return p, errors.New("Zielverbindung wurde geändert; Hostjournal an der ursprünglichen Zielkonsole prüfen")
+		}
+	}
 	result, err := c.RestoreStatus(ctx, h, p)
 	if err != nil {
 		return p, err
@@ -97,8 +120,49 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	if err = validateHostResult(p, result); err != nil {
 		return p, err
 	}
+	if ready {
+		current, loadErr := s.Host(p.TargetID)
+		if loadErr != nil {
+			return p, loadErr
+		}
+		currentConnection, connectionErr := s.recoveryConnectionSHA(current)
+		if connectionErr != nil {
+			return p, connectionErr
+		}
+		if currentConnection != connection {
+			return p, errors.New("Zielverbindung während Journalabgleich geändert; Zielkonsole prüfen")
+		}
+		if result.State == "not_found" {
+			// Absence at this instant is not a proof of a completed or globally unwritten
+			// restore. Consume the uncertain plan; never reset it for another apply.
+			result.Checks = []string{"Kein Journal für diese Recovery-ID gefunden. Dieser Plan bleibt gesperrt. Zielkonsole und laufende Aufträge prüfen; anschließend Vergleich und Plan neu vorbereiten."}
+			result.RebootVerified = false
+		}
+	}
 	setRecoveryResult(&p, result, nil)
 	return p, s.savePlan(p)
+}
+
+func (s *Service) reserveReadyReconciliation(hostID string) error {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	if s.reconciling[hostID] || s.connectingHostID == hostID {
+		return errHostJobActive
+	}
+	jobs, err := s.Jobs()
+	if err != nil {
+		return err
+	}
+	for _, j := range jobs {
+		if j.HostID == hostID && activeJob(j) {
+			return errHostJobActive
+		}
+	}
+	if s.reconciling == nil {
+		s.reconciling = map[string]bool{}
+	}
+	s.reconciling[hostID] = true
+	return nil
 }
 
 func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Plan, error) {

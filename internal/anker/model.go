@@ -56,19 +56,24 @@ type Disk struct {
 	UUID       string `json:"uuid,omitempty"`
 	Mount      string `json:"mount,omitempty"`
 }
+type InventoryQueryState struct {
+	State string `json:"state"`
+}
+
 type Inventory struct {
-	Hostname    string                     `json:"hostname"`
-	PVEVersion  string                     `json:"pve_version"`
-	Debian      string                     `json:"debian"`
-	Kernel      string                     `json:"kernel"`
-	BootMode    string                     `json:"boot_mode"`
-	ClusterID   string                     `json:"cluster_id"`
-	Quorate     bool                       `json:"quorate"`
-	Interfaces  []Interface                `json:"interfaces"`
-	Disks       []Disk                     `json:"disks"`
-	Details     map[string]json.RawMessage `json:"details,omitempty"`
-	CapturedAt  string                     `json:"captured_at"`
-	Fingerprint string                     `json:"fingerprint"`
+	QueryStates map[string]InventoryQueryState `json:"query_states,omitempty"`
+	Hostname    string                         `json:"hostname"`
+	PVEVersion  string                         `json:"pve_version"`
+	Debian      string                         `json:"debian"`
+	Kernel      string                         `json:"kernel"`
+	BootMode    string                         `json:"boot_mode"`
+	ClusterID   string                         `json:"cluster_id"`
+	Quorate     bool                           `json:"quorate"`
+	Interfaces  []Interface                    `json:"interfaces"`
+	Disks       []Disk                         `json:"disks"`
+	Details     map[string]json.RawMessage     `json:"details,omitempty"`
+	CapturedAt  string                         `json:"captured_at"`
+	Fingerprint string                         `json:"fingerprint"`
 }
 type Entry struct {
 	Path   string            `json:"path"`
@@ -294,6 +299,7 @@ type Service struct {
 	schedulerBusy    bool
 	maintenance      bool
 	jobMu            sync.Mutex
+	reconciling      map[string]bool // Ready-plan journal reservations; protected by jobMu.
 	connectingHostID string
 	hostConnector    hostConnector
 	notifyMu         sync.Mutex
@@ -379,6 +385,7 @@ func atomicWrite(p string, b []byte, mode os.FileMode) error {
 	return err
 }
 func Fingerprint(i Inventory) string {
+	i.QueryStates = nil // Public projection is not host identity or persisted evidence.
 	i.CapturedAt = ""
 	i.Fingerprint = ""
 	stable := map[string]json.RawMessage{}

@@ -257,3 +257,20 @@ test("retention explains per-host buckets and can disable automatic archiving wi
     "7",
   );
 });
+
+test("invalid timezone on another tab returns and focuses mounted field", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByLabel("Zeitzone", { exact: true }).fill("Invalid/Zone");
+  await page
+    .getByRole("button", { name: "Benachrichtigungen", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Einstellungen speichern", exact: true })
+    .click();
+  await expect(page.getByLabel("Zeitzone", { exact: true })).toBeFocused();
+});

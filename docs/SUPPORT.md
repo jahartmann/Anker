@@ -5,14 +5,16 @@
 | Lesbare versionierte Sicherungen und Prüfsummen | Ja | Go-Tests, Demo | Offen |
 | SQLite-Snapshot und pmxcfs-Dekodierung | Ja | Python-Fixture mit konsistentem Baum | Offen |
 | SSH mit geprüftem Hostschlüssel und festem Helfer | Ja | Echte SSH-Verbindungen und Helferinstallation auf isoliertem Debian-13-Ziel mit PVE-Kommandofixture, root/sudo, Rollen und Wiederanbindung; Go-/Browser-/PTY-Prüfungen | Reales PVE-Labor offen |
-| Einzeldateiübernahme mit Driftprüfung und Rollbackkopie | Ja | Go-/Python-Tests, Demo-Browserablauf | Offen |
-| Netzwerkportzuordnung | Ja | Transformation und fehlende Zuordnung | Verkabelung/Erreichbarkeit offen |
+| Einzeldateiübernahme mit Driftprüfung und Hostjournal | Ja | Dienst + echter lokaler Python-Helfer über festen Transportfixture: Vergleich, Integrität, verlorene Antwort, Journal/Rücksetzung und Export; Go-/Python-/Browserprüfungen | Offen; lokaler macOS-Test ersetzt Privileg-/Inventarkommandos und modelliert xattr-freie Dateien |
+| Netzwerk-/Storage-/Identitätsvorbereitung | Unterstützte Felder mit Effekten und manuellen Abhängigkeiten | Parser-, Snapshot-, Vergleichs- und konservative Gate-Regressionen | Backing/Volumes, Verkabelung und Erreichbarkeit offen |
 | Neue Hardware, Cluster, Versionen, Topologie | Manuelle Pläne und Exporte | Entscheidungsregeln und Dokumente | Offen; automatische Gesamtausführung gesperrt |
-| Web, CLI und Terminal | Ja | Build, Go-Tests, Browserabläufe | Betrieb offen |
+| Web, CLI und Terminal | Fünf Schritte, Dateientscheidungen, Sicherungs-/Planvergleich | Build, Go-/Browser-/PTY-Prüfungen; Desktop 1440/1280 und Mobil 390, Tastatur/Console lokal | Betrieb offen |
 | Aufbewahrung, Archivierung, Scheduler | Ja | Go-Tests einschließlich DST und Archivprüfung | Langzeitbetrieb offen |
 | Linux-/systemd-Serverinstallation und Updates | Geführte Einrichtung und signierter Updater | Echte systemd-Dienste in isolierter GitHub-Linux-VM | Physischer Reboot/Stromausfall offen |
 | SFTP-Installation | Skripte und Anleitung | Syntax | Reale Ausführung offen |
 | Speicher von Anker und seinen Backup-Laufwerken | Anzeige, Verlauf, bedingte Prognose, begrenzte ext4-/XFS-Erweiterung und manuelle Assistenten | Inventar/Bindmounts, Prognose, Gerätewechsel, Journal, API/CLI und Browser; echte ext4-Erweiterung über systemd bestanden | LXC-/LVM-/XFS-/Migrationsabnahme offen |
+
+Lokaler Integrationsabschluss vom 9. Oktober 2026: vollständiges Go-Race/Vet, 73 Hosthelfer- und 14 Skriptfälle, Web-/eingebetteter Build, Linux amd64/arm64 und 133 Browserfälle bestanden. Visuelle Nachprüfung: 72 tatsächliche Demoansichten und 21 kontrollierte Darstellungsfixtures bei 1440/1280/390 Pixel, dazu 57 Tastaturziele, ohne erfasste Konsolenfehler oder Seitenüberlauf. Unabhängige Abschlussprüfung folgt separat.
 
 Der Versionsrahmen für automatische Einzeldateipläne umfasst gleiche Proxmox-Major-Versionen 8 oder 9. Das ist eine Entscheidungsregel, keine Zertifizierung jedes Minorstands. Hardware-, Cluster- und Versionskombinationen müssen vor Freigabe separat dokumentiert werden.
 

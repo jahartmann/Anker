@@ -572,3 +572,26 @@ test("real demo task confirmations remain user attestations including reboot", a
     page.getByText(/Herkunft: Benutzerbestätigung, kein maschineller Nachweis/),
   ).toHaveCount(3);
 });
+
+test("cleared decision becomes manual through bulk action", async ({
+  page,
+}) => {
+  await start(page);
+  await inspect(page);
+  const choice = page.getByLabel(
+    "Entscheidung für etc/sysctl.d/99-anker.conf",
+    { exact: true },
+  );
+  await choice.selectOption("keep");
+  await choice.selectOption("");
+  await page
+    .getByRole("button", {
+      name: "Offene Dateien manuell bearbeiten",
+      exact: true,
+    })
+    .click();
+  await expect(choice).toHaveValue("manual");
+  await expect(
+    page.getByRole("button", { name: "Weiter zur Planprüfung", exact: true }),
+  ).toBeEnabled();
+});

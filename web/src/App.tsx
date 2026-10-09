@@ -377,6 +377,7 @@ export default function App() {
               <Hosts
                 {...common}
                 initialHost={selectedHost}
+                onInitialHostConsumed={() => setSelectedHost("")}
                 canEdit={user.role === "admin"}
                 canOperate={user.role !== "reader"}
               />

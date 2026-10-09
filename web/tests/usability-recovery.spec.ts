@@ -220,6 +220,7 @@ test("freshly inspected target ports are mapped before the first plan without lo
     return r.fulfill({
       json: {
         id: "fresh-target-plan",
+        schema_version: 2,
         created_at: "2026-10-07T10:00:00Z",
         ...payload,
         state: "manual",
@@ -345,9 +346,9 @@ test("recovery plans and their steps stay bounded and searchable", async ({
     .fill("source-69");
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
-  await expect(page.locator(".plan-files .file-diff")).toHaveCount(25);
+  await expect(page.locator(".plan-files .recovery-plan-file")).toHaveCount(25);
   await page.getByLabel("Plandateien durchsuchen").fill("1599");
-  await expect(page.locator(".plan-files .file-diff")).toHaveCount(1);
+  await expect(page.locator(".plan-files .recovery-plan-file")).toHaveCount(1);
   await expect(page.locator(".plan-files")).toContainText("etc/conf/1599.conf");
 });
 

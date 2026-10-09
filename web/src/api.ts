@@ -13,6 +13,10 @@ export interface Port {
   kind?: string;
 }
 export interface Inventory {
+  query_states?: Record<
+    string,
+    { state: "ok" | "failed" | "not_applicable" | "unknown" }
+  >;
   captured_at?: string;
   hostname: string;
   pve_version: string;

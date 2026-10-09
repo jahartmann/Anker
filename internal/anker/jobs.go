@@ -162,6 +162,9 @@ func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.C
 	if s.maintenance {
 		return Job{}, errors.New("Anker wird aktualisiert; neue Aufträge sind vorübergehend gesperrt")
 	}
+	if s.reconciling[hostID] {
+		return Job{}, fail(409, "Hostjournal wird abgeglichen; Auftrag anschließend starten")
+	}
 	if s.connectingHostID == hostID {
 		return Job{}, fail(409, "Hostzugang wird eingerichtet; Auftrag anschließend starten")
 	}

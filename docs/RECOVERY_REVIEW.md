@@ -104,3 +104,13 @@ Zu Befund 5: Nur benötigte physische Ports werden zugeordnet; Bridges, Bonds, V
 Zu Befund 7: Referenzierte Storage-IDs und manuelle Identitätsentscheidungen ersetzen irrelevante Laufwerkslisten. Diese Entscheidungen werden sichtbar im Plan dokumentiert; automatische Storage-/Boot-/Clusterregeln sind weiter offen.
 
 Die unabhängige Integrationsprüfung fand zusätzlich verlorene Disk-/Adapterfelder, mögliche Selbstabschaltung durch Restore der Zugangskonfiguration, teilweise dekodierte ungültige Hostantworten, geerbte Staging-ACLs und eine fehlerhafte UI-Sperre nach abgewiesenem Auftrag. Diese Fälle wurden mit Regressionen korrigiert. Echte Proxmox-Hardware-, Cluster-, Reboot- und Stromausfallabnahme bleibt erforderlich.
+
+## Integration vom 8.–9. Oktober 2026
+
+Der freigegebene Recovery-/UI-Umbau ergänzt private Zielaufnahmen, explizite Entscheidungen, konservative Vorbereitung und Vergleich in allen drei Oberflächen. Neu integriert: echte lokale Sammlung/Lesen/Schreiben/Journal/Rücksetzung durch den Python-Helfer über den festen Transportfixture; private Dateirechte, Manipulationssperre, Originalexporte und Katalogexport ohne laufenden Dienst.
+
+Der bisher abgewiesene Abgleich eines bereiten Schema-2-Plans nach verlorener Anfrage liest nun das gebundene Hostjournal, sperrt konkurrierende Aufträge und prüft Verbindung/Recovery-ID. `not_found` verbraucht den Plan als ungeklärt; weder Benutzerangabe noch bereiter Serverstatus, Abfragefehler oder Verweigerung erlauben Replay. Public-API-Inventare erhalten ausschließlich erlaubte Abfragestände, während gespeicherte Rohbelege und interne Fingerprints unverändert bleiben.
+
+Die unabhängige Task-12- und Gesamtprüfung erfolgt nach Übergabe dieses Stands. Lokale Prüfungen ersetzen keine Proxmoxinstallation: native Linuxprivilegien/xattrs, reale pmxcfs-Versionen, Cluster, Hardwarewechsel, Netzwerkverlust, Reboot und PBS-/Datenträgerzustand bleiben offen. Keine neue Gesamtautomatik, Veröffentlichung oder Produktionsschreiboperation.
+
+Lokaler Abschlussstand vom 9. Oktober: Go-Race/Vet, 73 Hosthelfer- und 14 Skriptfälle, Web-/eingebetteter Build, beide Linuxarchitekturen und alle 133 Browserfälle bestanden. 93 Desktop-/Laptop-/Mobilaufnahmen sowie 57 sequenzielle Tastaturziele wurden am finalen UI-Stand geprüft; kontrollierte Systemfixtures sind keine reale Systemmutation. Der unabhängige Nachreview bleibt bis zur Prüfung durch den Controller ausstehend.

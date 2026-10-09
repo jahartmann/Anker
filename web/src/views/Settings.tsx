@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
 import type { Settings as Values } from "../api";
@@ -28,6 +28,10 @@ export default function Settings({
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [timezoneError, setTimezoneError] = useState("");
+  const timezoneInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (timezoneError && tab === "Sicherung") timezoneInput.current?.focus();
+  }, [timezoneError, tab]);
   const [systemError, setSystemError] = useState("");
   const [inspecting, setInspecting] = useState(false);
   const [testError, setTestError] = useState("");
@@ -83,9 +87,7 @@ export default function Settings({
         "Gültige Zeitzone eingeben, zum Beispiel Europe/Berlin.",
       );
       if (tab !== "Sicherung") setTab("Sicherung");
-      (e.currentTarget as HTMLFormElement)
-        .querySelector<HTMLInputElement>('[name="timezone"]')
-        ?.focus();
+      timezoneInput.current?.focus();
       return;
     }
     setBusy(true);
@@ -200,6 +202,7 @@ export default function Settings({
                     </Field>
                     <Field label="Zeitzone" error={timezoneError}>
                       <input
+                        ref={timezoneInput}
                         name="timezone"
                         required
                         value={value.timezone}

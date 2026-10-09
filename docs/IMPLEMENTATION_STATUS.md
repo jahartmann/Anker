@@ -1,6 +1,6 @@
 # Implementierung
 
-## Abgleich mit dem Konzept vom 7. Oktober 2026
+## Abgleich nach Recovery-/UI-Integration vom 9. Oktober 2026
 
 Die Grundlage für den täglichen Betrieb ist umgesetzt. Die ursprünglich geplante umfassende Wiederherstellung ist noch nicht vollständig umgesetzt oder an echten Proxmox-Hosts abgenommen. Die folgende Tabelle trennt vorhandene Funktionen von offenen Arbeitspaketen; die späteren Abschnitte dokumentieren frühere Prüfstände.
 
@@ -12,10 +12,10 @@ Die Grundlage für den täglichen Betrieb ist umgesetzt. Die ursprünglich gepla
 | Ablage, Archiv und Integrität | Lesbare Stände, Prüfsummen, Archivierung, erneutes Öffnen, Wiederindexierung | Reale Infrastruktur-, Platzmangel- und Stromausfallabnahme |
 | Downloads | Einzeldatei, vollständiger Stand und Planpaket mit vorbereiteten Dateien sowie `original/original-files/` und Originalmetadaten | Einzeldateien bis 64 MiB; kein eigener Download beliebiger Dateiauswahlen; vorhandene Pläne können eine ältere Anleitung enthalten |
 | Einzeldatei-Restore | Geprüfter Plan, Inhalts-/Metadaten-/Identitätsprüfung, dauerhaftes Hostjournal, kontrollierte Rücksetzung und Statusabgleich | Freigegebene Dateitypen; Links, Extended Attributes und sensible Systemkonfigurationen manuell. Abweichende Benutzer-/Gruppenidentitäten bleiben manuell; Dienst- und Rebootabnahme fehlen |
-| Neue Hardware und vollständiger Host | Szenario, Netzwerkportzuordnung, Voraussetzungen und manuelle Pläne/Exporte | Regelwerk für Storage, Hostidentität, Boot und Gesamtausführung. Storage-/Hostname-/Adressentscheidungen werden manuell dokumentiert, nicht automatisch angewendet |
+| Neue Hardware und vollständiger Host | Szenario, Netzwerkportzuordnung, Voraussetzungen und manuelle Pläne/Exporte | Unterstützte Storage-/Hostname-/statische Netzwerkfelder werden nachvollziehbar vorbereitet; geschützte Übernahme, unklare Backings/Volumes, Boot und Gesamtausführung bleiben manuell |
 | Netzwerk-Rückweg | Nur benötigte physische Ports, Abhängigkeiten für Bridges/Bonds/VLANs/Aliase, manuell vorbereitete Netzwerkdateien | Kein lokaler Wächter mit automatischer Rücksetzung nach ausbleibender Netzwerkbestätigung; Automatisches Schreiben/Aktivieren gesperrt; Erreichbarkeit und Dienste nach manueller Übernahme prüfen |
 | Cluster- und Versionswechsel | Szenarien und manuelle Voraussetzungen | Validierte Ablaufregeln und automatisierte Ausführung |
-| Web, Terminal und CLI | Gemeinsamer Dienst; Hostanbindung, Sicherungen, Pläne, Aufträge und Systemverwaltung | Terminal ohne Sicherungsvergleich und Inhaltsvorschau; lokale Socketverwaltung hat administrative Rechte und verwendet keine Webbenutzersitzung |
+| Web, Terminal und CLI | Gemeinsamer Dienst; Hostanbindung, Sicherungen, Pläne, Aufträge und Systemverwaltung | Paginierter Sicherungs-/Planvergleich und Inhaltsvorschau auch im Terminal; lokale Socketverwaltung hat administrative Rechte und verwendet keine Webbenutzersitzung |
 | SSH-Einrichtung | Benutzer/Passwort, bestätigter Fingerprint, begrenzte getrennte Schlüssel und Helferinstallation | Hosthelfer werden nicht automatisch durch ein zentrales OTA-Update ersetzt |
 | SFTP | Optionales Skript für einen lesenden Exportzugang | Einrichtung und persistente Mounts durch Administrator; keine benutzerbezogene Filterung je Host, reale SFTP-Abnahme offen |
 | Benutzer und Anmeldung | Persistierte Anmeldung, Rollen, Sperren, Sitzungswiderruf, 30 Tage Standard und einstellbare Passwortlänge | Vorhanden und mit Fehlerfällen geprüft |
@@ -25,9 +25,9 @@ Die Grundlage für den täglichen Betrieb ist umgesetzt. Die ursprünglich gepla
 | Anker-Betriebskonfiguration | Katalog, Einstellungen und `/etc/anker` sind über die Dateisystem-/Betriebsanleitung sicherbar | Kein eigener vollständiger Export-/Importassistent für die zentrale Anker-Installation |
 | Produktion und Verteilung | Leerer Produktionsstart, ausdrücklich getrennte Demo, öffentliches GitHub und MIT | Vorhanden und geprüft |
 
-Für den nächsten Ausbau haben Wiederherstellung und die Vollständigkeit des Inventars Vorrang: Zieländerungen vollständig inhaltlich vergleichen und die Standalone-/Hardwarefälle im isolierten Proxmox-Labor abnehmen. Danach folgen Storage-/Identitätsregeln und koordinierte Clusterabläufe. Ein allgemeiner Status „automatisch vollständig wiederherstellbar“ wird bis zu dieser Abnahme nicht vergeben.
+Für den nächsten Ausbau haben Wiederherstellung und die Vollständigkeit des Inventars Vorrang: Zieländerungen vollständig inhaltlich vergleichen und die Standalone-/Hardwarefälle im isolierten Proxmox-Labor abnehmen. Die umgesetzten konservativen Storage-/Identitätsregeln benötigen reale Abnahme; koordinierte Clusterabläufe bleiben offen. Ein allgemeiner Status „automatisch vollständig wiederherstellbar“ wird bis zu dieser Abnahme nicht vergeben.
 
-Die Bedienungsprüfung dieses Stands korrigiert erhaltene Bestätigungen nach Quell-/Zielwechsel, lange Wiederherstellungslisten, fehlende Zielportauswahl nach einer frischen Prüfung und unvollständige Originalmetadaten im Planexport. Im Terminal sind sämtliche Szenarien auswählbar; `Ctrl+E` wechselt zwischen Dateiliste und direkter Pfadeingabe.
+Die frühere Bedienungsprüfung korrigierte erhaltene Bestätigungen nach Quell-/Zielwechsel, lange Wiederherstellungslisten, fehlende Zielportauswahl nach einer frischen Prüfung und unvollständige Originalmetadaten im Planexport. Im Terminal sind sämtliche Szenarien auswählbar; `Ctrl+E` wechselt zwischen Dateiliste und direkter Pfadeingabe.
 
 Anker besteht aus einem Go-Dienst mit eingebetteter React-Oberfläche, SQLite-Katalog, einem festen Python-Helfer auf dem Proxmox-Host, einem Unix-Socket-CLI und einer Bubble-Tea-Terminaloberfläche. Alle lokalen Demoabläufe sind isoliert; es wurde kein Produktionshost kontaktiert.
 
@@ -35,7 +35,7 @@ Die ursprüngliche visuelle Richtung wurde nach Nutzerfeedback ersetzt. Referenz
 
 Abweichungen vom Konzept: `tar.gz` statt `tar.zst` für portable Standardwerkzeuge; manuell geführte Gesamtrecovery bis zur realen Laborabnahme; keine automatische Entscheidung über Disk-/Storage-Neuanlage; Secretfreigabe separat von Rollen. Terminalformulare können über den gemeinsamen Befehlseingang bedient werden. Details und Grenzen stehen in `SUPPORT.md` und `OPERATIONS.md`.
 
-Abschluss: Go-Tests einschließlich Race Detector und Vet, 129 Go-Testfunktionen (davon eine gesonderte Linux/systemd-Integration), zehn Python-Helfertests und sieben Installerprüfungen, 33 Browserabläufe, Typecheck/Webbuild sowie Linux-Crossbuild für amd64 und arm64. Der unabhängige Gesamtprüfer fand Fehler; die Korrekturen und zugehörigen Regressionen stehen in `REVIEW.md`. Desktop, Dialoge und Mobilansicht wurden zusätzlich im eingebauten Browser geprüft. Langzeit-/SFTP-/Hardwareabnahme wird durch lokale Fixturetests nicht ersetzt.
+Historischer Abschluss vor dem Umbau vom 8. Oktober: Go-Tests einschließlich Race Detector und Vet, 129 Go-Testfunktionen (davon eine gesonderte Linux/systemd-Integration), zehn Python-Helfertests und sieben Installerprüfungen, 33 Browserabläufe, Typecheck/Webbuild sowie Linux-Crossbuild für amd64 und arm64. Der unabhängige Gesamtprüfer fand Fehler; die Korrekturen und zugehörigen Regressionen stehen in `REVIEW.md`. Desktop, Dialoge und Mobilansicht wurden zusätzlich im eingebauten Browser geprüft. Langzeit-/SFTP-/Hardwareabnahme wird durch lokale Fixturetests nicht ersetzt.
 
 Bedienungsprüfung vom 06.10.2026: vorausgewählte Einzeldatei in Wiederherstellungsplänen, wiederholbare Ladefehler, vollständig sichtbare Aktionsmenüs, mobile Sicherungsaktionen ohne horizontales Scrollen und sichtbarer Speicherzustand mit Schutz offener Einstellungen. Zwölf zusätzliche Browserregressionen decken die gefundenen Fehler ab. Bestehende Schutzgrenzen der Wiederherstellung bleiben erhalten.
 
@@ -92,3 +92,13 @@ Web und CLI zeigen Auftragsdetails mit Auslöser und tatsächlichem Start, erlau
 Reale SSH-Ausführung, Proxmox-Hostwirkungen und Stromverlust bleiben getrennte Abnahmefälle. Der tägliche Scheduler bildet keine frei editierbaren Cronausdrücke oder beliebige Intervalle ab.
 
 Abschließender lokaler Nachweis: 46 Browserabläufe, vollständige Go-Suite mit Race Detector, Go Vet, zehn Python-Helfertests und sieben Installerprüfungen. Webbuild und Linux-Crossbuild sind bestanden. Die unabhängige Codeprüfung hat nach Korrektur der gefundenen Konkurrenzfehler keine offenen Befunde.
+
+## Recovery-/UI-Integration — 9. Oktober 2026
+
+Vier Situationen, fünf Vorbereitungsschritte, explizite Dateientscheidungen, private Inhalts-/Metadatenaufnahmen, erklärbare Feldvorbereitung und maskierter Vergleich sind integriert. Web, CLI und Terminal verwenden die gleichen fachlichen Dienstschnittstellen. Die UI trennt Dateiübernahme, Hostjournal und manuelle Betriebsprüfungen. Public-API-Abfragestände sind allowlist-begrenzt; interne Inventare/Fingerprints bleiben erhalten.
+
+Die Abschlussintegration ergänzt den echten lokalen Python-Helfer mit temporärem Dateisystem, HTTP-Journalabgleich auch nach einer verlorenen Anfrage vor Ausführungsbeginn, unveränderte Originalexporte und den Export bei geschlossenem Dienst. Blank-/Sammelentscheidung, Fokus nach Tabwechsel und einmalige Hostnavigation sind regressionsgeprüft. Die unabhängige Task- und Gesamtprüfung erfolgt anschließend separat; reale Proxmox-/Hardware-/Rebootabnahme bleibt offen.
+
+Abschlussnachweis am 9. Oktober: vollständige Go-Suite mit Race Detector, Go Vet, 73 Hosthelfer- und 14 Skriptprüfungen, TypeScript-/Webbuild, eingebettete lokale Binärdatei sowie Linux amd64/arm64 gebaut. Die vollständige Browsersuite besteht mit 133 Fällen einschließlich drei Fällen am lokalen Produktionsserver. Nach der letzten UI-Korrektur wurden Build, Browserfälle und visuelle Prüfung erneuert; Go/Python blieben seit ihren bestandenen Prüfungen unverändert. Die Aktionsmenüs bleiben bei verspäteten unveränderten Scrollereignissen geöffnet und schließen bei tatsächlicher Ankerbewegung oder Größenänderung.
+
+Visuell geprüft: 93 Aufnahmen bei 1440×1000, 1280×720 und 390×844, davon 72 tatsächliche Demoansichten und 21 ausdrücklich kontrollierte Darstellungsfixtures für System-/Auftragszustände. Zusätzlich 57 sequenzielle Tastaturziele; keine erfassten Konsolenfehler oder horizontalen Seitenüberläufe. Speichererweiterung, Zertifikatserneuerung und Updateinstallation wurden in dieser Abschlussprüfung nicht real auf einem Produktivsystem ausgeführt.

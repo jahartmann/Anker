@@ -133,10 +133,10 @@ export default function RecoveryDecisions({
           className="secondary"
           onClick={() =>
             d.setDecisions((old) => ({
-              ...Object.fromEntries(
-                d.selectedPaths.map((p) => [p, "manual" as const]),
-              ),
               ...old,
+              ...Object.fromEntries(
+                d.selectedPaths.map((p) => [p, old[p] || ("manual" as const)]),
+              ),
             }))
           }
         >

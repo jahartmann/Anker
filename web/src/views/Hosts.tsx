@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, ChevronDown, Search, ChevronRight } from "lucide-react";
 import { api, date, hostState } from "../api";
@@ -597,6 +597,7 @@ export default function Hosts({
   openJob,
   onRestore,
   initialHost = "",
+  onInitialHostConsumed,
 }: {
   status: Status;
   notify: Notify;
@@ -608,12 +609,16 @@ export default function Hosts({
   openJob?: (id: string) => void;
   onRestore: (id: string) => void;
   initialHost?: string;
+  onInitialHostConsumed?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
   const [stateFilter, setStateFilter] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(initialHost);
+  useEffect(() => {
+    if (initialHost) onInitialHostConsumed?.();
+  }, [initialHost, onInitialHostConsumed]);
   const [tab, setTab] = useState("Übersicht");
   const [form, setForm] = useState<Host | "new" | null>(null);
   const [reconnecting, setReconnecting] = useState(false);

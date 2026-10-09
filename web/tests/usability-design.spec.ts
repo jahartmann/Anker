@@ -48,12 +48,10 @@ test("inventory distinguishes failed query from absence", async ({ page }) => {
       ...base.hosts[0].inventory,
       interfaces: [],
       disks: [],
-      details: {
-        command_results: {
-          interfaces: { state: "failed", error: "ip timeout" },
-          disks: { state: "ok" },
-          zfs: { state: "not_applicable" },
-        },
+      query_states: {
+        interfaces: { state: "failed" },
+        disks: { state: "ok" },
+        zfs: { state: "not_applicable" },
       },
     },
   };
@@ -67,7 +65,7 @@ test("inventory distinguishes failed query from absence", async ({ page }) => {
     page
       .getByRole("alert")
       .filter({ hasText: "Netzwerkabfrage fehlgeschlagen" }),
-  ).toContainText("ip timeout");
+  ).toContainText("Keine vollständigen Daten verfügbar");
   await expect(
     page.getByRole("heading", { name: "Keine Schnittstellen erfasst" }),
   ).toHaveCount(0);
@@ -213,4 +211,87 @@ test("backup file actions remain fully visible on a short laptop viewport", asyn
   expect(mobileAction!.y + mobileAction!.height).toBeLessThanOrEqual(
     mobileFrame!.y + mobileFrame!.height - 1,
   );
+});
+
+test("overview host handoff is consumed after dismiss and navigation", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
+  await nav.getByRole("button", { name: "Übersicht", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Host .* prüfen$/ })
+    .first()
+    .click();
+  await page.locator(".back-button").click();
+  await nav.getByRole("button", { name: "Aufträge", exact: true }).click();
+  await nav.getByRole("button", { name: "Hosts", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hosts", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".back-button")).toHaveCount(0);
+});
+
+test("actual public inventory query projection reaches host UI", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  const base = await (await page.request.get("/api/status")).json();
+  const host = base.hosts.find((h: any) => h.inventory);
+  expect(host.inventory.query_states?.interfaces).toEqual({ state: "ok" });
+  expect(host.inventory.details).toBeUndefined();
+  const hosts = await (await page.request.get("/api/hosts")).json();
+  expect(
+    hosts.find((h: any) => h.id === host.id).inventory.query_states,
+  ).toEqual(host.inventory.query_states);
+  await page.goto("/");
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await page.getByRole("button", { name: "Inventar", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hostinventar", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Abfragestatus nicht übermittelt/)).toHaveCount(
+    0,
+  );
+});
+
+test("action menu ignores a stale scroll event but closes after its anchor moves", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Zugriff", exact: true }).click();
+  const trigger = page.getByRole("button", {
+    name: "Aktionen für demo",
+    exact: true,
+  });
+  await trigger.click();
+  const first = page.getByRole("button", {
+    name: "Zugang bearbeiten",
+    exact: true,
+  });
+  await expect(first).toBeFocused();
+  await page.evaluate(() => document.dispatchEvent(new Event("scroll")));
+  await expect(first).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(first).toBeVisible();
+  // Narrowing the viewport closes the menu; an actual document scroll does too.
+  await page.setViewportSize({ width: 390, height: 600 });
+  await expect(first).toHaveCount(0);
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  await expect(first).toBeVisible();
+  const before = await trigger.boundingBox();
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect
+    .poll(async () => (await trigger.boundingBox())!.y)
+    .not.toBe(before!.y);
+  await expect(first).toHaveCount(0);
 });
