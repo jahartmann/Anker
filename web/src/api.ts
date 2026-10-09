@@ -577,3 +577,30 @@ export interface RecoveryRecipePreview {
   suggestions: NonNullable<Plan["mapping"]>;
   mismatches: string[];
 }
+
+export interface ClusterBackupSet {
+  version: number;
+  id: string;
+  cluster_id: string;
+  purpose: "manualSourcePlanning";
+  atomic: false;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  start_skew_ms: number;
+  state: string;
+  notes: string[];
+  members: {
+    host_id: string;
+    host_name: string;
+    job_id?: string;
+    backup_id?: string;
+    manifest_sha?: string;
+    state: string;
+    started_at?: string;
+    completed_at?: string;
+    captured_members?: string[];
+    membership_known: boolean;
+    shared_known: boolean;
+  }[];
+}

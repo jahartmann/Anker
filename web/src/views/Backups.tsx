@@ -26,6 +26,7 @@ import BackupComparison from "../components/BackupComparison";
 import type { ComparisonSelection } from "../components/BackupComparison";
 import BackupReadiness from "../components/BackupReadiness";
 import BackupReferencePanel from "../components/BackupReference";
+import ClusterSets from "../components/ClusterSets";
 export function BackupTable({
   backups,
   notify,
@@ -357,6 +358,7 @@ export default function Backups({
   onRestore: (id: string) => void;
   openJob?: (id: string) => void;
 }) {
+  const [showSets, setShowSets] = useState(false);
   const [host, setHost] = useState("");
   const [query, setQuery] = useState("");
   const [state, setState] = useState("");
@@ -384,6 +386,14 @@ export default function Backups({
   for (const b of status.backups)
     if (!knownHosts.has(b.host_id))
       knownHosts.set(b.host_id, b.host_name + " · entfernt");
+  if (showSets)
+    return (
+      <ClusterSets
+        hosts={status.hosts}
+        canEdit={props.canEdit}
+        onBack={() => setShowSets(false)}
+      />
+    );
   return comparing ? (
     <div className="comparison-workspace">
       <button className="back-button" onClick={() => setComparing(false)}>
@@ -409,9 +419,14 @@ export default function Backups({
         title="Sicherungen"
         description="Lesbare Konfigurationen. Jeder Stand mit Inventar und Prüfsummen."
         action={
-          <button className="secondary" onClick={() => setComparing(true)}>
-            Stände vergleichen
-          </button>
+          <div className="cluster-set-actions">
+            <button className="secondary" onClick={() => setShowSets(true)}>
+              Cluster-Sicherungssets
+            </button>
+            <button className="secondary" onClick={() => setComparing(true)}>
+              Stände vergleichen
+            </button>
+          </div>
         }
       />
       <div className="toolbar backup-filters">

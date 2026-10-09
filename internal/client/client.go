@@ -158,6 +158,22 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 	case "help":
 		fmt.Fprintln(out, Help)
 		return nil
+	case "cluster-set":
+		if len(args) == 2 && args[1] == "list" {
+			return call("GET", "cluster-sets", nil)
+		}
+		if len(args) != 3 {
+			return errors.New("cluster-set list | capture CLUSTER | show ID | export ID")
+		}
+		switch args[1] {
+		case "capture":
+			return call("POST", "cluster-sets", map[string]string{"cluster_id": args[2]})
+		case "show":
+			return call("GET", "cluster-sets/"+url.PathEscape(args[2]), nil)
+		case "export":
+			return call("GET", "cluster-sets/"+url.PathEscape(args[2])+"/export", nil)
+		}
+		return errors.New("Unbekannter Sicherungssetbefehl; nur Erfassung und manuelle Quellplanung")
 	case "status":
 		return call("GET", "status", nil)
 	case "doctor":
@@ -633,6 +649,8 @@ Hosts und Sicherungen
   anker backup reference HOST | reference-set HOST BACKUP --name NAME [--reason GRUND]
   anker backup reference-set HOST BACKUP --name NAME --tested-at RFC3339 --outcome passed|failed --evidence TEXT
   anker backup reference-clear-drill HOST | compare-reference HOST BACKUP
+  anker cluster-set list | capture CLUSTER | show ID | export ID
+  Sicherungsset-Export liefert nur Referenzen als JSON für manuelle Quellplanung.
   anker diff ALT NEU
   anker export BACKUP ./sicherung.tar
   Im Web/Terminal Adresse, SSH-Benutzer und einmaliges Passwort eingeben.

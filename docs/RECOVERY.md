@@ -204,3 +204,45 @@ Abweichungen als JSON. Es erstellt keinen Plan und führt keine Wiederherstellun
 Bei Speicherreferenzen muss die frische Aufnahme den benötigten Volumebestand enthalten;
 fehlende Belege werden ausdrücklich aufgeführt. Vorlagen- und Snapshot-Dateien bleiben
 privat; öffentliche Listen enthalten nur Bezeichnung, Ursprung und Review-Metadaten.
+
+## Koordinierte Cluster-Sicherungssets
+
+Unter **Sicherungen → Cluster-Sicherungssets** oder mit `anker cluster-set capture CLUSTER`
+werden die aktuell für diese Clusterkennung eingerichteten Hosts als erwartete
+Mitglieder festgehalten. Jeder Host erhält einen eigenen normalen Backupauftrag.
+Hostausschluss, Wartungssperren und das konfigurierte Parallelitätslimit gelten
+unverändert; belegte oder fehlgeschlagene Hosts werden nicht durch alte Sicherungen
+ersetzt. Ein Wiederholungsauftrag erzeugt eine unabhängige Sicherung. Für einen neuen
+koordinierten Versuch ein neues Sicherungsset erfassen.
+
+`anker cluster-set list`, `show ID` und `export ID` geben die historischen
+Quellreferenzen aus. Der JSON-Export enthält ausschließlich Referenzen, Status und
+Zeitgrenzen (`purpose: manualSourcePlanning`, `atomic: false`), keine privaten
+Dateien und keine Wiederherstellungsfreigabe. Benötigte Sicherungen zusätzlich
+separat exportieren, prüfen und gegen Aufbewahrungsrotation schützen.
+
+Ein vollständiger, übereinstimmender Satz benötigt tatsächliche veröffentlichte
+Ergebnisse jedes erwarteten Hosts, erfolgreiche vollständige Sicherungen,
+übereinstimmende erfasste Host-/Clusteridentität und die erwarteten Mitgliedsnamen
+in der gesicherten `etc/pve/corosync.conf`. Nicht eindeutig auswertbare Syntax oder
+fehlende Mitgliedsnamen bleiben unbekannt. Die logische gemeinsame pmxcfs-Prüfsumme
+bindet Pfad, Dateityp und Inhalt der aus dem Datenbanksnapshot exportierten
+`etc/pve`-Dateien außerhalb von `nodes/`; lokale Node-/Gastdateien werden damit
+nicht auf Gleichheit geprüft. SQLite-Speicherlayout und Dateizeitstempel gehen
+nicht in diese Inhaltsprüfung ein. Private Dateien sind in der internen Prüfsumme
+enthalten; weder diese Prüfsumme noch Dateiinhalte werden öffentlich projiziert.
+
+Beginn, Ende und maximaler Startversatz der tatsächlichen Erfassungen stehen im
+Detail. „Vollständig“ beschreibt ausschließlich dieses zeitversetzte
+Erfassungsfenster, keinen atomaren Clusterstand, keine aktuelle Integrität und
+keinen gesunden/quoraten Cluster. Abweichungen und Pflichtlücken bleiben sichtbar.
+Unterbrochene Aufträge liefern ohne erfasste Ergebnisse keinen Quellnachweis.
+Gelöschte oder nicht mehr lesbare Quellmanifeste machen den Satz unvollständig;
+historische IDs bleiben erhalten. Originaldateien vor Verwendung separat prüfen.
+
+Sicherungssets sind versionierte Katalogeinträge und werden mit dem verschlüsselten
+Disaster-Paket samt vorhandenem Sicherungsmaterial übernommen. Es entstehen keine
+zusätzlichen privaten Sicherungssetdateien. Importisolation und die Ungültigkeit alter
+Ausführungsfreigaben bleiben erhalten. Die Auswahl eines Satzes startet keine
+Cluster-, Gast-, Storage- oder Wiederherstellungsaktion. Reale PVE-Abnahme bleibt
+in einer isolierten Laborumgebung erforderlich.

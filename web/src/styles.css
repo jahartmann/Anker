@@ -3268,3 +3268,23 @@ input[type="checkbox"] {
   max-height: 360px;
   overflow: auto;
 }
+
+/* Coordinated source references use the shared muted green palette. */
+.cluster-set-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.cluster-set-notice, .cluster-set-capture { padding: 1.2rem; background: #f1f5f2; border: 1px solid #d4e0d8; border-radius: 10px; margin-bottom: 1rem; color: #344b3e; }
+.cluster-set-notice p { margin-bottom: 0; }
+.cluster-set-capture label { display: grid; gap: .5rem; max-width: 28rem; }
+.cluster-set-capture button { margin-top: .7rem; }
+.cluster-set-layout { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(0, 3fr); gap: 1.3rem; margin-top: 1rem; }
+.cluster-set-list { display: flex; flex-direction: column; gap: .65rem; }
+.cluster-set-list button { display: grid; gap: .35rem; text-align: left; overflow-wrap: anywhere; white-space: normal; }
+.cluster-set-list button[aria-pressed="true"] { border-color: #456951; background: #eaf1eb; }
+.cluster-set-list small { color: #4e5c54; }
+.cluster-set-detail { min-width: 0; overflow-wrap: anywhere; }
+.cluster-set-detail h2 { font-size: 1.05rem; }
+.cluster-set-members { padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.cluster-set-members li { padding: 1rem; border: 1px solid #d4e0d8; border-radius: 10px; }
+.cluster-set-members h3 { margin-top: 0; font-size: 1rem; }
+.cluster-set-members dt { color: #526258; margin-top: .65rem; font-size: .8rem; }
+.cluster-set-members dd { margin: .2rem 0 0; font-size: .85rem; }
+@media (max-width: 700px) { .cluster-set-layout, .cluster-set-members { grid-template-columns: minmax(0,1fr); } .cluster-set-list { max-height: 15rem; overflow-y: auto; } }

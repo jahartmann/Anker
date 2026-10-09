@@ -147,6 +147,7 @@ type Backup struct {
 	Warnings            []string                 `json:"warnings"`
 }
 type Job struct {
+	SourceSetID  string `json:"source_set_id,omitempty"`
 	ID           string `json:"id"`
 	HostID       string `json:"host_id"`
 	Kind         string `json:"kind"`
@@ -310,6 +311,7 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
+	clusterSetMu     sync.Mutex
 	snapshotMu       sync.Mutex
 	maintenanceMu    sync.Mutex
 	integrityBusy    int

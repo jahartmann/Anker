@@ -154,6 +154,10 @@ var errJobNotDue = errors.New("Zeitplan ist nicht fällig oder wurde heute berei
 var errHostJobActive = errors.New("Host hat bereits einen aktiven Auftrag")
 
 func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.Context) (string, error)) (Job, error) {
+	return s.queueAtForSet(hostID, kind, at, "", run)
+}
+
+func (s *Service) queueAtForSet(hostID, kind string, at *time.Time, setID string, run func(context.Context) (string, error)) (Job, error) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	if _, err := s.Host(hostID); err != nil {
@@ -201,7 +205,7 @@ func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.C
 			return Job{}, errHostJobActive
 		}
 	}
-	j := Job{ID: ID(), HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
+	j := Job{ID: ID(), SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
 	if day != "" {
 		j.Trigger = "scheduled"
 	}
