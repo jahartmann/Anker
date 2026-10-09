@@ -215,22 +215,32 @@ func (s *Service) RecoveryRecipes() ([]RecoveryRecipe, error) {
 	}
 	return out, nil
 }
-func (s *Service) PreviewRecoveryRecipe(id string, r PlanRequest) (RecoveryRecipePreview, error) {
-	out := RecoveryRecipePreview{Suggestions: Mapping{Interfaces: map[string]string{}, Storage: map[string]string{}}, Mismatches: []string{}}
+
+// Shared by fresh preview and cold-package material preflight. This validates
+// immutable intent only; loading it never grants target or plan authority.
+func (s *Service) loadRecoveryRecipe(id string) (recoveryRecipePrivate, error) {
+	var value recoveryRecipePrivate
 	if !validID(id) {
-		return out, errors.New("Ungültige Vorlagen-ID")
+		return value, errors.New("Ungültige Vorlagen-ID")
 	}
 	var rec recoveryRecipeRecord
 	if err := s.Store.Get("recovery-recipes", id, &rec); err != nil {
-		return out, err
+		return value, err
 	}
 	raw, err := readSnapshotBytes(filepath.Join(s.Root, "recovery-recipes", id+".json"), 1<<20)
 	if err != nil {
-		return out, err
+		return value, err
 	}
-	var value recoveryRecipePrivate
-	if Hash(raw) != rec.SHA256 || json.Unmarshal(raw, &value) != nil || !reflect.DeepEqual(value.RecoveryRecipe, rec.RecoveryRecipe) || value.Version != 1 {
-		return out, errors.New("Zuordnungsvorlage verändert oder Version nicht unterstützt")
+	if Hash(raw) != rec.SHA256 || json.Unmarshal(raw, &value) != nil || rec.ID != id || value.ID != id || !reflect.DeepEqual(value.RecoveryRecipe, rec.RecoveryRecipe) || value.Version != 1 {
+		return recoveryRecipePrivate{}, errors.New("Zuordnungsvorlage verändert oder Version nicht unterstützt")
+	}
+	return value, nil
+}
+func (s *Service) PreviewRecoveryRecipe(id string, r PlanRequest) (RecoveryRecipePreview, error) {
+	out := RecoveryRecipePreview{Suggestions: Mapping{Interfaces: map[string]string{}, Storage: map[string]string{}}, Mismatches: []string{}}
+	value, err := s.loadRecoveryRecipe(id)
+	if err != nil {
+		return out, err
 	}
 	out.Recipe = value.RecoveryRecipe
 	if r.SnapshotID == value.OriginSnapshotID {

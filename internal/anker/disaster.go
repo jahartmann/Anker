@@ -194,6 +194,8 @@ func disasterAllowed(name string, config bool) bool {
 			return true
 		}
 		return disasterAllowed(strings.TrimPrefix(name, top+"/"), true)
+	case "recovery-recipes":
+		return name == top || (strings.Count(name, "/") == 1 && strings.HasSuffix(name, ".json") && validID(strings.TrimSuffix(strings.TrimPrefix(name, top+"/"), ".json")))
 	case "hosts", "plans", "recovery-inspections", "clusters", "keys", "ssh", "tls":
 		return true
 	case "known_hosts", "service.env", ".anker-mode":
@@ -228,7 +230,7 @@ func disasterWalk(dir *os.File, prefix string, p *disasterPackage, config bool, 
 		if st.Mode()&os.ModeSymlink != 0 || (!st.IsDir() && !st.Mode().IsRegular()) {
 			return fmt.Errorf("Unsicherer Dateityp in Disaster-Inventar: %s", rel)
 		}
-		if rel == "plans" || rel == "recovery-inspections" || strings.HasPrefix(rel, "plans/") || strings.HasPrefix(rel, "recovery-inspections/") {
+		if rel == "plans" || rel == "recovery-inspections" || rel == "recovery-recipes" || strings.HasPrefix(rel, "plans/") || strings.HasPrefix(rel, "recovery-inspections/") || strings.HasPrefix(rel, "recovery-recipes/") {
 			want := os.FileMode(0600)
 			if st.IsDir() {
 				want = 0700
@@ -618,7 +620,7 @@ func disasterValidate(p *disasterPackage) error {
 		}
 		rows[key] = true
 		switch r.Bucket {
-		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "users", "credentials", "settings":
+		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "recovery-recipes", "users", "credentials", "settings":
 			var object map[string]json.RawMessage
 			if err := json.Unmarshal(r.Value, &object); err != nil || object == nil {
 				return errors.New("Katalogobjekt fehlt oder ist ungültig")
@@ -630,7 +632,7 @@ func disasterValidate(p *disasterPackage) error {
 				}
 			}
 		}
-		if r.Bucket == "hosts" || r.Bucket == "backups" || r.Bucket == "plans" || r.Bucket == "recovery-inspections" {
+		if r.Bucket == "hosts" || r.Bucket == "backups" || r.Bucket == "plans" || r.Bucket == "recovery-inspections" || r.Bucket == "recovery-recipes" {
 			if !validID(r.ID) {
 				return errors.New("Ungültige Katalog-ID")
 			}
@@ -833,6 +835,10 @@ func disasterCheckMaterial(p *disasterPackage, root string) error {
 			}
 			if err = s.verifyPlanFiles(plan); err != nil {
 				return fmt.Errorf("Privates Planmaterial fehlt oder ist ungültig (%s): %w", plan.ID, err)
+			}
+		case "recovery-recipes":
+			if _, err = s.loadRecoveryRecipe(r.ID); err != nil {
+				return fmt.Errorf("Privates Vorlagenmaterial fehlt oder ist ungültig (%s): %w", r.ID, err)
 			}
 		case "recovery-inspections":
 			var record recoverySnapshotRecord
