@@ -294,3 +294,33 @@ func TestReadinessFileInventoryUsesHelperSupportedScope(t *testing.T) {
 		t.Fatal("owner identities lost")
 	}
 }
+
+func TestReadinessAcceptsUnrelatedHelperInventorySentinels(t *testing.T) {
+	s := testService(t)
+	payloads := completeReadinessPayloads()
+	var hashes map[string]string
+	if err := json.Unmarshal(payloads["file_hashes"], &hashes); err != nil {
+		t.Fatal(err)
+	}
+	hashes["etc/runtime.socket"] = "unsupported" // helper emits no metadata for this inode
+	hashes["usr/local/large.bin"] = "too-large"  // helper retains metadata
+	payloads["file_hashes"], _ = json.Marshal(hashes)
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal(payloads["file_metadata"], &metadata); err != nil {
+		t.Fatal(err)
+	}
+	metadata["usr/local/large.bin"] = json.RawMessage(`{"type":"file","mode":420,"uid":0,"gid":0,"xattrs":{}}`)
+	payloads["file_metadata"], _ = json.Marshal(metadata)
+	s.Collector = readinessCollector{queries: map[string]string{"users": "ok", "groups": "ok", "file_inventory": "ok"}, payloads: payloads}
+	b, err := s.CreateBackup(context.Background(), "host1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.BackupReadiness(b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readinessState(r.Items, "query.file_inventory"); got != "ok" {
+		t.Fatalf("unrelated helper sentinels suppressed captured proof: %s", got)
+	}
+}

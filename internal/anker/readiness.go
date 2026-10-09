@@ -223,6 +223,13 @@ func queryPayloadPresent(inv Inventory, entries []Entry, key string) bool {
 		if ValidPath(file) != nil || hash == "" {
 			return false
 		}
+		if hash == "unsupported" {
+			// The helper records unsupported inodes without file metadata.
+			if _, exists := metadata[file]; exists {
+				return false
+			}
+			continue
+		}
 		if _, ok := metadata[file]; !ok {
 			return false
 		}
@@ -249,7 +256,7 @@ func queryPayloadPresent(inv Inventory, entries []Entry, key string) bool {
 			return false
 		}
 		hash, ok := hashes[file]
-		if !ok || record.Type == "file" && !validSHA256(hash) || record.Type == "symlink" && hash != "symlink:"+*record.Link {
+		if !ok || record.Type == "file" && hash != "too-large" && !validSHA256(hash) || record.Type == "symlink" && hash != "symlink:"+*record.Link {
 			return false
 		}
 	}
