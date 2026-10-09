@@ -83,6 +83,68 @@ test("backup search finds real and synthetic folders and offers file location", 
   ).toBeVisible();
 });
 
+test("backup search shows complete paths and keeps mobile results and actions usable", async ({
+  page,
+}) => {
+  const longPath =
+    "etc/pve/priv/storage/nested/long-location/demo-password-and-access-credentials.conf";
+  const entries = [
+    entry("etc/pve/priv", "directory"),
+    entry("etc/pve/priv/storage", "directory"),
+    entry(longPath, "file", true),
+  ];
+  await page.route("**/api/backups/*/files", (route) =>
+    route.fulfill({ json: entries }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Sicherungen" })
+    .click();
+  await page
+    .getByRole("button", { name: "Dateien", exact: true })
+    .first()
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Dateien durchsuchen").fill("priv");
+  const path = dialog.locator(".file-entry-name small", { hasText: longPath });
+  await expect(path).toBeVisible();
+  async function completePathIsVisible() {
+    return path.evaluate((node) => {
+      const text = node as HTMLElement;
+      const style = getComputedStyle(text);
+      return (
+        style.whiteSpace !== "nowrap" &&
+        style.overflow !== "hidden" &&
+        text.scrollWidth <= text.clientWidth + 1 &&
+        text.getBoundingClientRect().height > 20
+      );
+    });
+  }
+  expect(await completePathIsVisible()).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(path).toBeVisible();
+  expect(await completePathIsVisible()).toBe(true);
+  const layout = await dialog.evaluate((node) => {
+    const list = node.querySelector(".file-items")!.getBoundingClientRect();
+    const preview = node.querySelector(".file-preview")!;
+    const action = [...node.querySelectorAll(".dialog-footer button")]
+      .find((button) =>
+        button.textContent?.includes("Wiederherstellung planen"),
+      )!
+      .getBoundingClientRect();
+    return {
+      listHeight: list.height,
+      emptyDisplay: getComputedStyle(preview).display,
+      actionBottom: action.bottom,
+    };
+  });
+  expect(layout.listHeight).toBeGreaterThanOrEqual(220);
+  expect(layout.emptyDisplay).toBe("none");
+  expect(layout.actionBottom).toBeLessThanOrEqual(844);
+});
+
 test("recovery uses folders while selections survive navigation, search and pages until source changes", async ({
   page,
 }) => {
@@ -121,6 +183,12 @@ test("recovery uses folders while selections survive navigation, search and page
   ).toBeVisible();
   await expect(files.getByRole("checkbox")).toHaveCount(0);
   await files.getByRole("button", { name: "Nur ausgewählte Dateien" }).click();
+  await expect(files.getByRole("checkbox")).toHaveCount(0);
+  await files
+    .getByLabel("Wiederherstellungsdateien durchsuchen")
+    .fill("config.conf");
+  await expect(files.getByRole("checkbox")).toHaveCount(1);
+  await files.getByLabel("Wiederherstellungsdateien durchsuchen").fill("");
   await expect(files.getByRole("checkbox")).toHaveCount(2);
   await page
     .getByLabel("Sicherung", { exact: true })

@@ -27,7 +27,10 @@ function RestoreFiles({
       selectedOnly
         ? indexed
             .filter(
-              (entry) => entry.type !== "directory" && selected.has(entry.path),
+              (entry) =>
+                entry.type !== "directory" &&
+                selected.has(entry.path) &&
+                entry.path.toLowerCase().includes(query.trim().toLowerCase()),
             )
             .sort((a, b) =>
               a.path.localeCompare(b.path, undefined, { numeric: true }),
