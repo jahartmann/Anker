@@ -114,6 +114,61 @@ func validateVerificationResult(v RecoveryVerificationResult, services, ids []st
 	}
 	return nil
 }
+
+// encoding/json matches struct field names case-insensitively. Validate exact
+// protocol names before typed decoding, so aliases cannot override a canonical
+// negative observation. All supplied fields must be non-null; optional volume
+// lists/errors may be omitted on failed queries, as in the helper wire format.
+func verificationWireObject(data json.RawMessage, required []string, optional ...string) (map[string]json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
+		return nil, errors.New("Prüfobjekt fehlt oder ist ungültig")
+	}
+	allowed := map[string]bool{}
+	for _, key := range required {
+		allowed[key] = true
+		if fields[key] == nil {
+			return nil, errors.New("fehlendes Prüffeld")
+		}
+	}
+	for _, key := range optional {
+		allowed[key] = true
+	}
+	for key, value := range fields {
+		if !allowed[key] || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return nil, errors.New("unbekanntes oder leeres Prüffeld")
+		}
+	}
+	return fields, nil
+}
+func validateVerificationWireFields(data []byte) error {
+	fields, err := verificationWireObject(data, []string{"protocol", "observed_at", "identity", "boot", "services", "storage_volumes"})
+	if err != nil {
+		return err
+	}
+	for _, key := range []string{"identity", "boot"} {
+		if _, err = verificationWireObject(fields[key], []string{"state", "value"}); err != nil {
+			return err
+		}
+	}
+	for _, group := range []string{"services", "storage_volumes"} {
+		var entries map[string]json.RawMessage
+		if err = json.Unmarshal(fields[group], &entries); err != nil || entries == nil {
+			return errors.New("Prüfergebnisliste fehlt oder ist ungültig")
+		}
+		for _, entry := range entries {
+			if group == "services" {
+				_, err = verificationWireObject(entry, []string{"state", "value"})
+			} else {
+				_, err = verificationWireObject(entry, []string{"state"}, "volumes", "error")
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 func decodeVerification(r io.Reader, services, ids []string) (RecoveryVerificationResult, error) {
 	var v RecoveryVerificationResult
 	data, err := io.ReadAll(io.LimitReader(r, verificationResponseLimit+1))
@@ -133,33 +188,15 @@ func decodeVerification(r io.Reader, services, ids []string) (RecoveryVerificati
 	if _, err = d.Token(); err != io.EOF {
 		return v, errors.New("zusätzliche Prüfantwort")
 	}
+	if err = validateVerificationWireFields(data); err != nil {
+		return v, err
+	}
 	d = json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err = d.Decode(&v); err != nil {
 		return v, err
 	}
-	// Require all fields, including empty query values and failed volume lists.
-	var fields map[string]json.RawMessage
-	json.Unmarshal(data, &fields)
-	for _, key := range []string{"protocol", "observed_at", "identity", "boot", "services", "storage_volumes"} {
-		if fields[key] == nil || string(fields[key]) == "null" {
-			return v, errors.New("fehlendes Prüffeld")
-		}
-	}
-	for _, key := range []string{"identity", "boot"} {
-		var q map[string]json.RawMessage
-		json.Unmarshal(fields[key], &q)
-		if q["state"] == nil || q["value"] == nil || string(q["value"]) == "null" {
-			return v, errors.New("unvollständige Abfrage")
-		}
-	}
-	var queries map[string]map[string]json.RawMessage
-	json.Unmarshal(fields["services"], &queries)
-	for _, q := range queries {
-		if q["state"] == nil || q["value"] == nil || string(q["value"]) == "null" {
-			return v, errors.New("unvollständige Dienstabfrage")
-		}
-	}
+
 	return v, validateVerificationResult(v, services, ids)
 }
 func (c SSHCollector) VerifyRecovery(ctx context.Context, h Host, services, ids []string) (RecoveryVerificationResult, error) {

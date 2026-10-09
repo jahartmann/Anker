@@ -92,7 +92,7 @@ Standalone, Hardwarewechsel, gesunder Clusterersatz, isolierter Clusterverlust, 
 
 Grenzen: 50.000 logische Einträge, 256 MiB Dateiinhalte einschließlich Index/Listen, 64 MiB pro Datei, 512 MiB Archivtransport; Pfade maximal 4096 Bytes/101 Komponenten. Verifier weist Traversal, doppelte/unsichere Pfade, Hardlinks/Spezialdateien und Datei-/Link-Unterpfadkollisionen ab. Originalsymlinks werden ausschließlich als Metadaten geprüft, niemals verfolgt. Originalmetadaten werden im Archiv bewahrt; private Inhalte nicht ungeschützt entpacken oder an Support weitergeben. Für neue Exporte gelten dieselben Inhaltsgrenzen.
 
-Das [operatorgeführte PVE-Abnahmekit](recovery-lab/README.md) liefert Preflight, Abhängigkeitsdossier und neun konkrete Szenarien. Reale Laborergebnisse fehlen. Die frische Maschinenprüfung aus Task8 ist noch nicht verfügbar und muss in Task12 integriert werden; bis dahin meldet das Kit unvollständig.
+Das [operatorgeführte PVE-Abnahmekit](recovery-lab/README.md) liefert Preflight, Abhängigkeitsdossier und neun konkrete Szenarien. Reale Laborergebnisse fehlen. Die frische Maschinenprüfung aus Task8 ist verfügbar; die Integration ihres tatsächlichen CLI-/Ergebnisvertrags in das Abnahmekit steht in Task12 noch aus. Bis dahin meldet das Kit unvollständig.
 
 ## Frische maschinelle Prüfversuche
 

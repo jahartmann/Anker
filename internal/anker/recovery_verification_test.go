@@ -500,3 +500,126 @@ func TestRecoveryVerificationRejectsPreviousAttemptResponse(t *testing.T) {
 		t.Fatal("old response accepted")
 	}
 }
+
+// The transport adapter exercises wire validation and persisted service behavior
+// together, without replacing either decoder or verification decision logic.
+type verificationWireCollector struct {
+	*verifyCollector
+	wire string
+}
+
+func (c verificationWireCollector) VerifyRecovery(_ context.Context, _ Host, services, ids []string) (RecoveryVerificationResult, error) {
+	return decodeVerification(strings.NewReader(c.wire), services, ids)
+}
+func TestRecoveryVerificationRejectsNegativeServiceCaseAlias(t *testing.T) {
+	s, p, c := verificationSetup(t)
+	raw, _ := json.Marshal(c.resultVerify)
+	wire := strings.Replace(string(raw), `"pveproxy":{"state":"ok","value":"active"}`, `"pveproxy":{"state":"failed","value":"","State":"ok","Value":"active"}`, 1)
+	if wire == string(raw) {
+		t.Fatal("fixture did not insert contradictory service result")
+	}
+	s.Collector = verificationWireCollector{c, wire}
+	got, err := s.VerifyRecovery(t.Context(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := got.VerificationAttempts[0]
+	if a.State != "failed" || a.ServicesState != "unknown" || a.IdentityState != "unknown" || a.RebootState != "unknown" || a.Result != nil {
+		t.Fatalf("contradictory wire created positive evidence: %+v", a)
+	}
+	saved, err := s.Plan(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(saved.VerificationAttempts, got.VerificationAttempts) {
+		t.Fatal("corrupt-response attempt not retained")
+	}
+	if saved.State != p.State || !reflect.DeepEqual(saved.Tasks, p.Tasks) || !reflect.DeepEqual(saved.Result, p.Result) {
+		t.Fatal("corrupt response changed operation or human evidence")
+	}
+}
+func TestRecoveryVerificationExactWireFieldNames(t *testing.T) {
+	_, _, c := verificationSetup(t)
+	c.resultVerify.StorageVolumes = map[string]RecoveryVolumeResult{"local": {State: "ok", Volumes: []string{"local:vm-100-disk-0"}}}
+	raw, _ := json.Marshal(c.resultVerify)
+	// Every field at every struct level must be exact, even if both spellings
+	// would currently decode to the same value. Map entry names retain their
+	// separately validated service/storage membership contract.
+	scopes := []struct {
+		name string
+		path []string
+		keys []string
+	}{
+		{"envelope", nil, []string{"protocol", "observed_at", "identity", "boot", "services", "storage_volumes"}},
+		{"identity", []string{"identity"}, []string{"state", "value"}},
+		{"boot", []string{"boot"}, []string{"state", "value"}},
+		{"service", []string{"services", "pveproxy"}, []string{"state", "value"}},
+		{"storage", []string{"storage_volumes", "local"}, []string{"state", "volumes", "error"}},
+	}
+	for _, scope := range scopes {
+		for _, key := range scope.keys {
+			t.Run(scope.name+"/"+key, func(t *testing.T) {
+				var tree map[string]any
+				json.Unmarshal(raw, &tree)
+				node := tree
+				for _, segment := range scope.path {
+					node = node[segment].(map[string]any)
+				}
+				value := node[key]
+				if key == "error" {
+					value = ""
+					node[key] = value
+				}
+				node[strings.ToUpper(key[:1])+key[1:]] = value
+				bad, _ := json.Marshal(tree)
+				if _, err := decodeVerification(bytes.NewReader(bad), verificationServices, []string{"local"}); err == nil {
+					t.Fatalf("case alias accepted at %s.%s: %s", scope.name, key, bad)
+				}
+			})
+		}
+	}
+	if _, err := decodeVerification(bytes.NewReader(raw), verificationServices, []string{"local"}); err != nil {
+		t.Fatal("canonical result rejected", err)
+	}
+}
+func TestRecoveryVerificationWireRequiredFieldsAndNulls(t *testing.T) {
+	_, _, c := verificationSetup(t)
+	c.resultVerify.StorageVolumes = map[string]RecoveryVolumeResult{"local": {State: "ok", Volumes: []string{}}}
+	raw, _ := json.Marshal(c.resultVerify)
+	for _, path := range [][]string{{"protocol"}, {"observed_at"}, {"identity"}, {"boot"}, {"services"}, {"storage_volumes"}, {"identity", "state"}, {"identity", "value"}, {"boot", "state"}, {"boot", "value"}, {"services", "pveproxy"}, {"services", "pveproxy", "state"}, {"services", "pveproxy", "value"}, {"storage_volumes", "local"}, {"storage_volumes", "local", "state"}, {"storage_volumes", "local", "volumes"}} {
+		for _, omit := range []bool{false, true} {
+			t.Run(strings.Join(path, "/")+fmt.Sprint(omit), func(t *testing.T) {
+				var tree map[string]any
+				json.Unmarshal(raw, &tree)
+				node := tree
+				for _, segment := range path[:len(path)-1] {
+					node = node[segment].(map[string]any)
+				}
+				if omit {
+					delete(node, path[len(path)-1])
+				} else {
+					node[path[len(path)-1]] = nil
+				}
+				bad, _ := json.Marshal(tree)
+				if _, err := decodeVerification(bytes.NewReader(bad), verificationServices, []string{"local"}); err == nil {
+					t.Fatal("missing/null required field accepted", string(bad))
+				}
+			})
+		}
+	}
+	// Error is optional, but an explicitly present null is not a string value.
+	bad := strings.Replace(string(raw), `"storage_volumes":{"local":{`, `"storage_volumes":{"local":{"error":null,`, 1)
+	if _, err := decodeVerification(strings.NewReader(bad), verificationServices, []string{"local"}); err == nil {
+		t.Fatal("explicit null optional error accepted")
+	}
+	// The host helper omits volumes on a failed query. The shared Go model's
+	// nil slice marshals to null, which is deliberately not accepted on this wire.
+	failed := strings.Replace(string(raw), `"local":{"state":"ok","volumes":[]}`, `"local":{"state":"failed","error":"query failed"}`, 1)
+	if failed == string(raw) {
+		t.Fatal("fixture did not insert failed volume query")
+	}
+	raw = []byte(failed)
+	if _, err := decodeVerification(bytes.NewReader(raw), verificationServices, []string{"local"}); err != nil {
+		t.Fatal("canonical failed volume result rejected", err)
+	}
+}
