@@ -623,6 +623,7 @@ Start und Hilfe
   Offline: anker --data DATEN disaster export --output PAKET --passphrase-file DATEI
   Offline: anker disaster inspect --input PAKET --passphrase-file DATEI
   Offline: anker disaster import --input PAKET --destination NEU --passphrase-file DATEI
+  Import: vorhandenes echtes Elternverzeichnis, kanonischer Pfad (macOS /private/tmp statt /tmp).
   Disaster-Export: Dienst/Updater vorher stoppen; optionale --config-root /etc/anker.
 
 Installation und Einrichtung (Linux mit systemd)

@@ -6,6 +6,8 @@ VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker si
 
 Wiederherstellung führt durch fünf Schritte: Quelle/Situation, Zielvergleich, Dateientscheidungen, Planprüfung sowie Übernahme und Betriebsprüfung. Vorbereitete Änderungen nennen ihre Wirkung; Ziel behalten und manuelle Aufgaben bleiben ausdrücklich sichtbar. Gewöhnliche Einzeldateien verwenden das Hostjournal. Netzwerk, Boot, Storageverwaltung und vollständige Host-/Cluster-Recovery bleiben manuell. [Ablauf und Grenzen](docs/RECOVERY.md) · [Unterstützungsstand](docs/SUPPORT.md).
 
+Dateien sind über Ordner, Breadcrumbs und globale Pfadsuche erreichbar; Sicherungen lassen sich direkt mit dem älteren Stand desselben Hosts vergleichen. Abdeckung, Integrität, unabhängige Kopie, menschlicher Drill und frische maschinelle Beobachtungen bleiben getrennte datierte Nachweise. Für den Verlust der Anker-Installation gibt es einen verschlüsselten lokalen Cold-Export mit isoliertem Import. Das [operatorgeführte Abnahmekit](docs/recovery-lab/README.md) ist ausführbar; sämtliche realen PVE-Szenarien bleiben mangels isoliertem Testsystem offen.
+
 ## Installation
 
 Auf Debian 13 mit systemd, als root:

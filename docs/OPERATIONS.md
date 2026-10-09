@@ -150,7 +150,7 @@ Sicherungs-/Planprüfung erfolgt beim Export und Import.
 
 ### Isolierter Import und bewusste Aktivierung
 
-Das Elternverzeichnis muss bereits existieren. Das Ziel darf **noch nicht
+Das Elternverzeichnis muss als echtes Verzeichnis bereits existieren. In diesem Verzeichnis `pwd -P` verwenden und den neuen Zielnamen an diesen kanonischen Pfad anhängen. Unter macOS ist `/private/tmp` der reale Elternpfad, `/tmp` ein abgewiesener Symlink. Die Beschränkung bleibt bestehen. Das Ziel darf **noch nicht
 existieren**, auch nicht als leeres Verzeichnis oder Symlink. Es darf nicht
 innerhalb einer vorhandenen Anker-Instanz liegen:
 

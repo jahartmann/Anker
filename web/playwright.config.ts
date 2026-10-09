@@ -11,7 +11,16 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
   },
   projects: [
-    { name: "demo", testMatch: ["app.spec.ts", "usability-*.spec.ts"] },
+    {
+      name: "demo",
+      testMatch: ["app.spec.ts", "usability-*.spec.ts"],
+      testIgnore: "usability-draft-comparison.spec.ts",
+    },
+    {
+      name: "draft",
+      testMatch: "usability-draft-comparison.spec.ts",
+      use: { baseURL: "http://127.0.0.1:8090" },
+    },
     {
       name: "production",
       testMatch: "production.spec.ts",
@@ -19,6 +28,11 @@ export default defineConfig({
     },
   ],
   webServer: [
+    {
+      command: `../bin/anker --data /tmp/anker-draft-browser-${runID} --listen 127.0.0.1:8090 demo`,
+      url: "http://127.0.0.1:8090",
+      reuseExistingServer: false,
+    },
     {
       command:
         "../bin/anker --data /tmp/anker-browser-" +

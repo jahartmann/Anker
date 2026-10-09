@@ -1,7 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { demoCookies } from "./demo-auth";
+// Dedicated fresh demo server: other suites restore files and create backups.
 test.beforeEach(async ({ page, request }) => {
-  await page.context().addCookies(await demoCookies(request));
+  const login = await request.post("/api/login", {
+    headers: { "X-Anker-Request": "1" },
+    data: { name: "demo", password: "anker-demo-2026" },
+  });
+  expect(login.ok()).toBeTruthy();
+  await page.context().addCookies((await request.storageState()).cookies);
 });
 async function decisions(page: Page, paths = ["etc/sysctl.d/99-anker.conf"]) {
   const base = await (await page.request.get("/api/status")).json();
@@ -75,6 +80,15 @@ test("lazy draft comparison exposes original target and prepared evidence before
       name: "Dateivergleich für etc/sysctl.d/99-anker.conf",
     }),
   ).toContainText("net.ipv4.ip_forward=0");
+  const unchanged = page.getByRole("region", {
+    name: "Dateivergleich für etc/sysctl.d/99-anker.conf",
+  });
+  // Prepared ordinary file preserves the original; both identical and target Diff
+  // are asserted against the real service, without response mocks.
+  await unchanged.getByLabel("Vergleichsbasis").selectOption("source");
+  await expect(unchanged).toContainText("Inhalt und Metadaten stimmen überein");
+  await unchanged.getByLabel("Vergleichsbasis").selectOption("target");
+  await expect(unchanged).toContainText("net.ipv4.ip_forward=0");
   for (const [name, width, height] of [
     ["desktop", 1440, 1000],
     ["mobile", 390, 844],

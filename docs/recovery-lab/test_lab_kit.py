@@ -29,7 +29,7 @@ class LabKitTests(unittest.TestCase):
         result = kit.preflight({}, None, None, False)
         self.assertEqual(result["status"], "incomplete")
         self.assertIn("lab_id", result["missing"])
-        self.assertEqual(result["machine_verification"], "unavailable_task8")
+        self.assertEqual(result["machine_verification"], "not_collected")
 
     def test_preflight_does_not_probe_without_explicit_complete_bindings(self):
         kit = self.load()
@@ -92,7 +92,7 @@ class LabKitTests(unittest.TestCase):
             self.assertEqual(json.loads(report.read_text())["status"], "incomplete")
             result = subprocess.run([sys.executable, str(ROOT / "lab-kit.py"), "review", "--input", str(report)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2, result.stderr)
-            self.assertIn("unavailable_task8", result.stdout)
+            self.assertIn("missing", result.stdout)
             output = Path(root) / "preflight.json"
             result = subprocess.run([sys.executable, str(ROOT / "lab-kit.py"), "preflight", "--bindings", str(bindings), "--output", str(output)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2, result.stderr)

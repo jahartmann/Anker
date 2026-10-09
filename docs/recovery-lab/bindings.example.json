@@ -17,5 +17,13 @@
   "baseline_boot_id": "",
   "backing_reference": "",
   "dependency_dossier_reference": "",
-  "preflight_reference": ""
+  "preflight_reference": "",
+  "source_manifest_sha": "",
+  "target_snapshot_sha": "",
+  "connection_sha": "",
+  "machine_sha256": "",
+  "build_sha256": "",
+  "helper_sha256": "",
+  "provenance_reference": "",
+  "cold_package_sha256": ""
 }

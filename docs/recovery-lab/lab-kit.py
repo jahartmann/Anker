@@ -11,12 +11,15 @@ from pathlib import Path
 import selectors
 import subprocess
 import time
+import re
+from verification import object_pairs, reject_constant, timestamp, private_bytes, validate_machine
 
 FIELDS = (
     "lab_id operator date isolation_reference build_id helper_privileges_reference "
     "pve_expected source_backup_id source_fingerprint plan_id plan_package_sha256 "
     "target_id target_fingerprint baseline_boot_id backing_reference "
-    "dependency_dossier_reference preflight_reference"
+    "dependency_dossier_reference preflight_reference source_manifest_sha target_snapshot_sha "
+    "connection_sha machine_sha256 build_sha256 helper_sha256 provenance_reference cold_package_sha256"
 ).split()
 SCENARIOS = {
     1: [
@@ -65,7 +68,7 @@ SCENARIOS = {
         "Vorher Maschinenidentität, Plan-/Backup-ID, Boot-ID und Build/Helferdigest mit privatem Preflight erfassen; Konsole und Rückweg prüfen.",
         "HALT: Neustart ausschließlich ausdrücklich durch Operator in isolierter Umgebung. Dieses Kit sendet keinen Reboot.",
         "Nachher Preflight erneut mit neuer Datei erfassen. Gleiche Maschine und neue Boot-ID vergleichen; fehlende oder gleiche Boot-Baseline beweist keinen Neustart.",
-        "Frische planbezogene maschinelle Verifikation über Task8 erforderlich. CLI/Protokoll derzeit noch nicht vorhanden: incomplete. In Task12 tatsächlichen Vertrag einsetzen, dann Dienste/Management/Storage prüfen."
+        "anker restore verify PLAN ausführen; neueste verification_attempts mit privater Plan-Baseline und Nachherbeleg prüfen. Dienste/Management/Storage und Funktion separat dokumentieren."
     ],
     9: [
         "Anker-Katastrophe: ausschließlich Laborkopie; Anker-Dienst/Updater und alle Schreiber ausdrücklich durch Operator stoppen. Private Passphrase-Datei 0600 bereitstellen; keine Geheimnisse im Protokoll.",
@@ -81,7 +84,7 @@ def read_json(path):
         raw = stream.read((1 << 20) + 1)
     if len(raw) > 1 << 20:
         raise ValueError("JSON größer als 1 MiB")
-    data = json.loads(raw)
+    data = json.loads(raw, object_pairs_hook=object_pairs, parse_constant=reject_constant)
     if not isinstance(data, dict):
         raise ValueError("JSON-Objekt erforderlich")
     return data
@@ -102,8 +105,15 @@ def clean_bindings(data):
     return result
 
 
-def missing_bindings(data):
-    missing = [k for k in FIELDS if not data.get(k, "").strip()]
+def missing_bindings(data, number=None):
+    required = set(FIELDS) - {"cold_package_sha256"}
+    if number in (4, 5, 6, 7):
+        required -= set("baseline_boot_id machine_sha256 target_snapshot_sha connection_sha preflight_reference".split())
+    if number == 4:
+        required -= {"helper_sha256", "helper_privileges_reference"}
+    if number == 9:
+        required = set("lab_id operator date isolation_reference build_id build_sha256 provenance_reference cold_package_sha256 dependency_dossier_reference".split())
+    missing = [k for k in sorted(required) if not data.get(k, "").strip()]
     if not data.get("isolation_confirmed"):
         missing.append("isolation_confirmed")
     if not data.get("permitted_scenarios"):
@@ -175,9 +185,14 @@ def read_identity():
         try:
             with open(path, "rb") as stream:
                 raw = stream.read(257).strip()
-            if not raw or len(raw) > 256:
-                continue
-            result[label] = hashlib.sha256(raw).hexdigest() if label == "machine_sha256" else raw.decode("ascii")
+            if label == "machine_sha256":
+                if not re.fullmatch(b"[0-9a-f]{32}", raw) or raw == b"0" * 32:
+                    continue
+                result[label] = hashlib.sha256(raw).hexdigest()
+            else:
+                value = raw.decode("ascii")
+                if re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value):
+                    result[label] = value
         except (OSError, UnicodeError):
             continue
     return result
@@ -186,13 +201,14 @@ def read_identity():
 def preflight(bindings, build, helper, collect):
     bindings = clean_bindings(bindings)
     report = {"schema":1, "kind":"preflight", "status":"incomplete", "captured_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
-              "bindings":bindings, "missing":missing_bindings(bindings), "machine_verification":"unavailable_task8",
+              "bindings":bindings, "missing":missing_bindings(bindings), "machine_verification":"not_collected",
               "build_sha256":digest_file(build), "helper_sha256":digest_file(helper), "observations":{},
               "residual_failures":["Reale Abnahme offen; Isolation/Backing/Helferrechte operatorseitig prüfen.",
-                                   "Task8-Maschinenprüfung fehlt; Task12 muss CLI/Protokoll integrieren."]}
+                                   "Lokaler Preflight ersetzt keine frische planbezogene Maschinenprüfung."]}
     if not collect or report["missing"] or not report["build_sha256"] or not report["helper_sha256"]:
         report["residual_failures"].append("Lokale PVE-Erfassung nicht freigegeben oder Bindungen/Artefakte fehlen.")
         return report
+    report["collection_authorized"] = True
     report["identity"] = read_identity()
     commands = {"pve_version":["pveversion"], "kernel":["uname", "-r"],
                 "pve_cluster":["systemctl", "is-active", "pve-cluster"],
@@ -213,11 +229,11 @@ def scenario_report(bindings, number):
     if number not in bindings["permitted_scenarios"]:
         raise ValueError("Szenario nicht im Laborumfang freigegeben")
     return {"schema":1, "kind":"scenario", "scenario":number, "status":"incomplete", "bindings":bindings,
-            "machine_verification":"unavailable_task8", "residual_failures":[],
+            "machine_verification":"not_collected", "residual_failures":[],
             "steps":[{"instruction":text, "outcome":"unrun", "actor":"", "date":"", "evidence_reference":""} for text in SCENARIOS[number]]}
 
 
-def review(report):
+def review(report, artifacts=(), machine_paths=()):
     number = report.get("scenario")
     if report.get("schema") != 1 or report.get("kind") != "scenario" or number not in SCENARIOS:
         raise ValueError("Unbekanntes Szenarioprotokoll")
@@ -227,11 +243,45 @@ def review(report):
     steps = report.get("steps", [])
     if len(steps) != len(SCENARIOS[number]) or any(step.get("instruction") != expected for step,expected in zip(steps,SCENARIOS[number])):
         raise ValueError("Checkliste fehlt oder wurde verändert")
-    status = "failed" if any(s.get("outcome") == "fail" for s in steps) else "incomplete"
-    return {"status":status, "scenario":number, "bindings":bindings, "missing":missing_bindings(bindings),
-            "machine_verification":"unavailable_task8", "note":"Operatoraussagen separat; keine maschinelle Abnahme. Task8/Task12 offen.",
-            "open_steps":[i+1 for i,s in enumerate(steps) if s.get("outcome") != "pass" or any(not s.get(k) for k in ("actor","date","evidence_reference"))],
-            "residual_failures":report.get("residual_failures", [])}
+    missing = missing_bindings(bindings, number)
+    if len(artifacts) > 32:
+        raise ValueError("Höchstens 32 Belegdateien je Dossier")
+    artifacts_by_sha = {hashlib.sha256(private_bytes(path, 256 << 20)).hexdigest() for path in artifacts}
+    open_steps = []
+    for i, step in enumerate(steps):
+        if step.get("outcome") not in ("unrun", "pass", "fail"):
+            raise ValueError("Unbekanntes Schrittergebnis")
+        try:
+            timestamp(step.get("date"))
+            dated = timestamp(bindings["date"]) <= timestamp(step["date"]) <= datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5)
+        except (ValueError, TypeError):
+            dated = False
+        if step.get("outcome") != "pass" or not step.get("actor") or not dated or step.get("evidence_reference") not in artifacts_by_sha:
+            open_steps.append(i+1)
+    residual = report.get("residual_failures", [])
+    if not isinstance(residual, list) or any(not isinstance(v, str) for v in residual):
+        raise ValueError("Restfehler müssen eine Textliste sein")
+    machine = {"state": "not_applicable", "reason": "Offline-/Fehler-/Cold-Szenario: Operatorbelege erforderlich; keine alte Planfreigabe/SSH-Abfrage."}
+    if number in (1, 2, 3, 8):
+        machine = {"state": "missing"}
+        if len(machine_paths) == 3 and all(machine_paths):
+            machine = validate_machine(bindings, number, *machine_paths)
+    elif machine_paths and any(machine_paths):
+        raise ValueError("Dieses Szenario verlangt keine frische Plan-SSH-Prüfung")
+    failed = any(s.get("outcome") == "fail" for s in steps)
+    complete = not missing and not open_steps and not any(v.strip() for v in residual) and machine["state"] != "missing"
+    if number != 9 and bindings.get("plan_package_sha256") not in artifacts_by_sha:
+        complete = False
+        missing.append("plan_package_artifact")
+    if number == 9:
+        for key in ("cold_package_sha256", "build_sha256"):
+            if bindings.get(key) not in artifacts_by_sha:
+                complete = False
+                missing.append(key + "_artifact")
+    status = "failed" if failed else "complete" if complete else "incomplete"
+    return {"status":status, "scenario":number, "bindings":bindings, "missing":missing,
+            "machine_verification":machine, "note":"Vollständig bedeutet Belegdossier, keine universelle Recovery-Freigabe. Menschliche Bewertungen bleiben menschlich; Dateidigests beweisen keine Herkunft.",
+            "open_steps":open_steps, "residual_failures":residual}
 
 
 def save_private(path, report):
@@ -258,6 +308,11 @@ def main():
     p.add_argument("--interactive", action="store_true")
     p = sub.add_parser("review")
     p.add_argument("--input", required=True)
+    p.add_argument("--artifact", action="append", default=[], help="Privater tatsächlicher Beleg; pro Schritt dessen SHA256 als evidence_reference")
+    p.add_argument("--plan", help="Tatsächliche JSON-Ausgabe von anker restore verify PLAN")
+    p.add_argument("--snapshot", help="Bytegenaue private target-snapshot.json des Plans")
+    p.add_argument("--preflight", help="Separater gebundener lokaler Preflight")
+    p.add_argument("--output", help="Neue private Datei für das validierte Dossier")
     args = parser.parse_args()
     if args.command == "preflight":
         report = preflight(read_json(args.bindings), args.build, args.helper, args.collect_local_pve)
@@ -278,14 +333,16 @@ def main():
         report["status"] = review(report)["status"]
         save_private(args.output, report)
     else:
-        report = review(read_json(args.input))
+        report = review(read_json(args.input), args.artifact, (args.plan, args.snapshot, args.preflight))
+        if args.output:
+            save_private(args.output, report)
         print(json.dumps(report, ensure_ascii=False, indent=2))
-    print("Status:", report["status"], "· Task8-Maschinenprüfung und reale PVE-Abnahme offen.")
-    return 1 if report["status"] == "failed" else 2
+    print("Status:", report["status"], "· Belegdossier; kein universeller Recovery-Pass.")
+    return {"complete": 0, "failed": 1}.get(report["status"], 2)
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, EOFError, KeyboardInterrupt) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, EOFError, KeyboardInterrupt) as error:
         print("Laborprotokoll unvollständig:", type(error).__name__)
         raise SystemExit(2)

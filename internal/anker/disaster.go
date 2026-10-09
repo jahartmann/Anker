@@ -928,7 +928,7 @@ func ImportDisaster(r io.Reader, dest string, pass []byte) (DisasterInfo, error)
 	}
 	parent, err := openDisasterDir(filepath.Dir(abs))
 	if err != nil {
-		return DisasterInfo{}, err
+		return DisasterInfo{}, fmt.Errorf("Import-Elternverzeichnis muss real und vorhanden sein; kanonischen Pfad verwenden (macOS: /private/tmp statt /tmp): %w", err)
 	}
 	defer parent.f.Close()
 	if err = disasterIsolatedParent(parent.f); err != nil {

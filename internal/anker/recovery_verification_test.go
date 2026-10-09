@@ -389,9 +389,7 @@ func TestRecoveryVerificationDisasterPreservesRevokedHistory(t *testing.T) {
 	if !reflect.DeepEqual(attempts, got.VerificationAttempts) {
 		t.Fatal("disaster lost historical machine evidence")
 	}
-	imported := *s
-	imported.Store = store
-	imported.Root = dest
+	imported := Service{Store: store, Root: dest}
 	if err = imported.disasterPlanAllowed(p.ID); err == nil {
 		t.Fatal("import revived old plan authority")
 	}
