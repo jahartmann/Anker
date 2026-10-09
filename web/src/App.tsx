@@ -24,6 +24,7 @@ import Hosts, { HostForm } from "./views/Hosts";
 import Backups, { FileBrowser } from "./views/Backups";
 import BackupReadiness from "./components/BackupReadiness";
 import Restore from "./views/Restore";
+import type { RecoveryOperation } from "./components/recovery/RecoveryPlan";
 import Settings from "./views/Settings";
 import { useUpdateReload } from "./useUpdateReload";
 const pages = [
@@ -116,6 +117,10 @@ export default function App() {
     file?: string;
     sequence: number;
   } | null>(null);
+  const [recoveryOperations, setRecoveryOperations] = useState<{
+    userId: string;
+    plans: Record<string, RecoveryOperation>;
+  }>({ userId: "", plans: {} });
   const [toast, setToast] = useState<{
     message: string;
     error: boolean;
@@ -146,8 +151,10 @@ export default function App() {
     } catch (e) {
       if (sequence < acceptedSequence.current) return;
       acceptedSequence.current = sequence;
-      if ((e as Error).message === "Anmeldung erforderlich") setUser(null);
-      else setConnectionError((e as Error).message);
+      if ((e as Error).message === "Anmeldung erforderlich") {
+        setUser(null);
+        setRecoveryOperations({ userId: "", plans: {} });
+      } else setConnectionError((e as Error).message);
     }
   }, [notify]);
   useEffect(() => {
@@ -158,6 +165,7 @@ export default function App() {
       setFile("");
       setRestoreRequest(null);
       setPlanRequest(null);
+      setRecoveryOperations({ userId: "", plans: {} });
       setSelectedHost("");
       setConnectTarget(false);
       setRecoveryBusy(false);
@@ -312,6 +320,7 @@ export default function App() {
                   setFile("");
                   setRestoreRequest(null);
                   setPlanRequest(null);
+                  setRecoveryOperations({ userId: "", plans: {} });
                   setSelectedHost("");
                   setConnectTarget(false);
                   setRecoveryBusy(false);
@@ -400,6 +409,20 @@ export default function App() {
                 refresh={refresh}
                 onBusyChange={setRecoveryBusy}
                 onDirtyChange={setRecoveryDirty}
+                operations={
+                  recoveryOperations.userId === user.id
+                    ? recoveryOperations.plans
+                    : {}
+                }
+                onOperationChange={(planId, operation) =>
+                  setRecoveryOperations((old) => ({
+                    userId: user.id,
+                    plans: {
+                      ...(old.userId === user.id ? old.plans : {}),
+                      [planId]: operation,
+                    },
+                  }))
+                }
                 onConnectTarget={() => {
                   setConnectTarget(true);
                   setPage("Hosts");

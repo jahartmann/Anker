@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { date, labels } from "../../api";
+import { preciseDate, labels } from "../../api";
 import type { Entry, Status } from "../../api";
 import { Field, Pagination, LoadError } from "../shared";
 import type { RecoveryDraft } from "./useRecoveryDraft";
@@ -156,6 +156,22 @@ export default function RecoverySource({
 }) {
   const [sourceHost, setSourceHost] = useState("");
   const sources = new Map(status.backups.map((b) => [b.host_id, b.host_name]));
+  const selectedSource = status.backups.find((b) => b.id === d.backup);
+  function shortId(id: string) {
+    let length = Math.min(10, id.length);
+    while (
+      length < id.length &&
+      status.backups.some(
+        (backup) =>
+          backup.id !== id && backup.id.startsWith(id.slice(0, length)),
+      )
+    )
+      length++;
+    return id.slice(0, length);
+  }
+  function sourceLabel(source: (typeof status.backups)[number]) {
+    return `${source.host_name} · ${preciseDate(source.created_at)} · ${shortId(source.id)}`;
+  }
   return (
     <section aria-label="Quelle und Situation">
       <h2>1 · Quelle und Situation</h2>
@@ -187,12 +203,21 @@ export default function RecoverySource({
               .sort((a, b) => b.created_at.localeCompare(a.created_at))
               .map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.host_name} · {date(b.created_at)}
+                  {sourceLabel(b)}
                 </option>
               ))}
           </select>
         </Field>
       </div>
+      {selectedSource && (
+        <div className="field-hint">
+          Gewählte Sicherung: {sourceLabel(selectedSource)}
+          <details>
+            <summary>Vollständige Sicherungs-ID</summary>
+            <code>{selectedSource.id}</code>
+          </details>
+        </div>
+      )}
       <Field label="Situation">
         <select
           value={d.scenario}

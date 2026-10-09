@@ -42,6 +42,54 @@ async function inspect(page: Page) {
     .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
     .click();
 }
+test("same-minute source options show seconds and backup IDs", async ({
+  page,
+}) => {
+  const base = await (await page.request.get("/api/status")).json();
+  const backups = [
+    {
+      ...base.backups[0],
+      id: "same-minute-one-1234",
+      host_name: "pve-berlin-01",
+      created_at: "2026-10-09T07:53:03Z",
+    },
+    {
+      ...base.backups[0],
+      id: "same-minute-two-5678",
+      host_name: "pve-berlin-01",
+      created_at: "2026-10-09T07:53:42Z",
+    },
+  ];
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, backups } }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Hauptnavigation" })
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Plan erstellen", exact: true })
+    .click();
+  const source = page.getByLabel("Sicherung", { exact: true });
+  const options = await source
+    .locator("option:not([value=''])")
+    .allTextContents();
+  expect(options).toHaveLength(2);
+  expect(options[0]).toContain("09:53:42");
+  expect(options[0]).toContain("same-minute-t");
+  expect(options[1]).toContain("09:53:03");
+  expect(options[1]).toContain("same-minute-o");
+  expect(options[0]).not.toBe(options[1]);
+  await source.selectOption("same-minute-one-1234");
+  await expect(
+    page.getByText(/Gewählte Sicherung:.*09:53:03.*same-minute-o/),
+  ).toBeVisible();
+  await page.getByText("Vollständige Sicherungs-ID", { exact: true }).click();
+  await expect(
+    page.getByText("same-minute-one-1234", { exact: true }),
+  ).toBeVisible();
+});
 test("four situations retain draft through back navigation", async ({
   page,
 }) => {

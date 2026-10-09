@@ -350,7 +350,9 @@ export default function RecoveryPlan({
               Weiter bearbeiten
             </button>
             <button
+              disabled={busy}
               onClick={() => {
+                if (activeRequest.current || busy) return;
                 onDirtyChange?.(false);
                 onClose();
               }}

@@ -19,6 +19,8 @@ export default function Restore({
   onConnectTarget,
   onBusyChange,
   onDirtyChange,
+  operations,
+  onOperationChange,
 }: {
   status: Status;
   initialBackup: string;
@@ -30,6 +32,8 @@ export default function Restore({
   onConnectTarget: () => void;
   onBusyChange: (busy: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  operations: Record<string, RecoveryOperation>;
+  onOperationChange: (planId: string, operation: RecoveryOperation) => void;
 }) {
   const [wizard, setWizard] = useState(!!initialBackup);
   const draft = useRecoveryDraft(initialBackup, initialFile);
@@ -59,9 +63,6 @@ export default function Restore({
     }
     previousConnection.current = { target: draft.target, connection };
   }, [draft.target, connection]);
-  const [operations, setOperations] = useState<
-    Record<string, RecoveryOperation>
-  >({});
   const activeRequest = useRef(false);
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
@@ -318,7 +319,7 @@ export default function Restore({
             operations[plan.id] || { pendingJob: "", uncertain: false }
           }
           onOperationChange={(operation) =>
-            setOperations((old) => ({ ...old, [plan.id]: operation }))
+            onOperationChange(plan.id, operation)
           }
           onRevise={(legacy) => {
             if (!canRevise || legacy) {

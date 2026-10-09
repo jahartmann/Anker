@@ -935,6 +935,87 @@ test("lost apply reply remains uncertain after reopen", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("lost apply reply survives main-navigation input discard and plan reopen", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/api/plans/review-plan/apply", (r) => {
+    attempts++;
+    return r.abort("connectionfailed");
+  });
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("nicht erreichbar");
+  const navigation = page.getByRole("navigation", { name: "Hauptnavigation" });
+  await navigation.getByRole("button", { name: "Hosts", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Änderungen noch nicht gespeichert" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Änderungen verwerfen" }).click();
+  await expect(page).toHaveTitle("Hosts · Anker");
+  await navigation
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+  expect(attempts).toBe(1);
+});
+
+test("an open discard prompt cannot close a plan during a pending mutation", async ({
+  page,
+}) => {
+  let release!: () => void;
+  let requestStarted!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const started = new Promise<void>((resolve) => (requestStarted = resolve));
+  await page.route("**/api/plans/review-plan/apply", async (r) => {
+    requestStarted();
+    await gate;
+    return r.fulfill({ status: 503, json: { error: "Antwort ungeklärt" } });
+  });
+  await savedPlan(page);
+  await page
+    .getByLabel("Plan-ID zur Ausführung eingeben", { exact: true })
+    .fill("review-plan");
+  await page
+    .getByRole("button", { name: "Zurück zu Plänen", exact: true })
+    .click();
+  const discard = page.getByRole("button", {
+    name: "Eingaben verwerfen",
+    exact: true,
+  });
+  await expect(discard).toBeVisible();
+  await page
+    .getByRole("button", { name: "Dateien übernehmen", exact: true })
+    .click();
+  await started;
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toHaveAttribute("aria-busy", "true");
+  await expect(discard).toBeDisabled();
+  await discard.dispatchEvent("click");
+  await expect(
+    page.getByRole("region", { name: "Wiederherstellungsplan" }),
+  ).toBeVisible();
+  release();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Antwort ungeklärt" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
+  ).toBeVisible();
+});
+
 test("journal uncertainty overrides a ready server plan after reopen", async ({
   page,
 }) => {
@@ -1347,7 +1428,12 @@ test("a lost reply with ready server and refused reconcile gives console guidanc
   await expect(
     page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),
   ).toBeDisabled();
-  await closePlan(page);
+  const navigation = page.getByRole("navigation", { name: "Hauptnavigation" });
+  await navigation.getByRole("button", { name: "Hosts", exact: true }).click();
+  await page.getByRole("button", { name: "Änderungen verwerfen" }).click();
+  await navigation
+    .getByRole("button", { name: "Wiederherstellung", exact: true })
+    .click();
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Dateien übernehmen", exact: true }),
