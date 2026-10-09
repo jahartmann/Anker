@@ -182,6 +182,9 @@ func (s *Service) beginHostConnection(h Host, existing bool) error {
 	if s.maintenance || s.connectingHostID != "" {
 		return fail(409, "Update oder Hostanbindung läuft; anschließend erneut versuchen")
 	}
+	if s.reconciling[h.ID] {
+		return fail(409, "Hostjournal wird abgeglichen; Verbindung anschließend einrichten")
+	}
 	if existing {
 		if _, err := s.Host(h.ID); err != nil {
 			return fail(404, "Host nicht gefunden")

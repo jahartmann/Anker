@@ -221,3 +221,38 @@ func TestHostEnrollmentReconnectCoordinationAndDuplicateGuard(t *testing.T) {
 		t.Fatal("enrollment did not unlock host editing", err)
 	}
 }
+
+func TestHostConnectionAndReadyReconciliationExcludeBothAdmissionOrders(t *testing.T) {
+	for _, first := range []string{"reconciliation", "connection"} {
+		t.Run(first, func(t *testing.T) {
+			s := testService(t)
+			h, err := s.Host("host1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first == "reconciliation" {
+				if err = s.reserveReadyReconciliation(h.ID); err != nil {
+					t.Fatal(err)
+				}
+				// Deterministically exercise the interval before ReconcilePlan takes
+				// its target lock: the admission reservation alone must exclude enroll.
+				if err = s.beginHostConnection(h, true); err == nil {
+					t.Fatal("connection admitted while journal read is reserved before target lock")
+				}
+				if s.connectingHostID != "" {
+					t.Fatal("rejected connection retained admission")
+				}
+			} else {
+				if err = s.beginHostConnection(h, true); err != nil {
+					t.Fatal(err)
+				}
+				if err = s.reserveReadyReconciliation(h.ID); err == nil {
+					t.Fatal("journal read admitted during host enrollment")
+				}
+				if s.reconciling[h.ID] {
+					t.Fatal("rejected journal read retained reservation")
+				}
+			}
+		})
+	}
+}
