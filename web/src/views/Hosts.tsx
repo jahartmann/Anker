@@ -811,6 +811,8 @@ export default function Hosts({
             <BackupTable
               filterKey={host.id}
               backups={status.backups.filter((b) => b.host_id === host.id)}
+              references={status.references}
+              referenceHosts={[host]}
               notify={notify}
               refresh={refresh}
               openBackup={openBackup}

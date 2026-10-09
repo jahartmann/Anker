@@ -30,6 +30,45 @@ func TestCLIBackupReadinessReadsProjection(t *testing.T) {
 	}
 }
 
+func TestCLIProtectedReferenceEditAndDirectComparison(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.RequestURI())
+		if r.Method == "PUT" {
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body["backup_id"] != "source" || body["name"] != "Basis" {
+				t.Error(body)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"host_id":"host1","backup_id":"source","name":"Basis","state":"valid"}`))
+	}))
+	defer server.Close()
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &bytes.Buffer{}}
+	for _, args := range [][]string{
+		{"backup", "reference", "host1"},
+		{"backup", "reference-set", "host1", "source", "--name", "Basis", "--reason", "Vor Umbau"},
+		{"backup", "compare-reference", "host1", "new"},
+		{"backup", "reference-clear-drill", "host1"},
+	} {
+		if err := c.Run(context.Background(), args); err != nil {
+			t.Fatal(args, err)
+		}
+	}
+	want := []string{"GET /api/hosts/host1/reference", "PUT /api/hosts/host1/reference", "GET /api/hosts/host1/reference/compare?to=new", "DELETE /api/hosts/host1/reference/drill"}
+	if len(paths) != len(want) {
+		t.Fatal(paths)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatal(paths)
+		}
+	}
+}
+
 func TestCLICreatesHostAndListsStatus(t *testing.T) {
 	root := t.TempDir()
 	store, err := anker.OpenStore(filepath.Join(root, "catalog.db"))

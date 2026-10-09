@@ -294,8 +294,10 @@ export default function BackupComparison({
         rows !== null && (
           <>
             <p className="comparison-counts">
-              {rows.length} Änderungen · {counts.content} Inhalt ·{" "}
-              {counts.metadata} Metadaten · {counts.mtime} nur Änderungszeit
+              {rows.filter((r) => !r.mtime_only).length} wesentliche Änderung
+              {rows.filter((r) => !r.mtime_only).length === 1 ? "" : "en"} ·{" "}
+              {counts.content} Inhalt · {counts.metadata} Metadaten ·{" "}
+              {counts.mtime} nur Änderungszeit
             </p>
             {!rows.length ? (
               <Empty title="Keine Unterschiede">

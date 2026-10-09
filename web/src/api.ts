@@ -63,6 +63,7 @@ export interface Host {
   probe_error?: string;
 }
 export interface Backup {
+  evidence_revision?: string;
   manifest_sha?: string;
   verification_attempt?: { at: string; state: string };
   copy_verification?: {
@@ -87,6 +88,35 @@ export interface Backup {
   pinned: boolean;
   archived: boolean;
   warnings: string[];
+}
+export interface BackupReference {
+  host_id: string;
+  backup_id?: string;
+  manifest_sha?: string;
+  name?: string;
+  reason?: string;
+  updated_at?: string;
+  updated_by?: string;
+  state: "missing" | "valid" | "unresolved";
+  drill?: {
+    tested_at: string;
+    outcome: "passed" | "failed";
+    evidence: string;
+    actor: string;
+    recorded_at: string;
+    backup_id: string;
+    manifest_sha: string;
+  };
+}
+export interface ReferenceChangeSummary {
+  reference: BackupReference;
+  to_id: string;
+  changed: number;
+  added: number;
+  removed: number;
+  content: number;
+  metadata: number;
+  mtime_only: number;
 }
 export interface BackupReadiness {
   version: number;
@@ -354,6 +384,7 @@ export interface Settings {
   mail_to: string;
 }
 export interface Status {
+  references?: Record<string, BackupReference>;
   scheduler_health?: { at: string; error: string };
   notification_health?: { at: string; error: string };
   maintenance_health?: { at: string; error: string };

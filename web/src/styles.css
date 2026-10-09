@@ -2733,6 +2733,29 @@ input[type="checkbox"] {
 .backup-comparison {
   min-width: 0;
 }
+.backup-reference {
+  margin: 0 0 16px;
+  padding: 15px 18px;
+  border: 1px solid #d6e3d8;
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.backup-reference-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.backup-reference-head > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.backup-reference p { margin: 6px 0 0; }
+.backup-reference .row-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+@media (max-width: 760px) {
+  .backup-reference-head { flex-direction: column; }
+  .backup-reference .row-actions { width: 100%; }
+  .backup-reference .row-actions button { white-space: normal; text-align: left; }
+}
 .comparison-selectors {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

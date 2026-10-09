@@ -275,6 +275,19 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			return err
 		}
+		references := map[string]BackupReference{}
+		for _, h := range hosts {
+			ref, err := s.ProtectedReference(h.ID)
+			if err != nil {
+				return err
+			}
+			references[h.ID] = ref
+			for i := range backups {
+				if backups[i].HostID == h.ID {
+					backups[i].EvidenceRevision = ref.UpdatedAt
+				}
+			}
+		}
 		jobs, err := s.Jobs()
 		if err != nil {
 			return err
@@ -305,7 +318,7 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 				hosts[i].KnownHostsPath = ""
 			}
 		}
-		return jsonOut(w, redactRecovery(map[string]any{"hosts": hosts, "backups": backups, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth, "scheduler_health": schedulerHealth}))
+		return jsonOut(w, redactRecovery(map[string]any{"hosts": hosts, "backups": backups, "references": references, "jobs": jobs, "plans": plans, "demo": s.Demo, "timezone": settings.Timezone, "stale_hours": settings.StaleHours, "notification_health": notificationHealth, "maintenance_health": maintenanceHealth, "scheduler_health": schedulerHealth}))
 	case "hosts":
 		if method == "GET" {
 			hosts, err := s.Hosts()
@@ -519,6 +532,57 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 		h, err := s.Host(id)
 		if err != nil {
 			return fail(404, "Host nicht gefunden")
+		}
+		if action == "reference" {
+			if len(parts) == 5 && parts[4] == "drill" && method == "DELETE" {
+				if err := require(u, "restore"); err != nil {
+					return err
+				}
+				v, err := s.ClearProtectedReferenceDrill(id, u.Name)
+				if err != nil {
+					return err
+				}
+				s.LogAudit(u.ID, "backup.reference.drill.clear", id)
+				return jsonOut(w, redactRecovery(v))
+			}
+			if len(parts) == 5 && parts[4] == "compare" && method == "GET" {
+				v, err := s.CompareProtectedReference(id, r.URL.Query().Get("to"))
+				if err != nil {
+					return err
+				}
+				return jsonOut(w, redactRecovery(v))
+			}
+			if len(parts) != 4 {
+				return fail(404, "Nicht gefunden")
+			}
+			if method == "GET" {
+				v, err := s.ProtectedReference(id)
+				if err != nil {
+					return err
+				}
+				return jsonOut(w, redactRecovery(v))
+			}
+			if method == "PUT" {
+				if err := require(u, "restore"); err != nil {
+					return err
+				}
+				var in struct {
+					BackupID string       `json:"backup_id"`
+					Name     string       `json:"name"`
+					Reason   string       `json:"reason"`
+					Drill    *ManualDrill `json:"drill"`
+				}
+				if err := input(r, &in); err != nil {
+					return err
+				}
+				v, err := s.SaveProtectedReference(id, in.BackupID, in.Name, in.Reason, in.Drill, u.Name)
+				if err != nil {
+					return err
+				}
+				s.LogAudit(u.ID, "backup.reference.save", id+":"+in.BackupID)
+				return jsonOut(w, redactRecovery(v))
+			}
+			return fail(405, "Methode nicht unterstützt")
 		}
 		if method == "GET" {
 			if u.Role != "admin" {

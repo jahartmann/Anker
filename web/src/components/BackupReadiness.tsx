@@ -34,6 +34,7 @@ export default function BackupReadiness({
     backup?.manifest_sha,
     backup?.verification_attempt,
     backup?.copy_verification,
+    backup?.evidence_revision,
   ]);
   const currentReadiness =
     readiness?.key === sourceKey ? readiness.value : null;

@@ -260,6 +260,46 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 			return err
 		}
 		switch args[1] {
+		case "reference":
+			if len(args) != 3 {
+				return errors.New("backup reference HOST")
+			}
+			return call("GET", "hosts/"+url.PathEscape(args[2])+"/reference", nil)
+		case "compare-reference":
+			if len(args) != 4 {
+				return errors.New("backup compare-reference HOST BACKUP")
+			}
+			return call("GET", "hosts/"+url.PathEscape(args[2])+"/reference/compare?to="+url.QueryEscape(args[3]), nil)
+		case "reference-clear-drill":
+			if len(args) != 3 {
+				return errors.New("backup reference-clear-drill HOST")
+			}
+			return call("DELETE", "hosts/"+url.PathEscape(args[2])+"/reference/drill", nil)
+		case "reference-set":
+			if len(args) < 4 {
+				return errors.New("backup reference-set HOST BACKUP --name NAME [--reason GRUND] [--tested-at RFC3339 --outcome passed|failed --evidence TEXT]")
+			}
+			f := flag.NewFlagSet("backup reference-set", flag.ContinueOnError)
+			name, reason, testedAt, outcome, evidence := "", "", "", "", ""
+			f.StringVar(&name, "name", "", "Referenzname")
+			f.StringVar(&reason, "reason", "", "Grund")
+			f.StringVar(&testedAt, "tested-at", "", "Zeit der externen Probe (RFC3339)")
+			f.StringVar(&outcome, "outcome", "", "passed oder failed laut Bericht")
+			f.StringVar(&evidence, "evidence", "", "Menschlicher Beleg")
+			if err := f.Parse(args[4:]); err != nil {
+				return err
+			}
+			if name == "" || f.NArg() != 0 {
+				return errors.New("Referenzname erforderlich")
+			}
+			payload := map[string]any{"backup_id": args[3], "name": name, "reason": reason}
+			if testedAt != "" || outcome != "" || evidence != "" {
+				if testedAt == "" || outcome == "" || evidence == "" {
+					return errors.New("Offline-Probe benötigt Datum, Ergebnis und Beleg")
+				}
+				payload["drill"] = map[string]string{"tested_at": testedAt, "outcome": outcome, "evidence": evidence}
+			}
+			return call("PUT", "hosts/"+url.PathEscape(args[2])+"/reference", payload)
 		case "verify-copy":
 			if len(args) != 4 || !filepath.IsAbs(args[3]) {
 				return fmt.Errorf("Kopie prüfen: anker backup verify-copy BACKUP /absoluter/kopiepfad")
@@ -564,6 +604,9 @@ Hosts und Sicherungen
   anker host add --name NAME --address IP [--key /PFAD --known-hosts /PFAD]
   anker backup verify-copy BACKUP /absoluter/kopiepfad (lokal; entpackte Ablage)
   anker backup run HOST | list | files BACKUP | readiness BACKUP | verify BACKUP | archive BACKUP | pin BACKUP
+  anker backup reference HOST | reference-set HOST BACKUP --name NAME [--reason GRUND]
+  anker backup reference-set HOST BACKUP --name NAME --tested-at RFC3339 --outcome passed|failed --evidence TEXT
+  anker backup reference-clear-drill HOST | compare-reference HOST BACKUP
   anker diff ALT NEU
   anker export BACKUP ./sicherung.tar
   Im Web/Terminal Adresse, SSH-Benutzer und einmaliges Passwort eingeben.

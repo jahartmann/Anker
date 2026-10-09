@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { api, bytes, date, preciseDate } from "../api";
-import type { Backup, Entry, Status, User } from "../api";
+import type { Backup, BackupReference, Entry, Status, User } from "../api";
 import {
   ActionMenu,
   Dialog,
@@ -25,6 +25,7 @@ import ActiveJobs from "../components/ActiveJobs";
 import BackupComparison from "../components/BackupComparison";
 import type { ComparisonSelection } from "../components/BackupComparison";
 import BackupReadiness from "../components/BackupReadiness";
+import BackupReferencePanel from "../components/BackupReference";
 export function BackupTable({
   backups,
   notify,
@@ -37,6 +38,8 @@ export function BackupTable({
   onCompare,
   onComparePrevious,
   comparisonPool,
+  references,
+  referenceHosts,
 }: {
   backups: Backup[];
   notify: Notify;
@@ -49,6 +52,8 @@ export function BackupTable({
   onCompare?: (side: "from" | "to", id: string) => void;
   onComparePrevious?: (id: string, previous: string) => void;
   comparisonPool?: Backup[];
+  references?: Record<string, BackupReference>;
+  referenceHosts?: { id: string; name: string }[];
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -73,6 +78,7 @@ export function BackupTable({
     Math.max(1, Math.ceil(sorted.length / pageSize)),
   );
   const [pending, setPending] = useState("");
+  const [localComparison, setLocalComparison] = useState<ComparisonSelection>();
   const acting = useRef(false);
   async function act(b: Backup, action: string) {
     if (acting.current) return;
@@ -103,6 +109,30 @@ export function BackupTable({
   }
   return backups.length ? (
     <div>
+      {(referenceHosts || []).map((h) => (
+        <BackupReferencePanel
+          key={h.id}
+          hostID={h.id}
+          hostName={h.name}
+          backups={(comparisonPool || backups).filter(
+            (b) => b.host_id === h.id,
+          )}
+          reference={references?.[h.id]}
+          canEdit={canEdit}
+          notify={notify}
+          refresh={refresh}
+          onCompare={(referenceID, targetID) => {
+            if (onComparePrevious) onComparePrevious(targetID, referenceID);
+            else
+              setLocalComparison((current) => ({
+                side: "to",
+                id: targetID,
+                pairedId: referenceID,
+                sequence: (current?.sequence || 0) + 1,
+              }));
+          }}
+        />
+      ))}
       <div className="table-scroll">
         <table className="backup-table" aria-label="Sicherungen">
           <thead>
@@ -124,6 +154,9 @@ export function BackupTable({
                       {preciseDate(b.created_at)} ·{" "}
                       <code>{b.id.slice(0, 10)}</code>
                       {b.pinned ? " · Geschützt" : ""}
+                      {references?.[b.host_id]?.backup_id === b.id
+                        ? " · Benannte Referenz (geschützt)"
+                        : ""}
                       {b.archived ? " · Archiv" : ""}
                     </div>
                   </td>
@@ -270,11 +303,42 @@ export function BackupTable({
           label="Sicherungen"
         />
       </div>
+      {localComparison && (
+        <BackupComparison
+          backups={comparisonPool || backups}
+          user={{
+            id: "",
+            name: "",
+            role: canEdit ? "restore" : "reader",
+            secrets: canDownload,
+            disabled: false,
+          }}
+          notify={notify}
+          onRestore={onRestore}
+          selection={localComparison}
+        />
+      )}
     </div>
   ) : (
-    <Empty title="Noch keine Sicherungen">
-      Eine Sicherung kann in der Hostansicht gestartet werden.
-    </Empty>
+    <div>
+      {(referenceHosts || [])
+        .filter((h) => references?.[h.id]?.state === "unresolved")
+        .map((h) => (
+          <BackupReferencePanel
+            key={h.id}
+            hostID={h.id}
+            hostName={h.name}
+            backups={[]}
+            reference={references?.[h.id]}
+            canEdit={canEdit}
+            notify={notify}
+            refresh={refresh}
+          />
+        ))}
+      <Empty title="Noch keine Sicherungen">
+        Eine Sicherung kann in der Hostansicht gestartet werden.
+      </Empty>
+    </div>
   );
 }
 export default function Backups({
@@ -431,6 +495,13 @@ export default function Backups({
           }}
           filterKey={[host, query, state, protection].join("|")}
           comparisonPool={status.backups}
+          references={status.references}
+          referenceHosts={status.hosts.filter((h) =>
+            host
+              ? h.id === host
+              : !!status.references?.[h.id] &&
+                status.references[h.id].state !== "missing",
+          )}
           backups={backups}
           {...props}
         />

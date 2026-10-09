@@ -129,6 +129,7 @@ type Manifest struct {
 	Dependencies  []DependencyEvidence `json:"dependencies,omitempty"`
 }
 type Backup struct {
+	EvidenceRevision    string                   `json:"evidence_revision,omitempty"`
 	VerificationAttempt *integrityAttempt        `json:"verification_attempt,omitempty"`
 	CopyVerification    *CopyVerificationReceipt `json:"copy_verification,omitempty"`
 	VerifiedAt          string                   `json:"verified_at,omitempty"`

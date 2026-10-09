@@ -142,6 +142,14 @@ func (s *Service) Maintain(at time.Time) error {
 	for _, p := range plans {
 		protected[p.BackupID] = true
 	}
+	for _, h := range hosts {
+		var ref BackupReference
+		if err := s.Store.Get("backup_references", h.ID, &ref); err == nil && ref.HostID == h.ID {
+			protected[ref.BackupID] = true
+		} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
 	loc, _ := time.LoadLocation(settings.Timezone)
 	if loc == nil {
 		loc = time.UTC
@@ -233,6 +241,15 @@ func (s *Service) Maintain(at time.Time) error {
 					if p.BackupID == b.ID {
 						referenced = true
 					}
+				}
+				var freshRef BackupReference
+				refErr := s.Store.Get("backup_references", b.HostID, &freshRef)
+				if refErr != nil && !errors.Is(refErr, sql.ErrNoRows) {
+					lock.Unlock()
+					return refErr
+				}
+				if refErr == nil && freshRef.HostID == b.HostID && freshRef.BackupID == b.ID {
+					referenced = true
 				}
 				if referenced {
 					lock.Unlock()

@@ -108,7 +108,22 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		r.Items[len(r.Items)-1].Provenance = "Lokaler Byte-Prüfer"
 	}
 	add("copy_failure_domain", "unknown", "Physische Unabhängigkeit", "Ein separates Verzeichnis belegt keinen getrennten Datenträger oder Ausfallbereich.", "", "Datenträger und Ausfallbereich separat dokumentieren")
-	add("offline_drill", "unknown", "Offline-Probe", "Für diesen Stand liegt kein dokumentierter Offline-Test vor.", "", "Offline-Probe im isolierten Labor dokumentieren")
+	drillState, drillDetail, drillAt, drillAction := "unknown", "Für diesen Stand liegt kein dokumentierter Offline-Test vor.", "", "Offline-Probe im isolierten Labor dokumentieren"
+	ref, refErr := s.ProtectedReference(b.HostID)
+	if refErr == nil && ref.BackupID == b.ID && ref.Drill != nil {
+		drillAt = ref.Drill.TestedAt
+		if ref.State != "valid" || ref.Drill.BackupID != b.ID || ref.Drill.ManifestSHA != b.ManifestSHA {
+			drillState, drillDetail = "stale", "Menschlicher Probenachweis passt nicht zur aktuellen Quelle."
+		} else if ref.Drill.Outcome == "passed" {
+			drillState, drillDetail, drillAction = "ok", "Offline-Probe laut menschlichem Bericht erfolgreich; nicht von Anker ausgeführt oder verifiziert.", ""
+		} else {
+			drillState, drillDetail = "failed", "Offline-Probe laut menschlichem Bericht fehlgeschlagen."
+		}
+	}
+	add("offline_drill", drillState, "Offline-Probe", drillDetail, drillAt, drillAction)
+	if refErr == nil && ref.BackupID == b.ID && ref.Drill != nil {
+		r.Items[len(r.Items)-1].Provenance = "Menschlicher Bericht von " + ref.Drill.Actor + ", erfasst " + ref.Drill.RecordedAt
+	}
 	if manifestErr != nil {
 		for _, key := range []string{"pve_version", "users", "groups", "file_inventory"} {
 			add("query."+key, "unknown", "Quellabfrage "+key, "Manifestbeleg nicht verfügbar.", "", "Manifest prüfen")

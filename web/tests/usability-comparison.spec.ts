@@ -115,6 +115,21 @@ test("comparison names both selected stands and direction", async ({
     ["newer", "older"],
   ]);
 });
+
+test("comparison principal count excludes mtime-only noise", async ({
+  page,
+}) => {
+  const view = await setup(page, [
+    row("etc/content", { content_changed: true }),
+    row("etc/time", {
+      content_changed: false,
+      mtime_changed: true,
+      mtime_only: true,
+    }),
+  ]);
+  await expect(view).toContainText("1 wesentliche Änderung");
+  await expect(view).toContainText("1 nur Änderungszeit");
+});
 test("large summaries are filtered and paged with lazy content", async ({
   page,
 }) => {
