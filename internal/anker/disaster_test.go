@@ -69,7 +69,7 @@ func TestDisasterRoundTripColdWALAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Version != 1 || info.Mode != "production" || info.Backups != 1 {
+	if info.Version != 2 || info.Mode != "production" || info.Backups != 1 {
 		t.Fatalf("summary: %+v", info)
 	}
 	data, _ := json.Marshal(info)

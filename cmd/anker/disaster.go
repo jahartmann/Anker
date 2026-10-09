@@ -57,7 +57,7 @@ func disasterPassphrase(path string) ([]byte, error) {
 }
 func runDisaster(root string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("disaster export|inspect|import: --passphrase-file DATEI; export --output PAKET [--config-root VERZEICHNIS], inspect/import --input PAKET, import --destination NEUES-VERZEICHNIS")
+		return errors.New("disaster export|inspect|import: --passphrase-file DATEI; export --output PAKET [--config-root VERZEICHNIS] [--backup-data include|separate], inspect/import --input PAKET, import --destination NEUES-VERZEICHNIS")
 	}
 	action := args[0]
 	if action != "export" && action != "inspect" && action != "import" {
@@ -68,6 +68,7 @@ func runDisaster(root string, args []string) error {
 	input := f.String("input", "", "Verschlüsseltes Disaster-Paket")
 	output := f.String("output", "", "Neues verschlüsseltes Disaster-Paket")
 	dest := f.String("destination", "", "Neues isoliertes Datenverzeichnis")
+	backupData := f.String("backup-data", "include", "Sicherungsbytes: include oder separate (vorhandene Quellen prüfen, separat bereitstellen)")
 	config := f.String("config-root", "", "Explizites Anker-Konfigurationsverzeichnis, beispielsweise /etc/anker")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
@@ -77,6 +78,9 @@ func runDisaster(root string, args []string) error {
 	}
 	if (action == "export" && (*output == "" || *input != "" || *dest != "")) || (action != "export" && (*input == "" || *output != "" || *config != "")) || (action == "import" && *dest == "") || (action == "inspect" && *dest != "") {
 		return errors.New("Unvollständige oder widersprüchliche Disaster-Optionen")
+	}
+	if (*backupData != "include" && *backupData != "separate") || (action != "export" && *backupData != "include") {
+		return errors.New("Sicherungsdatenmodus nur für Export: include oder separate")
 	}
 	pass, err := disasterPassphrase(*secret)
 	if err != nil {
@@ -100,7 +104,7 @@ func runDisaster(root string, args []string) error {
 		}
 		defer parent.Remove(name)
 		defer out.Close()
-		if err = anker.ExportDisaster(root, *config, pass, out); err != nil {
+		if err = anker.ExportDisasterWithBackupData(root, *config, *backupData, pass, out); err != nil {
 			return err
 		}
 		if err = out.Sync(); err != nil {

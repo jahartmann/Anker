@@ -136,3 +136,35 @@ func TestPlanGuideIncludesHumanEvidenceAndBindings(t *testing.T) {
 		}
 	}
 }
+
+func TestFreshGuideDescribesCurrentVerification(t *testing.T) {
+	c := &recoveryResultCollector{}
+	s, p := recoveryReadyPlan(t, c)
+	var buf bytes.Buffer
+	if err := s.ExportPlan(p.ID, &buf); err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(&buf)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.Name == "WIEDERHERSTELLUNG.md" {
+			raw, _ := io.ReadAll(tr)
+			for _, required := range []string{"anker restore verify PLAN", "gültiger Baseline", "Maschinenidentität", "Reale PVE-Laborabnahme wurde nicht ausgeführt"} {
+				if !strings.Contains(string(raw), required) {
+					t.Fatalf("current guide lacks %q", required)
+				}
+			}
+			if strings.Contains(string(raw), "bis Task 8/Integration Task 12 unvollständig") {
+				t.Fatal("fresh export still marks current verification capability as unimplemented until Task 8/12")
+			}
+			return
+		}
+	}
+	t.Fatal("guide missing")
+}

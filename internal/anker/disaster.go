@@ -33,15 +33,20 @@ const disasterMaxEntries = 50000
 const disasterIsolation = ".disaster-isolated"
 
 type DisasterInfo struct {
-	Version            int      `json:"version"`
-	Mode               string   `json:"mode"`
-	Files              int      `json:"files"`
-	Records            int      `json:"records"`
-	Hosts              int      `json:"hosts"`
-	Backups            int      `json:"backups"`
-	Plans              int      `json:"plans"`
-	ExternalReferences int      `json:"external_references"`
-	Prerequisites      []string `json:"prerequisites"`
+	Sources            []DisasterSource `json:"sources"`
+	IncludedSources    int              `json:"included_sources"`
+	MissingSources     int              `json:"missing_sources"`
+	SeparateSources    int              `json:"separate_sources"`
+	Coverage           string           `json:"coverage"`
+	Version            int              `json:"version"`
+	Mode               string           `json:"mode"`
+	Files              int              `json:"files"`
+	Records            int              `json:"records"`
+	Hosts              int              `json:"hosts"`
+	Backups            int              `json:"backups"`
+	Plans              int              `json:"plans"`
+	ExternalReferences int              `json:"external_references"`
+	Prerequisites      []string         `json:"prerequisites"`
 }
 type disasterRecord struct {
 	Bucket string `json:"bucket"`
@@ -60,6 +65,9 @@ type disasterReference struct {
 	Instruction string `json:"instruction"`
 }
 type disasterPackage struct {
+	sourceIndex         map[string]int
+	Sources             []DisasterSource `json:"sources,omitempty"`
+	separateBackups     bool
 	Version             int                 `json:"version"`
 	CreatedAt           string              `json:"created_at"`
 	SourceRoot          string              `json:"source_root"`
@@ -251,7 +259,23 @@ func disasterWalk(dir *os.File, prefix string, p *disasterPackage, config bool, 
 			child.Close()
 			return errors.New("Inventaridentität verändert")
 		}
-		if st.IsDir() {
+		var source *DisasterSource
+		if !config {
+			if i, ok := p.sourceIndex[rel]; ok {
+				source = &p.Sources[i]
+			}
+		}
+		if source != nil && !st.IsDir() {
+			child.Close()
+			return errors.New("Sicherungsquelle ist kein Verzeichnis")
+		}
+		if source != nil && p.separateBackups {
+			err = disasterCheckSeparate(child, rel, p, *source)
+			source.State = "separate"
+		} else if st.IsDir() {
+			if source != nil {
+				source.State = "included"
+			}
 			err = disasterWalk(child, rel, p, config, total, nodes)
 		} else {
 			var data []byte
@@ -490,6 +514,21 @@ func disasterSummary(p *disasterPackage) DisasterInfo {
 			v.Plans++
 		}
 	}
+	v.Sources = p.Sources
+	v.Coverage = "Nur included-Quellen enthalten geprüfte Sicherungsbytes. missing/separate bleiben offen; bekannte Manifestdigests und alte Katalognachweise beweisen keine aktuell verfügbaren Bytes."
+	if p.Version == 1 {
+		v.Coverage = "Altes Komplettformat ohne explizites Quelleninventar; Inspect und Import prüfen die enthaltenen Sicherungsbytes."
+	}
+	for _, source := range p.Sources {
+		switch source.State {
+		case "included":
+			v.IncludedSources++
+		case "missing":
+			v.MissingSources++
+		case "separate":
+			v.SeparateSources++
+		}
+	}
 	return v
 }
 func disasterCipher(pass, salt []byte) (cipher.AEAD, error) {
@@ -565,7 +604,7 @@ func disasterUnseal(r io.Reader, pass []byte) (*disasterPackage, error) {
 	return &p, nil
 }
 func disasterValidate(p *disasterPackage) error {
-	if p.Version != 1 || (p.Mode != "production" && p.Mode != "demo") || !filepath.IsAbs(p.SourceRoot) || filepath.Clean(p.SourceRoot) != p.SourceRoot || len(p.Files) > disasterMaxEntries || len(p.Records) > disasterMaxEntries {
+	if (p.Version != 1 && p.Version != 2) || (p.Mode != "production" && p.Mode != "demo") || !filepath.IsAbs(p.SourceRoot) || filepath.Clean(p.SourceRoot) != p.SourceRoot || len(p.Files) > disasterMaxEntries || len(p.Records) > disasterMaxEntries {
 		return errors.New("Ungültiges Disaster-Schema")
 	}
 	for _, root := range []string{p.SourceCanonicalRoot, p.ConfigRoot, p.ConfigCanonicalRoot} {
@@ -638,6 +677,9 @@ func disasterValidate(p *disasterPackage) error {
 			}
 		}
 	}
+	if err := disasterValidateSources(p); err != nil {
+		return err
+	}
 	original := p.References
 	p.References = nil
 	if err := disasterReferences(p); err != nil {
@@ -652,6 +694,14 @@ func disasterValidate(p *disasterPackage) error {
 }
 
 func ExportDisaster(root, configRoot string, pass []byte, w io.Writer) error {
+	return ExportDisasterWithBackupData(root, configRoot, "include", pass, w)
+}
+
+// backupData=separate validates available backups but omits their bytes.
+func ExportDisasterWithBackupData(root, configRoot, backupData string, pass []byte, w io.Writer) error {
+	if backupData != "include" && backupData != "separate" {
+		return errors.New("Sicherungsdatenmodus muss include oder separate sein")
+	}
 	d, err := openDisasterDir(root)
 	if err != nil {
 		return err
@@ -665,9 +715,12 @@ func ExportDisaster(root, configRoot string, pass []byte, w io.Writer) error {
 	if err = d.check(); err != nil {
 		return err
 	}
-	p := &disasterPackage{Version: 1, CreatedAt: now(), SourceRoot: d.supplied, SourceCanonicalRoot: d.path}
+	p := &disasterPackage{Version: 2, CreatedAt: now(), SourceRoot: d.supplied, SourceCanonicalRoot: d.path, separateBackups: backupData == "separate"}
 	p.Records, err = disasterCatalog(d)
 	if err != nil {
+		return err
+	}
+	if err = disasterSourceInventory(p); err != nil {
 		return err
 	}
 	total := int64(0)
@@ -735,6 +788,17 @@ func ExportDisaster(root, configRoot string, pass []byte, w io.Writer) error {
 func InspectDisaster(r io.Reader, pass []byte) (DisasterInfo, error) {
 	p, err := disasterUnseal(r, pass)
 	if err != nil {
+		return DisasterInfo{}, err
+	}
+	stage, err := os.MkdirTemp("", "anker-disaster-inspect-")
+	if err != nil {
+		return DisasterInfo{}, err
+	}
+	defer os.RemoveAll(stage)
+	if err = disasterMaterialize(p, stage); err != nil {
+		return DisasterInfo{}, err
+	}
+	if err = disasterCheckMaterial(p, stage); err != nil {
 		return DisasterInfo{}, err
 	}
 	return disasterSummary(p), nil
@@ -812,6 +876,10 @@ func disasterCheckMaterial(p *disasterPackage, root string) error {
 	if err = os.MkdirAll(filepath.Join(root, "staging"), 0700); err != nil {
 		return err
 	}
+	included := map[string]bool{}
+	for _, source := range p.Sources {
+		included[source.BackupID] = source.State == "included"
+	}
 	for _, r := range p.Records {
 		switch r.Bucket {
 		case "backups":
@@ -821,6 +889,9 @@ func disasterCheckMaterial(p *disasterPackage, root string) error {
 			}
 			if !validID(b.ID) || !validID(b.HostID) || b.ID != r.ID {
 				return errors.New("Ungültiger Sicherungseintrag")
+			}
+			if p.Version != 1 && !included[b.ID] {
+				continue
 			}
 			if err = s.checkBackupUnlocked(b.ID); err != nil {
 				return fmt.Errorf("Sicherungsmaterial fehlt oder ist ungültig (%s): %w", b.ID, err)
@@ -1149,10 +1220,16 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 			}
 		}
 	}
+	for _, source := range p.Sources {
+		if err = txPut(tx, "disaster-sources", source.BackupID, source); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}
 	report := struct {
+		Sources             []DisasterSource    `json:"sources"`
 		Version             int                 `json:"version"`
 		ImportedAt          string              `json:"imported_at"`
 		References          []disasterReference `json:"external_references"`
@@ -1160,7 +1237,7 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 		ConfigRoot          string              `json:"config_root"`
 		SourceCanonicalRoot string              `json:"source_canonical_root,omitempty"`
 		ConfigCanonicalRoot string              `json:"config_canonical_root,omitempty"`
-	}{1, now(), p.References, p.SourceRoot, p.ConfigRoot, p.SourceCanonicalRoot, p.ConfigCanonicalRoot}
+	}{p.Sources, p.Version, now(), p.References, p.SourceRoot, p.ConfigRoot, p.SourceCanonicalRoot, p.ConfigCanonicalRoot}
 	if err = writeJSON(filepath.Join(root, "disaster-migration.json"), report); err != nil {
 		return err
 	}

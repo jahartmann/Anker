@@ -102,19 +102,8 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	if err != nil {
 		return p, err
 	}
-	var connection string
-	if ready {
-		snapshot, loadErr := s.loadPlanSnapshot(p)
-		if loadErr != nil {
-			return p, loadErr
-		}
-		connection, err = s.recoveryConnectionSHA(h)
-		if err != nil {
-			return p, err
-		}
-		if connection != snapshot.ConnectionSHA {
-			return p, errors.New("Zielverbindung wurde geändert; Hostjournal an der ursprünglichen Zielkonsole prüfen")
-		}
+	if err = s.checkRecoveryTarget(p, h); err != nil {
+		return p, err
 	}
 	result, err := c.RestoreStatus(ctx, h, p)
 	if err != nil {
@@ -123,18 +112,10 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	if err = validateHostResult(p, result); err != nil {
 		return p, err
 	}
+	if err = s.checkRecoveryTargetCurrent(p); err != nil {
+		return p, err
+	}
 	if ready {
-		current, loadErr := s.Host(p.TargetID)
-		if loadErr != nil {
-			return p, loadErr
-		}
-		currentConnection, connectionErr := s.recoveryConnectionSHA(current)
-		if connectionErr != nil {
-			return p, connectionErr
-		}
-		if currentConnection != connection {
-			return p, errors.New("Zielverbindung während Journalabgleich geändert; Zielkonsole prüfen")
-		}
 		if result.State == "not_found" {
 			// Absence at this instant is not a proof of a completed or globally unwritten
 			// restore. Consume the uncertain plan; never reset it for another apply.
@@ -144,6 +125,33 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 	}
 	setRecoveryResult(&p, result, nil)
 	return p, s.savePlan(p)
+}
+
+// Compare saved private proof on every read and mutation boundary, including
+// historical/uncertain operations. Never require the source backup for rollback.
+func (s *Service) checkRecoveryTarget(p Plan, h Host) error {
+	snapshot, err := s.loadPlanTargetSnapshot(p)
+	if err != nil {
+		return fmt.Errorf("Privater Zielnachweis nicht prüfbar; ursprüngliche Zielkonsole manuell prüfen: %w", err)
+	}
+	if snapshot.ConnectionSHA == "" {
+		return errors.New("Gespeicherte Zielverbindung fehlt; ursprüngliche Zielkonsole manuell prüfen")
+	}
+	connection, err := s.recoveryConnectionSHA(h)
+	if err != nil {
+		return err
+	}
+	if connection != snapshot.ConnectionSHA {
+		return errors.New("Zielverbindung wurde geändert; Recovery-Journal und Rücksetzung an der ursprünglichen Zielkonsole manuell prüfen")
+	}
+	return nil
+}
+func (s *Service) checkRecoveryTargetCurrent(p Plan) error {
+	h, err := s.Host(p.TargetID)
+	if err != nil {
+		return err
+	}
+	return s.checkRecoveryTarget(p, h)
 }
 
 func (s *Service) reserveReadyReconciliation(hostID string) error {
@@ -197,9 +205,15 @@ func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Pl
 	if err != nil {
 		return p, err
 	}
+	if err = s.checkRecoveryTarget(p, h); err != nil {
+		return p, err
+	}
 	status, err := c.RestoreStatus(ctx, h, p)
 	if err != nil {
 		return p, fmt.Errorf("Hostprotokoll vor Rücksetzung nicht prüfbar: %w", err)
+	}
+	if err = s.checkRecoveryTargetCurrent(p); err != nil {
+		return p, err
 	}
 	if err = validateHostResult(p, status); err != nil {
 		return p, err
@@ -212,7 +226,14 @@ func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Pl
 	if err = s.savePlan(p); err != nil {
 		return p, err
 	}
+	if err = s.checkRecoveryTargetCurrent(p); err != nil {
+		return p, err
+	}
 	result, err := c.Rollback(ctx, h, p, confirmation)
+	if bindingErr := s.checkRecoveryTargetCurrent(p); bindingErr != nil {
+		err = errors.Join(err, bindingErr)
+		result = ApplyResult{OperationID: p.ID, State: "interrupted", Error: err.Error()}
+	}
 	if result.OperationID == "" {
 		result.State = "interrupted"
 		err = errors.Join(err, errors.New("Hostantwort bestätigt keine Recovery-ID; tatsächlichen Zustand über Hostprotokoll prüfen"))

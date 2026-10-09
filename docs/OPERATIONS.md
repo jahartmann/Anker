@@ -144,9 +144,52 @@ LF-Zeile wird entfernt; die Passphrase enthält 1–4096 Bytes. Eine lange zufä
 Passphrase getrennt vom Paket verwahren. Ohne `--passphrase-file` fragt Anker sie
 verdeckt am Terminal ab; Pipes und Passphrasen als CLI-Argument sind nicht erlaubt.
 Der Export überschreibt keine vorhandene Paketdatei. `inspect` authentifiziert
-und prüft das Inventar ohne Katalogöffnung oder Entpacken; es zeigt ausschließlich
-Version, Modus, Zähler und allgemeine Migrationsvoraussetzungen. Die vollständige
-Sicherungs-/Planprüfung erfolgt beim Export und Import.
+und prüft Inventar sowie enthaltene Sicherungs-/Planbytes in einem privaten temporären
+Verzeichnis. Es zeigt Version, Modus, Zähler, Quellen-IDs/Host-IDs, bekannte Manifestdigests,
+Abdeckungszustände und allgemeine Migrationsvoraussetzungen; keine Zugangsdaten,
+Originalpfade oder privaten Dateiinhalte. Export, Inspect und Import prüfen enthaltenes Material.
+
+### Installation und Sicherungsdaten getrennt bewahren
+
+Neue Exporte verwenden Nutzlastversion 2. Für jede katalogisierte Sicherung enthält
+`sources` genau einen Eintrag mit `backup_id`, `host_id`, `manifest_sha` und `state`:
+
+- `included`: Das Paket enthält die tatsächlichen Manifest-/Datei-/Artefaktbytes
+  beziehungsweise das geprüfte Archiv. Export, Inspect und Import prüfen diese Bytes.
+- `missing`: Das gesamte lokale Sicherungsverzeichnis fehlt. Der Katalog und vorhandene
+  private Plan-, Zielaufnahme-, Rezept- und Prüfhistorie bleiben enthalten. Ein bekanntes
+  Manifestdigest ist nur eine erwartete Bindung; ein leerer Digest bedeutet unbekannt.
+- `separate`: Bewusst ausgelassene Sicherungsdaten. Beim ersten Split-Export werden
+  vorhandene lokale Quellen einzeln vollständig geprüft, aber ihre Bytes nicht eingepackt.
+  Nach Import/Reexport bleibt diese offene Einstufung bei weiter fehlenden Daten erhalten.
+  Sie bestätigt weder eine verfügbare externe Kopie noch eine aktuelle Integritätsprüfung.
+
+Für viele aufbewahrte Sicherungen mit getrenntem Datenträger:
+
+```sh
+sudo anker --data /srv/anker disaster export --backup-data separate \
+  --config-root /etc/anker --output /sicherer-datentraeger/anker-installation.disaster \
+  --passphrase-file /geschuetzt/disaster-passphrase
+```
+
+Der Standard `--backup-data include` nimmt alle vorhandenen Quellen auf; ganz fehlende
+Quellen bleiben ausdrücklich offen. Ein vorhandenes leeres Verzeichnis, fehlendes
+Manifest, beschädigte Dateien, Links oder unsichere private Nachweise führen in beiden
+Modi zum Abbruch. Solche Fehler werden nie in `missing` umgedeutet. Der Split-Modus
+prüft jeweils eine Quelle innerhalb der unten genannten Grenzen; die gesamte Menge
+separater Sicherungen muss nicht in das 256-MiB-Paket passen. Er kopiert keine Daten auf
+einen anderen Datenträger und folgt keinen externen Katalogpfaden.
+
+Nach dem isolierten Import stehen dieselben Quellenbindungen im privaten
+`disaster-migration.json` und im internen Migrationskatalog. Für `missing`/`separate`
+bleiben tatsächliche Bytevollständigkeit, Verfügbarkeit und physische Unabhängigkeit
+unbekannt. Alte Prüfzeiten sind historische Angaben, keine Importprüfung ausgelassener
+Bytes. Fehlende Daten separat beschaffen, vor Ort gegen Backup-ID, Host-ID und den
+bekannten Manifestdigest prüfen und als vollständiges reguläres Verzeichnis unter
+`hosts/HOST/backups/BACKUP` bereitstellen; keine bestehenden Daten überschreiben und
+keine Symlinks einsetzen. Erst nach Prüfung aller Migrationsvoraussetzungen aktivieren,
+Quellen mit `anker backup verify BACKUP` prüfen und neue Recovery-Pläne erstellen.
+Alte Pläne und Zielaufnahmen bleiben auch nach Nachlieferung dauerhaft widerrufen.
 
 ### Isolierter Import und bewusste Aktivierung
 
@@ -259,7 +302,9 @@ veränderte Daten oder eine unbekannte Version werden abgelehnt.
 
 Die verschlüsselte JSON-Nutzlast enthält `version`, `created_at`, `source_root`,
 optional `config_root`, `source_canonical_root`, `config_canonical_root`,
-`mode`, `records`, `files`, `references`. Die optionalen kanonischen Wurzeln
+`mode`, `records`, `files`, `references` sowie ab Nutzlastversion 2 `sources`.
+Der verschlüsselte äußere Header bleibt Version 1; neue Leser unterstützen vollständige
+alte Nutzlasten der Version 1. Alte Binaries können Version 2 nicht lesen. Die optionalen kanonischen Wurzeln
 stammen ausschließlich aus identitätsgeprüften, explizit geöffneten Verzeichnissen;
 ältere Pakete ohne diese Zusatzfelder bleiben lesbar. Jeder Katalogeintrag
 enthält `bucket`, `id`, seine **unveränderten Rohbytes** als Base64-`value` und
@@ -271,7 +316,7 @@ Symlinks und mehrfach verknüpfte Quelldateien werden abgewiesen. Private Plan- 
 Zielnachweise müssen schon an der Quelle Dateien `0600`/Verzeichnisse `0700` haben.
 
 Unter dem Datenroot werden `.anker-mode`, `hosts/` (einschließlich vollständiger
-Sicherungsdaten oder Archive), `plans/`, `recovery-inspections/`, `clusters/`,
+Sicherungsdaten oder Archive), `plans/`, `recovery-inspections/`, `recovery-recipes/`, `clusters/`,
 `keys/`, `ssh/`, `tls/`, `known_hosts`, `service.env` und erlaubte Anker-Konfiguration
 unter `config/` und `disaster-config/` aufgenommen. `--config-root` ist eine explizite zusätzliche Quelle;
 zugelassen sind `keys/`, `tls/`, `known_hosts`, `service.env`, `tls-renewal.json`,
@@ -279,9 +324,9 @@ zugelassen sind `keys/`, `tls/`, `known_hosts`, `service.env`, `tls-renewal.json
 `release-key.pub` und reguläre `github-token-*`-Dateien. Die Tooling-Binaries,
 Systemd-Units, Logs, Exporte, Staging-Verzeichnisse, Demo-Quellhosts, Sockets und
 Updater-/Setup-/Installations-Pendingzustände gehören nicht zum Paket. Externe
-Backup-Symlinks werden nicht verfolgt: vor dem kalten Export eine vollständige,
-reguläre lokale Ablage bereitstellen. Referenzierte, fehlende lokale Schlüssel
-oder unvollständige Sicherungs-/Plan-/Zieldaten führen zum Abbruch; externe
+Backup-Symlinks werden nicht verfolgt. Ganz fehlende Sicherungsverzeichnisse werden
+im Quelleninventar als offen erfasst. Referenzierte, fehlende lokale Schlüssel
+oder teilweise vorhandene/beschädigte Sicherungs-/Plan-/Zieldaten führen zum Abbruch; externe
 Credential-/Konfigurationspfade werden stattdessen als Migrationspflicht aufgeführt.
 
 Die vorhandene `InstanceLock` schließt laufende Anker-Instanzen aus. Der Katalog
@@ -300,9 +345,25 @@ Grenzen: 64 MiB je Quelldatei und je DB-/WAL-Datei, 64 MiB rohe Katalogwerte,
 verschlüsseltes Paket einschließlich Base64-/JSON-Aufwand. Sicherungsarchive
 werden zusätzlich auf insgesamt 256 MiB entpackte Nutzdaten und 50.000 Tar-Einträge
 begrenzt. Das Format wird im Speicher verarbeitet; genügend RAM und privaten
-Temporärspeicher sowie Platz für Prüfung und Zielkopie einplanen. Größere Instanzen
-benötigen einen gesonderten, offline geprüften Migrationsweg. Temporäre Klartexte
+Temporärspeicher sowie Platz für Prüfung und Zielkopie einplanen. Im Split-Modus gelten
+die Datei-/Daten-/Archivgrenzen je einzeln geprüfter Quelle und separat für das
+Installationspaket; Quelleninventar und Katalog bleiben auf jeweils 50.000 Einträge begrenzt.
+Einzelne größere Quellen benötigen einen gesonderten, offline geprüften Migrationsweg. Temporäre Klartexte
 werden mit privaten Rechten erzeugt und regulär entfernt, nicht kryptografisch
 vom Datenträger gelöscht; für sensible Systeme verschlüsselten Temporärspeicher
 verwenden. Alte temporäre Stagingreste nach einem Prozess-/Stromausfall nur bei
 weiterhin gestopptem Dienst prüfen und entfernen.
+
+### Historischen Recovery-Vorgang am ursprünglichen Ziel klären
+
+`anker restore reconcile PLAN` und die separat bestätigte Rücksetzung prüfen die
+private gespeicherte v2-Zielaufnahme und ihre SSH-Verbindungsbindung bei jedem
+Journalzugriff. Adresse, Port, Sicherungsrolle, Schlüsselbezug und SSH-Vertrauen müssen
+zur Aufnahme passen. Änderungen während der Abfrage werden verworfen; unmittelbar
+vor einer Rücksetzung wird erneut geprüft. Eine während der Rücksetzung geänderte
+Bindung lässt das Ergebnis unterbrochen, ohne automatischen Wiederholungsversuch.
+Eine verfügbare/gesunde Quellsicherung ist dafür nicht erforderlich: Rücksetzung
+betrifft das vorhandene Journal am ursprünglichen Ziel. Bei Legacy-Plänen oder
+fehlender/defekter Zielbindung an der ursprünglichen, unabhängig identifizierten
+Zielkonsole Journal und Drift manuell prüfen. Keine neue Adresse in einen historischen
+Plan einsetzen und keine blinde zweite Übernahme starten. Importierte Pläne bleiben gesperrt.

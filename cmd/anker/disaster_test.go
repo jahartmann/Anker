@@ -85,3 +85,37 @@ func TestDisasterOfflineCLIRoundTripNoOverwrite(t *testing.T) {
 		t.Fatal("import activated", err)
 	}
 }
+
+func TestDisasterCLIMissingSourceAndSeparateMode(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	os.Mkdir(source, 0700)
+	store, err := anker.OpenStore(filepath.Join(source, "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Put("backups", "missing", anker.Backup{ID: "missing", HostID: "host", ManifestSHA: anker.Hash([]byte("known manifest"))}); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	if err = anker.EnsureDataMode(source, false); err != nil {
+		t.Fatal(err)
+	}
+	pass := filepath.Join(dir, "pass")
+	os.WriteFile(pass, []byte("test-pass"), 0600)
+	for _, mode := range []string{"include", "separate"} {
+		bundle := filepath.Join(dir, "bundle-"+mode)
+		if err = runDisaster(source, []string{"export", "--output", bundle, "--backup-data", mode, "--passphrase-file", pass}); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := anker.InspectDisaster(f, []byte("test-pass"))
+		f.Close()
+		if err != nil || info.MissingSources != 1 {
+			t.Fatal("CLI source inventory", info, err)
+		}
+	}
+}

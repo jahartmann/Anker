@@ -74,25 +74,12 @@ func (s *Service) loadPlanSnapshot(p Plan) (RecoverySnapshot, error) {
 		}
 		return snapshot, nil
 	}
+	snapshot, err := s.loadPlanTargetSnapshot(p)
+	if err != nil {
+		return snapshot, err
+	}
 	root := filepath.Join(s.Root, "plans", p.ID)
-	data, err := readSnapshotBytes(filepath.Join(root, "target-snapshot.json"), 32<<20)
-	if err != nil {
-		return snapshot, err
-	}
-	if Hash(data) != p.TargetSnapshotSHA {
-		return snapshot, errors.New("Plan-Zielaufnahme wurde verändert")
-	}
-	if err = json.Unmarshal(data, &snapshot); err != nil {
-		return snapshot, err
-	}
-	situation, err := recoverySituation(p.Scenario)
-	if err != nil {
-		return snapshot, err
-	}
-	if snapshot.ID != p.TargetSnapshotID || snapshot.BackupID != p.BackupID || snapshot.TargetID != p.TargetID || snapshot.Scenario != p.Scenario || snapshot.Situation != situation || snapshot.Target.Fingerprint != p.Target.Fingerprint {
-		return snapshot, errors.New("Plan-Zielkontext wurde verändert")
-	}
-	m, err := s.Manifest(p.BackupID)
+	m, err := s.privatePlanManifest(p)
 	if err != nil {
 		return snapshot, err
 	}
@@ -136,6 +123,59 @@ func (s *Service) loadPlanSnapshot(p Plan) (RecoverySnapshot, error) {
 		return snapshot, err
 	}
 	return snapshot, nil
+}
+
+// Target proof is usable for historical journals even when the original source
+// medium is unavailable. It grants neither apply nor source-integrity authority.
+func (s *Service) loadPlanTargetSnapshot(p Plan) (RecoverySnapshot, error) {
+	var snapshot RecoverySnapshot
+	if p.SchemaVersion != 2 || p.TargetSnapshotID == "" || p.TargetSnapshotSHA == "" {
+		return snapshot, errors.New("Privater Zielnachweis fehlt; Recovery-Journal und Rücksetzung ausschließlich an der ursprünglichen Zielkonsole manuell prüfen")
+	}
+	root := filepath.Join(s.Root, "plans", p.ID)
+	data, err := readSnapshotBytes(filepath.Join(root, "target-snapshot.json"), 32<<20)
+	if err != nil {
+		return snapshot, err
+	}
+	if Hash(data) != p.TargetSnapshotSHA {
+		return snapshot, errors.New("Plan-Zielaufnahme wurde verändert")
+	}
+	if err = json.Unmarshal(data, &snapshot); err != nil {
+		return snapshot, err
+	}
+	situation, err := recoverySituation(p.Scenario)
+	if err != nil {
+		return snapshot, err
+	}
+	if snapshot.ID != p.TargetSnapshotID || snapshot.BackupID != p.BackupID || snapshot.TargetID != p.TargetID || snapshot.Scenario != p.Scenario || snapshot.Situation != situation || snapshot.Target.Fingerprint != p.Target.Fingerprint {
+		return snapshot, errors.New("Plan-Zielkontext wurde verändert")
+	}
+
+	return snapshot, nil
+}
+
+// The plan carries a hash-bound manifest copy for offline history. This does not
+// substitute for checkBackupUnlocked on source-consuming/executing paths.
+func (s *Service) privatePlanManifest(p Plan) (Manifest, error) {
+	b, err := s.Backup(p.BackupID)
+	if err != nil {
+		return Manifest{}, err
+	}
+	raw, err := readSnapshotBytes(filepath.Join(s.Root, "plans", p.ID, "manifest.json"), disasterMaxFile)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if Hash(raw) != b.ManifestSHA {
+		return Manifest{}, errors.New("Planmanifest wurde verändert")
+	}
+	var m Manifest
+	if err = json.Unmarshal(raw, &m); err != nil {
+		return m, err
+	}
+	if m.ID != b.ID || m.HostID != b.HostID || m.Version != FormatVersion {
+		return m, errors.New("Planmanifest gehört nicht zur Quelle")
+	}
+	return m, nil
 }
 
 // PlanContainsSecrets fails closed on integrity errors; includes supplemental target evidence.

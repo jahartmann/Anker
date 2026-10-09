@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -113,7 +115,13 @@ func TestTerminalFileSelectionChangeClearsPreviousInspectionDecisions(t *testing
 type terminalJournalCollector struct{ anker.DemoCollector }
 
 func (c terminalJournalCollector) RestoreStatus(_ context.Context, _ anker.Host, p anker.Plan) (anker.ApplyResult, error) {
-	return anker.ApplyResult{State: "applied", OperationID: p.ID, Applied: []string{"etc/test.conf"}, RollbackPath: "/var/lib/anker/rollback/" + p.ID}, nil
+	applied := []string{}
+	for _, step := range p.Steps {
+		if step.Action == "apply" {
+			applied = append(applied, step.Path)
+		}
+	}
+	return anker.ApplyResult{State: "applied", OperationID: p.ID, Applied: applied, RollbackPath: "/var/lib/anker/rollback/" + p.ID}, nil
 }
 func (c terminalJournalCollector) Rollback(_ context.Context, _ anker.Host, p anker.Plan, confirm string) (anker.ApplyResult, error) {
 	if confirm != p.ID {
@@ -123,12 +131,25 @@ func (c terminalJournalCollector) Rollback(_ context.Context, _ anker.Host, p an
 }
 func TestTerminalReconcileAndConfirmedRollbackAgainstService(t *testing.T) {
 	m, s := connected(t)
-	hosts, _ := s.Hosts()
-	p := anker.Plan{ID: "recover-terminal", TargetID: hosts[0].ID, Scenario: "files", State: "interrupted", Steps: []anker.Step{{Path: "etc/test.conf", Action: "apply"}}}
+	// Reconcile/rollback require a genuine private v2 target binding even after
+	// execution starts. Keep a real source/target comparison in this UI fixture.
+	backups, err := s.ListBackups("demo1")
+	if err != nil || len(backups) == 0 {
+		t.Fatal("missing demo source", err)
+	}
+	path := "etc/sysctl.d/99-anker.conf"
+	if err = os.WriteFile(filepath.Join(s.Root, "demo-hosts", "demo1", "files", path), []byte("vm.swappiness=9\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s.Collector = terminalJournalCollector{anker.DemoCollector{Root: s.Root}}
+	p, err := s.CreatePlan(context.Background(), anker.PlanRequest{BackupID: backups[0].ID, TargetID: "demo1", Scenario: "files", Files: []string{path}, Decisions: map[string]anker.FileDecision{path: anker.DecisionBackup}})
+	if err != nil || p.State != "ready" || p.TargetSnapshotSHA == "" || len(p.Steps) != 1 || p.Steps[0].Action != "apply" {
+		t.Fatalf("bound plan fixture: %+v %v", p, err)
+	}
+	p.State = "interrupted"
 	if e := s.Store.Put("plans", p.ID, p); e != nil {
 		t.Fatal(e)
 	}
-	s.Collector = terminalJournalCollector{anker.DemoCollector{Root: s.Root}}
 	m.data["preview"] = map[string]any{"id": p.ID, "state": "interrupted"}
 	m.showDetail("Wiederherstellungsplan", planText(object(m.data["preview"]), m))
 	m, cmd := key(m, "r")
