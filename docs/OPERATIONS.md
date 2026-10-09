@@ -202,6 +202,47 @@ Vor Aktivierung auf dem **isolierten** Rechner:
    `demo` nur für eine ausdrücklich getrennte Demo). Hosts erst nach Prüfung ihrer
    Adressen/Zugänge einzeln aktivieren. Dienste erst anschließend bewusst einrichten.
 
+### Weitere Disaster-Exporte nach einem Import
+
+Ein normaler Folgeexport mit `--data NEUER_ROOT` nimmt die erlaubten Dateien unter
+`NEUER_ROOT/disaster-config/` automatisch wieder auf. Ein erneutes `--config-root`
+ist dafür nicht erforderlich. Beispiel bei weiterhin gestoppter Instanz:
+
+```sh
+sudo anker --data /srv/anker-isoliert disaster export \
+  --output /sicherer-datentraeger/anker-zweite-generation.disaster \
+  --passphrase-file /geschuetzt/disaster-passphrase
+```
+
+Wird `--config-root` ausdrücklich auf genau dieselbe Quarantäne gesetzt, erkennt
+Anker deren geöffnete kanonische Verzeichnisidentität und erfasst sie nur einmal.
+Andere überlappende Daten-/Konfigurationswurzeln werden abgelehnt. Auch eine andere,
+separate Konfigurationswurzel wird bei bereits vorhandenen Quarantänedateien
+abgelehnt: unterschiedliche Schlüssel und Konfigurationen werden nicht still
+zusammengeführt oder überschrieben.
+
+Wenn nach Aktivierung beispielsweise neue aktive Dateien unter `/etc/anker`
+entstanden sind, historische Quarantäne unverändert aufbewahren. Die aktiven
+Schlüssel/Trust-Dateien nach Prüfung unter neuen eindeutigen Namen in
+`NEUER_ROOT/keys/active/`, TLS-Dateien in `NEUER_ROOT/tls/active/` und aktive
+Anker-Konfiguration in `NEUER_ROOT/config/` kopieren (Verzeichnisse `0700`, Dateien
+`0600`, passender Eigentümer). Aktive Host-Key-/Trust-Pfade und die neu geprüfte
+Dienst-/TLS-/Token-Konfiguration bewusst auf diese Kopien umstellen; anschließend
+bei gestoppten Schreibern ohne `--config-root` exportieren. So enthält der normale
+Datenroot-Export sowohl die unveränderten historischen Quarantänedateien als auch
+das aktuelle app-eigene Material. Historische `service.env`-/JSON-Dateien behalten
+alte Pfade; deren Referenzen können weiterhin als manuell zu prüfende historische
+Migrationshinweise erscheinen. Sie werden nicht automatisch aktiv verwendet.
+
+Für jede explizit geöffnete Daten-/Konfigurationswurzel merkt sich das Paket die
+angegebene und die dazu geprüfte kanonische Schreibweise, beispielsweise
+`/var/...` und `/private/var/...`. Ein app-eigener Key-/Trust-Pfad unter einer dieser
+beiden Schreibweisen wird beim Import auf die neue lokale Kopie umgestellt.
+Andere, ausschließlich im Katalog genannte Symlink-Aliase werden nicht aufgelöst
+und bleiben externe Migrationsreferenzen. Alle Quarantänebytes, deaktivierten
+Hosts und dauerhaften Sperren alter Pläne/Zielaufnahmen bleiben auch nach
+weiteren Export-/Importgenerationen erhalten.
+
 Der Import ist kein Nachweis einer unabhängigen Zweitkopie oder erfolgreicher
 Hostwiederherstellung. Vorhandene Verifikationsdaten und Copy-Receipts behalten
 Datum, Herkunft und ursprüngliche Quellenbindung; Export/Import erzeugt keine
@@ -217,7 +258,10 @@ KDF-Parameter können vom Paket nicht erhöht werden. Ein falsches Passwort,
 veränderte Daten oder eine unbekannte Version werden abgelehnt.
 
 Die verschlüsselte JSON-Nutzlast enthält `version`, `created_at`, `source_root`,
-optional `config_root`, `mode`, `records`, `files`, `references`. Jeder Katalogeintrag
+optional `config_root`, `source_canonical_root`, `config_canonical_root`,
+`mode`, `records`, `files`, `references`. Die optionalen kanonischen Wurzeln
+stammen ausschließlich aus identitätsgeprüften, explizit geöffneten Verzeichnissen;
+ältere Pakete ohne diese Zusatzfelder bleiben lesbar. Jeder Katalogeintrag
 enthält `bucket`, `id`, seine **unveränderten Rohbytes** als Base64-`value` und
 `sha256`. Dadurch bleiben getrennte Credentials, JSON-ausgeblendete/private Felder
 und unbekannte Zusatzfelder erhalten. Jeder reguläre Dateieintrag enthält einen
@@ -229,7 +273,7 @@ Zielnachweise müssen schon an der Quelle Dateien `0600`/Verzeichnisse `0700` ha
 Unter dem Datenroot werden `.anker-mode`, `hosts/` (einschließlich vollständiger
 Sicherungsdaten oder Archive), `plans/`, `recovery-inspections/`, `clusters/`,
 `keys/`, `ssh/`, `tls/`, `known_hosts`, `service.env` und erlaubte Anker-Konfiguration
-unter `config/` aufgenommen. `--config-root` ist eine explizite zusätzliche Quelle;
+unter `config/` und `disaster-config/` aufgenommen. `--config-root` ist eine explizite zusätzliche Quelle;
 zugelassen sind `keys/`, `tls/`, `known_hosts`, `service.env`, `tls-renewal.json`,
 `update.json`, `setup-complete`, `release-public.key`, `release.pub`,
 `release-key.pub` und reguläre `github-token-*`-Dateien. Die Tooling-Binaries,

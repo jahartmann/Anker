@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -534,5 +535,257 @@ func TestDisasterArchivedBackupAndDemoModeRoundTrip(t *testing.T) {
 	imported := &Service{Root: dest, Store: store}
 	if err = imported.checkBackupUnlocked(id); err != nil {
 		t.Fatal("archive no longer readable", err)
+	}
+}
+
+func TestDisasterReexportPreservesQuarantineAndRevocations(t *testing.T) {
+	s, _, request := snapshotSetup(t)
+	if err := EnsureDataMode(s.Root, false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.CreatePlan(t.Context(), requestDecision(t, request, request.Files[0], "backup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := t.TempDir()
+	content := map[string]string{"keys/backup": "backup-private", "keys/restore": "restore-private", "known_hosts": "strict-host-trust", "tls/server.key": "tls-private", "service.env": "ANKER_LISTEN=127.0.0.1:0\n"}
+	for path, body := range content {
+		if err = atomicWrite(filepath.Join(config, path), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var hosts []Host
+	hosts, err = records[Host](s.Store, "hosts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hosts {
+		h.KeyPath = filepath.Join(config, "keys/backup")
+		h.RestoreKeyPath = filepath.Join(config, "keys/restore")
+		h.KnownHostsPath = filepath.Join(config, "known_hosts")
+		if err = s.Store.Put("hosts", h.ID, h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var first bytes.Buffer
+	if err = ExportDisaster(s.Root, config, []byte("pass"), &first); err != nil {
+		t.Fatal(err)
+	}
+	imported := filepath.Join(t.TempDir(), "imported")
+	if _, err = ImportDisaster(&first, imported, []byte("pass")); err != nil {
+		t.Fatal(err)
+	}
+	imported, _ = filepath.EvalSymlinks(imported)
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			secondConfig := ""
+			if explicit {
+				secondConfig = filepath.Join(imported, "disaster-config")
+			}
+			secondRoot := imported
+			if !explicit {
+				alias := filepath.Join(t.TempDir(), "reexport-alias")
+				if err := os.Symlink(filepath.Dir(imported), alias); err != nil {
+					t.Fatal(err)
+				}
+				secondRoot = filepath.Join(alias, filepath.Base(imported))
+			}
+			var second bytes.Buffer
+			if err := ExportDisaster(secondRoot, secondConfig, []byte("pass"), &second); err != nil {
+				t.Fatal("reexport rejected imported app material", err)
+			}
+			info, err := InspectDisaster(bytes.NewReader(second.Bytes()), []byte("pass"))
+			if err != nil || info.ExternalReferences != 0 {
+				t.Fatal("owned credentials became external", info, err)
+			}
+			again := filepath.Join(t.TempDir(), "again")
+			if _, err = ImportDisaster(&second, again, []byte("pass")); err != nil {
+				t.Fatal(err)
+			}
+			again, _ = filepath.EvalSymlinks(again)
+			for path, want := range content {
+				got, err := os.ReadFile(filepath.Join(again, "disaster-config", path))
+				if err != nil || string(got) != want {
+					t.Fatal("quarantine bytes lost", path, err)
+				}
+			}
+			store, err := OpenStore(filepath.Join(again, "catalog.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			for _, old := range hosts {
+				var got Host
+				if err = store.Get("hosts", old.ID, &got); err != nil {
+					t.Fatal(err)
+				}
+				if got.Enabled || got.KeyPath != filepath.Join(again, "disaster-config/keys/backup") || got.RestoreKeyPath != filepath.Join(again, "disaster-config/keys/restore") || got.KnownHostsPath != filepath.Join(again, "disaster-config/known_hosts") {
+					t.Fatal("second import host remap/isolation", got)
+				}
+			}
+			if _, err = NewService(again, store, s.Collector); err == nil {
+				t.Fatal("second import activated")
+			}
+			checked := &Service{Root: again, Store: store}
+			if checked.disasterPlanAllowed(plan.ID) == nil {
+				t.Fatal("old plan revocation lost")
+			}
+			var revoked any
+			if store.Get("disaster-revoked-inspections", plan.TargetSnapshotID, &revoked) != nil {
+				t.Fatal("old inspection revocation lost")
+			}
+			if err = checked.verifyPlanFiles(plan); err != nil {
+				t.Fatal("plan evidence changed", err)
+			}
+		})
+	}
+	unrelated := t.TempDir()
+	if err = atomicWrite(filepath.Join(unrelated, "keys/backup"), []byte("other-secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var conflict bytes.Buffer
+	if err := ExportDisaster(imported, unrelated, []byte("pass"), &conflict); err == nil || !strings.Contains(err.Error(), "nicht automatisch zusammenführen") {
+		t.Fatal("ambiguous distinct config root not explicitly refused", err)
+	}
+	for _, overlap := range []string{imported, filepath.Dir(imported), filepath.Join(imported, "hosts")} {
+		conflict.Reset()
+		if err := ExportDisaster(imported, overlap, []byte("pass"), &conflict); err == nil {
+			t.Fatal("overlapping config root accepted", overlap)
+		}
+	}
+}
+
+func TestDisasterPinnedRootAliasesRemainOwned(t *testing.T) {
+	for _, kind := range []string{"data", "config"} {
+		t.Run(kind, func(t *testing.T) {
+			s, _ := disasterFixture(t)
+			root, err := filepath.EvalSymlinks(s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected := root
+			configArg := ""
+			dataArg := s.Root
+			if kind == "config" {
+				selected = t.TempDir()
+				selected, _ = filepath.EvalSymlinks(selected)
+				for _, path := range []string{"keys/backup", "keys/restore", "known_hosts"} {
+					if err = atomicWrite(filepath.Join(selected, path), []byte("material-"+path), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			alias := filepath.Join(t.TempDir(), "ancestor-alias")
+			if err = os.Symlink(filepath.Dir(selected), alias); err != nil {
+				t.Fatal(err)
+			}
+			supplied := filepath.Join(alias, filepath.Base(selected))
+			if kind == "data" {
+				dataArg = supplied
+			} else {
+				configArg = supplied
+			}
+			h, _ := s.Host("host1")
+			h.KeyPath = filepath.Join(selected, "keys/backup")
+			h.RestoreKeyPath = filepath.Join(selected, "keys/restore")
+			h.KnownHostsPath = filepath.Join(selected, "known_hosts")
+			if err = s.Store.Put("hosts", h.ID, h); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if err = ExportDisaster(dataArg, configArg, []byte("pass"), &out); err != nil {
+				t.Fatal(err)
+			}
+			info, err := InspectDisaster(bytes.NewReader(out.Bytes()), []byte("pass"))
+			if err != nil || info.ExternalReferences != 0 {
+				t.Fatal("canonical key in pinned supplied alias misclassified", info, err)
+			}
+			dest := filepath.Join(t.TempDir(), "imported")
+			if _, err = ImportDisaster(&out, dest, []byte("pass")); err != nil {
+				t.Fatal(err)
+			}
+			dest, _ = filepath.EvalSymlinks(dest)
+			store, err := OpenStore(filepath.Join(dest, "catalog.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			var imported Host
+			store.Get("hosts", "host1", &imported)
+			relative := ""
+			if kind == "config" {
+				relative = "disaster-config"
+			}
+			if imported.Enabled || imported.KeyPath != filepath.Join(dest, relative, "keys/backup") || imported.KnownHostsPath != filepath.Join(dest, relative, "known_hosts") {
+				t.Fatal("alias-owned references not remapped", imported)
+			}
+			for _, path := range []string{imported.KeyPath, imported.RestoreKeyPath, imported.KnownHostsPath} {
+				if _, err = os.Stat(path); err != nil {
+					t.Fatal("remapped material absent", err)
+				}
+			}
+		})
+	}
+}
+
+func TestDisasterDoesNotResolveUnapprovedCatalogAlias(t *testing.T) {
+	s, _ := disasterFixture(t)
+	canonical, err := filepath.EvalSymlinks(s.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "catalog-only-alias")
+	if err = os.Symlink(filepath.Dir(canonical), alias); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := s.Host("host1")
+	h.KeyPath = filepath.Join(alias, filepath.Base(canonical), "keys/backup")
+	s.Store.Put("hosts", h.ID, h)
+	var out bytes.Buffer
+	if err = ExportDisaster(s.Root, "", []byte("pass"), &out); err != nil {
+		t.Fatal(err)
+	}
+	info, err := InspectDisaster(bytes.NewReader(out.Bytes()), []byte("pass"))
+	if err != nil || info.ExternalReferences != 1 {
+		t.Fatal("unapproved catalog-only alias resolved", info, err)
+	}
+	dest := filepath.Join(t.TempDir(), "new")
+	if _, err = ImportDisaster(&out, dest, []byte("pass")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(filepath.Join(dest, "catalog.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var got Host
+	store.Get("hosts", h.ID, &got)
+	if got.Enabled || got.KeyPath != h.KeyPath {
+		t.Fatal("external alias silently activated or rewritten", got)
+	}
+}
+
+func TestDisasterLegacyPackageWithoutCanonicalAliasesRemainsReadable(t *testing.T) {
+	s, _ := disasterFixture(t)
+	var out bytes.Buffer
+	if err := ExportDisaster(s.Root, "", []byte("pass"), &out); err != nil {
+		t.Fatal(err)
+	}
+	p, err := disasterUnseal(&out, []byte("pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.SourceCanonicalRoot = ""
+	p.ConfigCanonicalRoot = ""
+	var legacy bytes.Buffer
+	if err = disasterSeal(p, []byte("pass"), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "legacy-import")
+	if _, err = ImportDisaster(&legacy, dest, []byte("pass")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(dest, "keys/backup")); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -60,14 +60,16 @@ type disasterReference struct {
 	Instruction string `json:"instruction"`
 }
 type disasterPackage struct {
-	Version    int                 `json:"version"`
-	CreatedAt  string              `json:"created_at"`
-	SourceRoot string              `json:"source_root"`
-	ConfigRoot string              `json:"config_root,omitempty"`
-	Mode       string              `json:"mode"`
-	Records    []disasterRecord    `json:"records"`
-	Files      []disasterFile      `json:"files"`
-	References []disasterReference `json:"references"`
+	Version             int                 `json:"version"`
+	CreatedAt           string              `json:"created_at"`
+	SourceRoot          string              `json:"source_root"`
+	SourceCanonicalRoot string              `json:"source_canonical_root,omitempty"`
+	ConfigRoot          string              `json:"config_root,omitempty"`
+	ConfigCanonicalRoot string              `json:"config_canonical_root,omitempty"`
+	Mode                string              `json:"mode"`
+	Records             []disasterRecord    `json:"records"`
+	Files               []disasterFile      `json:"files"`
+	References          []disasterReference `json:"references"`
 }
 
 // Pin the directory identity; every child is subsequently opened relative to an
@@ -187,11 +189,11 @@ func disasterAllowed(name string, config bool) bool {
 		return strings.HasPrefix(top, "github-token-") && !strings.Contains(name, "/")
 	}
 	switch top {
-	case "config":
-		if name == "config" {
+	case "config", "disaster-config":
+		if name == top {
 			return true
 		}
-		return disasterAllowed(strings.TrimPrefix(name, "config/"), true)
+		return disasterAllowed(strings.TrimPrefix(name, top+"/"), true)
 	case "hosts", "plans", "recovery-inspections", "clusters", "keys", "ssh", "tls":
 		return true
 	case "known_hosts", "service.env", ".anker-mode":
@@ -351,6 +353,30 @@ func disasterOwned(path, root string) (string, bool) {
 	rel, err := filepath.Rel(root, path)
 	return filepath.ToSlash(rel), err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
+
+// Only supplied/canonical spellings validated when opening an explicit root
+// are admitted. Never resolve catalog references against the live filesystem.
+func (p *disasterPackage) localPath(path string) (string, bool) {
+	for _, root := range []string{p.SourceRoot, p.SourceCanonicalRoot} {
+		if rel, ok := disasterOwned(path, root); ok {
+			return rel, true
+		}
+	}
+	for _, root := range []string{p.ConfigRoot, p.ConfigCanonicalRoot} {
+		if rel, ok := disasterOwned(path, root); ok {
+			return "disaster-config/" + rel, true
+		}
+	}
+	return "", false
+}
+func (p *disasterPackage) isRoot(path string) bool {
+	for _, root := range []string{p.SourceRoot, p.SourceCanonicalRoot, p.ConfigRoot, p.ConfigCanonicalRoot} {
+		if root != "" && path == root {
+			return true
+		}
+	}
+	return false
+}
 func disasterReferences(p *disasterPackage) error {
 	files := map[string]bool{}
 	for _, f := range p.Files {
@@ -364,13 +390,7 @@ func disasterReferences(p *disasterPackage) error {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\x00\r\n") {
 			return errors.New("Zugangspfad muss absolut und normalisiert sein")
 		}
-		rel, local := disasterOwned(path, p.SourceRoot)
-		if !local {
-			if c, ok := disasterOwned(path, p.ConfigRoot); ok {
-				rel = "disaster-config/" + c
-				local = true
-			}
-		}
+		rel, local := p.localPath(path)
 		if local {
 			if !files[rel] {
 				return fmt.Errorf("Erforderliches lokales Material fehlt im Inventar (%s)", kind)
@@ -399,7 +419,7 @@ func disasterReferences(p *disasterPackage) error {
 	// Parse data only; never source env files or execute substitutions.
 	for _, f := range p.Files {
 		check := func(value string) error {
-			if strings.HasPrefix(value, "/") && value != p.SourceRoot && value != p.ConfigRoot {
+			if strings.HasPrefix(value, "/") && !p.isRoot(value) {
 				return add("configuration", value)
 			}
 			return nil
@@ -546,8 +566,13 @@ func disasterValidate(p *disasterPackage) error {
 	if p.Version != 1 || (p.Mode != "production" && p.Mode != "demo") || !filepath.IsAbs(p.SourceRoot) || filepath.Clean(p.SourceRoot) != p.SourceRoot || len(p.Files) > disasterMaxEntries || len(p.Records) > disasterMaxEntries {
 		return errors.New("Ungültiges Disaster-Schema")
 	}
-	if p.ConfigRoot != "" && (!filepath.IsAbs(p.ConfigRoot) || filepath.Clean(p.ConfigRoot) != p.ConfigRoot) {
-		return errors.New("Ungültige Konfigurationswurzel")
+	for _, root := range []string{p.SourceCanonicalRoot, p.ConfigRoot, p.ConfigCanonicalRoot} {
+		if root != "" && (!filepath.IsAbs(root) || filepath.Clean(root) != root || strings.ContainsAny(root, "\x00\r\n")) {
+			return errors.New("Ungültige Disaster-Wurzel")
+		}
+	}
+	if p.ConfigRoot == "" && p.ConfigCanonicalRoot != "" {
+		return errors.New("Kanonische Konfigurationswurzel ohne explizite Quelle")
 	}
 	paths := map[string]bool{}
 	total := int64(0)
@@ -638,7 +663,7 @@ func ExportDisaster(root, configRoot string, pass []byte, w io.Writer) error {
 	if err = d.check(); err != nil {
 		return err
 	}
-	p := &disasterPackage{Version: 1, CreatedAt: now(), SourceRoot: d.supplied}
+	p := &disasterPackage{Version: 1, CreatedAt: now(), SourceRoot: d.supplied, SourceCanonicalRoot: d.path}
 	p.Records, err = disasterCatalog(d)
 	if err != nil {
 		return err
@@ -660,8 +685,23 @@ func ExportDisaster(root, configRoot string, pass []byte, w io.Writer) error {
 		}
 		defer c.f.Close()
 		p.ConfigRoot = c.supplied
-		if err = disasterWalk(c.f, "", p, true, &total, &nodes); err != nil {
-			return err
+		p.ConfigCanonicalRoot = c.path
+		// Explicitly naming the same quarantine is redundant. Other overlaps or
+		// merging a second config tree with quarantine are ambiguous and fail closed.
+		if c.path != filepath.Join(d.path, "disaster-config") {
+			_, inside := disasterOwned(c.path, d.path)
+			_, contains := disasterOwned(d.path, c.path)
+			if c.path == d.path || inside || contains {
+				return errors.New("Explizite Konfigurationswurzel überlappt Datenwurzel; nur dieselbe disaster-config-Quarantäne ist redundant erlaubt")
+			}
+			for _, file := range p.Files {
+				if strings.HasPrefix(file.Path, "disaster-config/") {
+					return errors.New("Vorhandene disaster-config-Quarantäne und separate Konfigurationswurzel nicht automatisch zusammenführen")
+				}
+			}
+			if err = disasterWalk(c.f, "", p, true, &total, &nodes); err != nil {
+				return err
+			}
 		}
 		if err = c.check(); err != nil {
 			return err
@@ -1060,10 +1100,8 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 					if err = json.Unmarshal(object[field], &path); err != nil && object[field] != nil {
 						return err
 					}
-					if rel, ok := disasterOwned(path, p.SourceRoot); ok {
+					if rel, ok := p.localPath(path); ok {
 						object[field], _ = json.Marshal(filepath.Join(target, rel))
-					} else if rel, ok := disasterOwned(path, p.ConfigRoot); ok {
-						object[field], _ = json.Marshal(filepath.Join(target, "disaster-config", rel))
 					}
 				}
 			} else {
@@ -1096,12 +1134,14 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 		return err
 	}
 	report := struct {
-		Version    int                 `json:"version"`
-		ImportedAt string              `json:"imported_at"`
-		References []disasterReference `json:"external_references"`
-		SourceRoot string              `json:"source_root"`
-		ConfigRoot string              `json:"config_root"`
-	}{1, now(), p.References, p.SourceRoot, p.ConfigRoot}
+		Version             int                 `json:"version"`
+		ImportedAt          string              `json:"imported_at"`
+		References          []disasterReference `json:"external_references"`
+		SourceRoot          string              `json:"source_root"`
+		ConfigRoot          string              `json:"config_root"`
+		SourceCanonicalRoot string              `json:"source_canonical_root,omitempty"`
+		ConfigCanonicalRoot string              `json:"config_canonical_root,omitempty"`
+	}{1, now(), p.References, p.SourceRoot, p.ConfigRoot, p.SourceCanonicalRoot, p.ConfigCanonicalRoot}
 	if err = writeJSON(filepath.Join(root, "disaster-migration.json"), report); err != nil {
 		return err
 	}
