@@ -18,6 +18,9 @@ import (
 )
 
 func NewService(root string, store *Store, collector Collector) (*Service, error) {
+	if _, err := os.Lstat(filepath.Join(root, disasterIsolation)); !os.IsNotExist(err) {
+		return nil, errors.New("Isolierter Disaster-Import: lokale Prüfung und ausdrückliche Aktivierung erforderlich (OPERATIONS.md)")
+	}
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err

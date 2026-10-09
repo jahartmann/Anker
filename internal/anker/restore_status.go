@@ -68,6 +68,9 @@ func setRecoveryResult(p *Plan, result ApplyResult, operationErr error) {
 
 // ReconcilePlan reads the host journal; it never repeats a write operation.
 func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
+	if err := s.disasterPlanAllowed(id); err != nil {
+		return Plan{}, err
+	}
 	lock := s.planLock(id)
 	lock.Lock()
 	defer lock.Unlock()
@@ -166,6 +169,9 @@ func (s *Service) reserveReadyReconciliation(hostID string) error {
 }
 
 func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Plan, error) {
+	if err := s.disasterPlanAllowed(id); err != nil {
+		return Plan{}, err
+	}
 	lock := s.planLock(id)
 	lock.Lock()
 	defer lock.Unlock()

@@ -532,6 +532,10 @@ Start und Hilfe
   man anker               Handbuch; /WORT sucht, n sucht weiter, q beendet
   anker version           Installierte Version anzeigen
   Ohne Terminal zeigt anker die Hilfe. Verwaltungsbefehle benötigen den Dienst.
+  Offline: anker --data DATEN disaster export --output PAKET --passphrase-file DATEI
+  Offline: anker disaster inspect --input PAKET --passphrase-file DATEI
+  Offline: anker disaster import --input PAKET --destination NEU --passphrase-file DATEI
+  Disaster-Export: Dienst/Updater vorher stoppen; optionale --config-root /etc/anker.
 
 Installation und Einrichtung (Linux mit systemd)
   sudo ./scripts/install-server.sh       Aus Checkout bauen oder Paket installieren

@@ -9,6 +9,9 @@ import (
 )
 
 func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan, error) {
+	if err := s.disasterPlanAllowed(id); err != nil {
+		return Plan{}, err
+	}
 	lock := s.planLock(id)
 	lock.Lock()
 	defer lock.Unlock()

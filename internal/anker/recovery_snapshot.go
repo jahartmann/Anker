@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -379,6 +380,12 @@ func (s *Service) cleanupRecoverySnapshotsLocked(at time.Time) error {
 	return syncDir(filepath.Join(s.Root, "recovery-inspections"))
 }
 func (s *Service) loadRecoverySnapshotLocked(id string) (RecoverySnapshot, error) {
+	var revoked any
+	if err := s.Store.Get("disaster-revoked-inspections", id, &revoked); err == nil {
+		return RecoverySnapshot{}, errors.New("Disaster-Zielnachweis bleibt historisch; neue Zielaufnahme erforderlich")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return RecoverySnapshot{}, err
+	}
 	var snapshot RecoverySnapshot
 	if !validID(id) {
 		return snapshot, errors.New("ungültige Aufnahme-ID")

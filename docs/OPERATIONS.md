@@ -116,3 +116,149 @@ unset ANKER_USER_PASSWORD
 ## Programmupdates
 
 Signierte GitHub-Releases, getrennte Updateberechtigung und automatische Wiederherstellung von Binärdatei und Katalog: [UPDATES.md](UPDATES.md).
+
+## Kaltes, verschlüsseltes Disaster-Paket
+
+`disaster` arbeitet lokal ohne laufenden Unix-Socket. Es sichert die Anker-Instanz
+(Katalog, lokale Sicherungen und private Recovery-Nachweise), nicht den gesamten
+Server und keine Proxmox-VMs. Der Import startet keinen Dienst, Updater oder Restore.
+Eine echte Wiederherstellungsabnahme auf isoliertem PVE bleibt separat erforderlich.
+
+### Export und Prüfung bei gestopptem Dienst
+
+Dienst **und Updater** stoppen; auch Einrichtung, Installer und sonstige Schreiber
+müssen beendet sein. Beispiel für eine installierte Linux-Instanz:
+
+```sh
+sudo systemctl stop anker.service anker-updater.service
+sudo anker --data /srv/anker disaster export \
+  --config-root /etc/anker --output /sicherer-datentraeger/anker.disaster \
+  --passphrase-file /geschuetzt/disaster-passphrase
+sudo anker disaster inspect --input /sicherer-datentraeger/anker.disaster \
+  --passphrase-file /geschuetzt/disaster-passphrase
+```
+
+Die Passphrase-Datei ist eine reguläre Datei ohne Symlink, höchstens 4097 Bytes,
+mit ausschließlich Eigentümerrechten (beispielsweise `0600`). Eine abschließende
+LF-Zeile wird entfernt; die Passphrase enthält 1–4096 Bytes. Eine lange zufällige
+Passphrase getrennt vom Paket verwahren. Ohne `--passphrase-file` fragt Anker sie
+verdeckt am Terminal ab; Pipes und Passphrasen als CLI-Argument sind nicht erlaubt.
+Der Export überschreibt keine vorhandene Paketdatei. `inspect` authentifiziert
+und prüft das Inventar ohne Katalogöffnung oder Entpacken; es zeigt ausschließlich
+Version, Modus, Zähler und allgemeine Migrationsvoraussetzungen. Die vollständige
+Sicherungs-/Planprüfung erfolgt beim Export und Import.
+
+### Isolierter Import und bewusste Aktivierung
+
+Das Elternverzeichnis muss bereits existieren. Das Ziel darf **noch nicht
+existieren**, auch nicht als leeres Verzeichnis oder Symlink. Es darf nicht
+innerhalb einer vorhandenen Anker-Instanz liegen:
+
+```sh
+sudo anker disaster import --input /sicherer-datentraeger/anker.disaster \
+  --destination /srv/anker-isoliert --passphrase-file /geschuetzt/disaster-passphrase
+```
+
+Anker prüft zuerst Authentifizierung, Inventar, Originalmanifeste, Sicherungsdaten,
+private Pläne und Zielnachweise in einem privaten temporären Verzeichnis. Erst
+nach erfolgreicher Prüfung wird eine vollständig geschriebene Ablage atomar und
+ohne Überschreiben veröffentlicht. Verzeichnisse erhalten `0700`, Dateien `0600`.
+Import unter dem künftigen Dienstkonto ausführen oder anschließend Eigentümer der
+neuen Ablage bewusst an dieses Konto übertragen. UID/GID und Originalmodi in
+Sicherungsmanifesten werden dabei unverändert erhalten.
+
+Die Datei `.disaster-isolated` verhindert Dienststart, Demo-Start und Initialisierung.
+Alle Hosts sind deaktiviert; Sitzungen sind gelöscht; wartende/laufende Aufträge
+sind `interrupted`. Bestehende Plan- und Zielaufnahme-Dateien bleiben unverändert
+lesbare Belege. Separate Katalogsperren verhindern die Wiederverwendung alter
+Pläne für Apply, Reconcile und Rollback sowie alter Zielaufnahmen für neue Pläne,
+auch nach Aktivierung. Neue Zielprüfung und neuer Plan sind erforderlich.
+
+Vor Aktivierung auf dem **isolierten** Rechner:
+
+1. `disaster-migration.json` lokal unter Eigentümerrechten lesen. Dort stehen
+   ursprüngliche Daten-/Konfigurationswurzeln und konkrete externe Referenzen.
+   Fehlende Quellhosts werden offline weder kontaktiert noch als verfügbar bestätigt.
+2. App-eigene Schlüssel, `known_hosts`, TLS-Dateien und Konfiguration prüfen.
+   Material aus `--config-root` liegt unter `disaster-config/` in Quarantäne.
+   Die Hostfelder für app-eigene Key-/Trust-Pfade sind auf die neue Ablage umgestellt.
+   Externe absolute Pfade werden niemals verfolgt oder automatisch umgeschrieben:
+   externe Schlüssel/TLS-Zertifikate separat sicher übertragen, Rechte setzen und
+   SSH-Fingerprints über einen unabhängigen Kanal kontrollieren. Ein Schlüssel
+   ersetzt keine erneute Vertrauensprüfung am neuen Einsatzort.
+3. `service.env` **nicht ungeprüft sourcen**. Für den späteren Dienst eine neue
+   Konfiguration mit dem neuen `ANKER_DATA`, einem isolierten Listen-/Socketpfad
+   und geprüften `ANKER_TLS_CERT`/`ANKER_TLS_KEY` erstellen. Quarantänisierte
+   `service.env`, `update.json` (einschließlich `token_file`) und TLS-Konfiguration
+   behalten ihre ursprünglichen Bytes und Pfade; erforderliche Pfade bewusst in
+   einer neuen aktiven Konfiguration anpassen. Den Updater separat neu einrichten;
+   keine alten Pending-/Installationsdateien übernehmen. Benachrichtigungsziele
+   und Zeitpläne vor Netzwerkfreigabe prüfen; Einstellungen wurden erhalten.
+4. Erst nach dieser lokalen Prüfung die Aktivierung ausdrücklich vornehmen,
+   beispielsweise `sudo rm -- /srv/anker-isoliert/.disaster-isolated`. Dieser
+   einzelne Schritt hebt ausschließlich die Startsperre auf. Er startet nichts.
+   Für die erste Prüfung Anker manuell mit `--data /srv/anker-isoliert` und eigener
+   Loopback-Adresse starten; den erhaltenen Modus beachten (`serve` für production,
+   `demo` nur für eine ausdrücklich getrennte Demo). Hosts erst nach Prüfung ihrer
+   Adressen/Zugänge einzeln aktivieren. Dienste erst anschließend bewusst einrichten.
+
+Der Import ist kein Nachweis einer unabhängigen Zweitkopie oder erfolgreicher
+Hostwiederherstellung. Vorhandene Verifikationsdaten und Copy-Receipts behalten
+Datum, Herkunft und ursprüngliche Quellenbindung; Export/Import erzeugt keine
+neuen Backup-Verifikationsbelege und bestätigt keine Fehlerdomänentrennung.
+
+### Format 1, Umfang und Grenzen
+
+Das binäre Format beginnt mit `ANKER-DISASTER`, NUL und Versionsbyte `0x01`,
+anschließend 16 zufälligen Salt-Bytes und 12 zufälligen Nonce-Bytes. scrypt mit
+festem `N=32768`, `r=8`, `p=1` erzeugt einen 32-Byte-Schlüssel. AES-256-GCM schützt
+JSON-Nutzlast und gesamten Header als Associated Data; der Tag ist 16 Bytes lang.
+KDF-Parameter können vom Paket nicht erhöht werden. Ein falsches Passwort,
+veränderte Daten oder eine unbekannte Version werden abgelehnt.
+
+Die verschlüsselte JSON-Nutzlast enthält `version`, `created_at`, `source_root`,
+optional `config_root`, `mode`, `records`, `files`, `references`. Jeder Katalogeintrag
+enthält `bucket`, `id`, seine **unveränderten Rohbytes** als Base64-`value` und
+`sha256`. Dadurch bleiben getrennte Credentials, JSON-ausgeblendete/private Felder
+und unbekannte Zusatzfelder erhalten. Jeder reguläre Dateieintrag enthält einen
+normalisierten relativen `path`, Base64-`data` und `sha256`. Doppelte Pfade/Datensätze,
+Traversal, absolute Paketpfade, Datei-/Verzeichniskollisionen, Sonderdateien,
+Symlinks und mehrfach verknüpfte Quelldateien werden abgewiesen. Private Plan- und
+Zielnachweise müssen schon an der Quelle Dateien `0600`/Verzeichnisse `0700` haben.
+
+Unter dem Datenroot werden `.anker-mode`, `hosts/` (einschließlich vollständiger
+Sicherungsdaten oder Archive), `plans/`, `recovery-inspections/`, `clusters/`,
+`keys/`, `ssh/`, `tls/`, `known_hosts`, `service.env` und erlaubte Anker-Konfiguration
+unter `config/` aufgenommen. `--config-root` ist eine explizite zusätzliche Quelle;
+zugelassen sind `keys/`, `tls/`, `known_hosts`, `service.env`, `tls-renewal.json`,
+`update.json`, `setup-complete`, `release-public.key`, `release.pub`,
+`release-key.pub` und reguläre `github-token-*`-Dateien. Die Tooling-Binaries,
+Systemd-Units, Logs, Exporte, Staging-Verzeichnisse, Demo-Quellhosts, Sockets und
+Updater-/Setup-/Installations-Pendingzustände gehören nicht zum Paket. Externe
+Backup-Symlinks werden nicht verfolgt: vor dem kalten Export eine vollständige,
+reguläre lokale Ablage bereitstellen. Referenzierte, fehlende lokale Schlüssel
+oder unvollständige Sicherungs-/Plan-/Zieldaten führen zum Abbruch; externe
+Credential-/Konfigurationspfade werden stattdessen als Migrationspflicht aufgeführt.
+
+Die vorhandene `InstanceLock` schließt laufende Anker-Instanzen aus. Der Katalog
+wird samt vorhandenem SQLite-WAL descriptorgebunden in eine private Kopie gelesen,
+dort read-only mit `integrity_check` geöffnet und als Rohdatensätze aufgenommen.
+Die Quelle erhält kein Schema-Upgrade und keinen erzwungenen Checkpoint. Alle
+anderen Schreiber müssen ebenfalls gestoppt sein; die Sperre ersetzt keine
+Dateisystem-Snapshotgarantie gegen fremde Prozesse. Dateioperationen verwenden
+geöffnete Verzeichnisidentitäten, `O_NOFOLLOW`, Inventarprüfungen und abschließende
+Identitätsprüfungen. Der finale Import verwendet descriptorgebundenes Staging
+und Linux `RENAME_NOREPLACE` beziehungsweise macOS `RENAME_EXCL`.
+
+Grenzen: 64 MiB je Quelldatei und je DB-/WAL-Datei, 64 MiB rohe Katalogwerte,
+256 MiB Dateinutzdaten, höchstens 50.000 Quelldateien/-verzeichniseinträge und
+50.000 Katalogdatensätze, Verzeichnistiefe bis 101 Komponenten; maximal 384 MiB
+verschlüsseltes Paket einschließlich Base64-/JSON-Aufwand. Sicherungsarchive
+werden zusätzlich auf insgesamt 256 MiB entpackte Nutzdaten und 50.000 Tar-Einträge
+begrenzt. Das Format wird im Speicher verarbeitet; genügend RAM und privaten
+Temporärspeicher sowie Platz für Prüfung und Zielkopie einplanen. Größere Instanzen
+benötigen einen gesonderten, offline geprüften Migrationsweg. Temporäre Klartexte
+werden mit privaten Rechten erzeugt und regulär entfernt, nicht kryptografisch
+vom Datenträger gelöscht; für sensible Systeme verschlüsselten Temporärspeicher
+verwenden. Alte temporäre Stagingreste nach einem Prozess-/Stromausfall nur bei
+weiterhin gestopptem Dienst prüfen und entfernen.
