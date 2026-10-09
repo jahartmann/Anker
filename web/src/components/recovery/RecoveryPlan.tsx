@@ -292,6 +292,35 @@ export default function RecoveryPlan({
       }
     }
   }
+  const currentPlanID = useRef(plan.id);
+  currentPlanID.current = plan.id;
+  async function verifyRecovery() {
+    if (activeRequest.current || uncertain || pendingJob || targetBusy) return;
+    const id = plan.id;
+    refreshGeneration.current++;
+    activeRequest.current = true;
+    onBusyChange(true);
+    setBusy(true);
+    setFormError("");
+    try {
+      const updated = await api<Plan>(`plans/${id}/verify`, "POST", {});
+      if (mounted.current && currentPlanID.current === id) {
+        setPlan(updated);
+        refresh();
+      }
+    } catch (e) {
+      if (mounted.current && currentPlanID.current === id) {
+        setFormError((e as Error).message);
+        refresh();
+      }
+    } finally {
+      activeRequest.current = false;
+      if (mounted.current && currentPlanID.current === id) {
+        setBusy(false);
+        onBusyChange(false);
+      }
+    }
+  }
   async function confirmTask(task: RecoveryTask, evidence: string) {
     if (activeRequest.current || uncertain || pendingJob || targetBusy)
       return false;
@@ -430,56 +459,57 @@ export default function RecoveryPlan({
             ordered
           />
         )}
-      {targetBusy && (
-        <p className="notice" role="status">
-          Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
-          Übernahme und Rücksetzung wieder verfügbar.
-        </p>
-      )}
-      {pendingJob && (
-        <p className="notice" role="status">
-          Auftrag läuft. Datei- und Hostnachweis werden nach Abschluss geladen.
-        </p>
-      )}
-      {plan.result && (
-        <div className="notice recovery-result">
-          <p>
-            {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
-            {plan.state === "rolled_back" && !uncertain
-              ? "Rücksetzung laut Hostjournal abgeschlossen."
-              : "Betriebsprüfung bleibt ausstehend."}
+        {targetBusy && (
+          <p className="notice" role="status">
+            Am Ziel läuft bereits ein Auftrag. Nach dessen Abschluss sind
+            Übernahme und Rücksetzung wieder verfügbar.
           </p>
-          {plan.result.operation_id && (
+        )}
+        {pendingJob && (
+          <p className="notice" role="status">
+            Auftrag läuft. Datei- und Hostnachweis werden nach Abschluss
+            geladen.
+          </p>
+        )}
+        {plan.result && (
+          <div className="notice recovery-result">
             <p>
-              Recovery-ID:{" "}
-              <span className="mono">{plan.result.operation_id}</span>
+              {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
+              {plan.state === "rolled_back" && !uncertain
+                ? "Rücksetzung laut Hostjournal abgeschlossen."
+                : "Betriebsprüfung bleibt ausstehend."}
             </p>
-          )}
-          {plan.result.rollback_path && (
+            {plan.result.operation_id && (
+              <p>
+                Recovery-ID:{" "}
+                <span className="mono">{plan.result.operation_id}</span>
+              </p>
+            )}
+            {plan.result.rollback_path && (
+              <p>
+                Rollback:{" "}
+                <span className="mono">{plan.result.rollback_path}</span>
+              </p>
+            )}
+            {plan.result.error && <p role="alert">{plan.result.error}</p>}
             <p>
-              Rollback:{" "}
-              <span className="mono">{plan.result.rollback_path}</span>
+              Ein vollständiger Host-Restore und ein geprüfter Neustart sind
+              damit nicht bestätigt.
             </p>
-          )}
-          {plan.result.error && <p role="alert">{plan.result.error}</p>}
-          <p>
-            Ein vollständiger Host-Restore und ein geprüfter Neustart sind damit
-            nicht bestätigt.
-          </p>
-          <p className="field-hint">
-            {status.demo
-              ? "Herkunft: lokales Demoresultat; kein realer Hostnachweis."
-              : "Herkunft der Hostnachweise: maschinelles Hostresultat / Journal, getrennt von Benutzerbestätigungen."}
-          </p>
-          {!!plan.result.checks?.length && (
-            <RecoveryEvidence
-              key={plan.id + "checks"}
-              title="Hostnachweise"
-              items={plan.result.checks}
-            />
-          )}
-        </div>
-      )}
+            <p className="field-hint">
+              {status.demo
+                ? "Herkunft: lokales Demoresultat; kein realer Hostnachweis."
+                : "Herkunft der Hostnachweise: maschinelles Hostresultat / Journal, getrennt von Benutzerbestätigungen."}
+            </p>
+            {!!plan.result.checks?.length && (
+              <RecoveryEvidence
+                key={plan.id + "checks"}
+                title="Hostnachweise"
+                items={plan.result.checks}
+              />
+            )}
+          </div>
+        )}
       </section>
       <div id="plan-files">
         <PlanFiles key={plan.id} plan={plan} user={user} />
@@ -487,6 +517,7 @@ export default function RecoveryPlan({
       <div id="plan-tasks">
         <RecoveryChecks
           plan={plan}
+          onVerify={user.role !== "reader" ? verifyRecovery : undefined}
           onConfirm={user.role !== "reader" ? confirmTask : undefined}
           disabled={busy || !!pendingJob || uncertain || targetBusy}
           onDirtyChange={setChecksDirty}

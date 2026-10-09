@@ -93,3 +93,69 @@ Standalone, Hardwarewechsel, gesunder Clusterersatz, isolierter Clusterverlust, 
 Grenzen: 50.000 logische Einträge, 256 MiB Dateiinhalte einschließlich Index/Listen, 64 MiB pro Datei, 512 MiB Archivtransport; Pfade maximal 4096 Bytes/101 Komponenten. Verifier weist Traversal, doppelte/unsichere Pfade, Hardlinks/Spezialdateien und Datei-/Link-Unterpfadkollisionen ab. Originalsymlinks werden ausschließlich als Metadaten geprüft, niemals verfolgt. Originalmetadaten werden im Archiv bewahrt; private Inhalte nicht ungeschützt entpacken oder an Support weitergeben. Für neue Exporte gelten dieselben Inhaltsgrenzen.
 
 Das [operatorgeführte PVE-Abnahmekit](recovery-lab/README.md) liefert Preflight, Abhängigkeitsdossier und neun konkrete Szenarien. Reale Laborergebnisse fehlen. Die frische Maschinenprüfung aus Task8 ist noch nicht verfügbar und muss in Task12 integriert werden; bis dahin meldet das Kit unvollständig.
+
+## Frische maschinelle Prüfversuche
+
+`anker restore verify PLAN` ruft `POST /api/plans/PLAN/verify` mit `{}` über die
+Wiederherstellungsrolle auf. Die Antwort ist der Plan mit `verification_attempts`;
+CLI-Exit 0 bedeutet, dass der Versuch gespeichert wurde, auch bei einem negativen
+Befund. Auswerten: letzter Versuch und dessen `state`, `identity_state`,
+`reboot_state`, `services_state`, `volumes_state`. Es gibt keine pauschale
+Wiederherstellungsfreigabe. Die Webansicht zeigt sämtliche Versuche getrennt von
+menschlichen Aufgaben. Weder diese Abfrage noch ein menschlicher Kommentar ändert
+Übernahmestatus, Hostjournal oder Aufgabenbestätigungen.
+
+Der optionale Hosthelfer meldet `recovery_verify_protocol: 1`. Seine feste Operation
+`verify-recovery` verwendet ausschließlich den Leseschlüssel mit strenger
+Known-Hosts-Prüfung und `--read-only`. Server und Helfer erlauben nur
+`pve-cluster`, `pvedaemon`, `pveproxy` (`systemctl is-active --quiet`) und die maximal
+32 Storage-IDs aus der privaten planbezogenen Zielaufnahme (`pvesm list ID`).
+Geliefert werden Abfragezeit, explizite Zustände, Maschinenhash, Boot-ID und
+Volumenlisten. Kein Shelltext, Pfad oder Dienst kann über den HTTP-/CLI-Aufruf
+vorgegeben werden. Eine erfolgreiche Dienstabfrage belegt nur den aktiven
+Systemd-Zustand; vorhandene Volumen-IDs belegen keine Inhalte, Mounts, Backing-
+Identität oder Gastfunktion. Der Volumennachweis vergleicht den aufgenommenen
+Zielbestand mit dem aktuellen Bestand; fehlende oder unbekannte Bestände bleiben
+negativ beziehungsweise unbekannt. Unbekannte nicht aufgenommene Gastdatenträger
+bleiben Teil der manuellen Aufgaben.
+
+Stabile Identität: SHA256 der getrimmten ASCII-Bytes aus `/etc/machine-id`, genau
+32 kleine Hexzeichen und nicht ausschließlich Nullen. Der Helfer erfasst dies
+bereits beim Probe als `details.machine_identity_sha256` mit positivem
+`details.command_results.machine_identity.state == "ok"`. Bootbaseline ist eine
+syntaktisch gültige kleine UUID aus `details.boot_id`, deren echte Abfrage
+`details.command_results.boot_id.state == "ok"` belegt. Beide müssen aus der
+privaten, bei Planerstellung kopierten Zielaufnahme stammen. Öffentliche
+`query_states`, breite Inventarfingerprints, frühere Apply-Resultate und später
+nachgereichte Probe-Daten ersetzen diese Baseline nicht. Ein Neustart ist nur bei
+gleichem Maschinenhash und unterschiedlicher aktueller Boot-ID nachgewiesen.
+Klonen einer machine-id kann diese logische Identität duplizieren; sie ist kein
+Hardwareattest. Kein echter Reboot wird ausgeführt.
+
+Vor und nach dem Lesen prüft Anker Originalquelle, private Planbestandteile,
+Zielaufnahme und aktuelle Verbindung. Die Verbindungsbindung enthält Ziel-ID,
+Adresse, Port, Lesebenutzer, Known-Hosts-Pfad/-Inhaltshash und jetzt auch
+Leseschlüsselpfad/-Inhaltshash. Alte Pläne bleiben lesbar und exportierbar;
+eine alte Bindung oder fehlende Baseline liefert keinen frischen Nachweis und
+benötigt eine neue Aufnahme/einen neuen Plan. Der Hostzeitpunkt muss innerhalb
+der Serverabfrage mit fünf Minuten Uhrtoleranz liegen.
+
+Versuche werden vor dem Hostzugriff dauerhaft als unvollständig hinterlegt und
+abschließend ergänzt. Bei Prozessabbruch bleibt `interrupted` erhalten. Maximal
+100 Versuche pro Plan, keine Entfernung älterer Versuche. Der eigene Katalogbucket
+`recovery-verifications` wird von `Plan()` als `verification_attempts` projiziert;
+der private `plan.json` und sein Ausführungszustand werden dadurch nicht umgeschrieben.
+Antworten sind auf 256 KiB, pro Storage auf 10.000 Volumen-IDs mit jeweils maximal
+256 Zeichen begrenzt. Dienstabfragen haben 10 Sekunden, Storageabfragen gemeinsam
+20 Sekunden Zeitbudget. Falsche/fehlende/zusätzliche Felder, doppelte JSON-Felder,
+unpassende Ergebnis-IDs und angehängte Antworten werden verworfen.
+
+Jeder neue Offline-Export enthält `machine-verification.json` und eine frisch
+gebildete separate Maschinenhistorie in `WIEDERHERSTELLUNG.md`, jeweils vom
+Paketindex abgedeckt. Das JSON ist eine Liste historischer Versuche (`null` bei
+keiner vorhandenen Historie); der private historische `plan.json` bleibt erhalten.
+Disaster-Export/-Import erhält den Bucket als Rohkatalogdaten und lässt importierte
+Pläne weiterhin für Hostzugriffe gesperrt. Hashes sind lokale Bindungen, keine
+Signaturen. Protokollversion ist kein Beleg für einen bestimmten Helfer-Build;
+Helfer-/Anker-Builddigests und reale Laborbelege müssen im Abnahmekit separat
+zugeordnet werden. Reale PVE-Abnahme bleibt offen.

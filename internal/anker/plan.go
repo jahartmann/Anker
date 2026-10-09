@@ -3,6 +3,7 @@ package anker
 import (
 	"archive/tar"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 func (s *Service) Plan(id string) (Plan, error) {
@@ -21,6 +23,13 @@ func (s *Service) Plan(id string) (Plan, error) {
 		return p, errors.New("ungültige Plan-ID")
 	}
 	err := s.Store.Get("plans", id, &p)
+	if err == nil {
+		p.VerificationAttempts = nil
+		e := s.Store.Get("recovery-verifications", id, &p.VerificationAttempts)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return p, e
+		}
+	}
 	return p, err
 }
 func (s *Service) Plans() ([]Plan, error) { return records[Plan](s.Store, "plans") }
@@ -400,6 +409,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	return p, nil
 }
 func (s *Service) savePlan(p Plan) error {
+	p.VerificationAttempts = nil
 	if p.SchemaVersion == 2 {
 		root := filepath.Join(s.Root, "plans", p.ID)
 		raw, err := os.ReadFile(filepath.Join(root, "manifest.json"))
@@ -450,6 +460,7 @@ func planGuide(p Plan, m Manifest) string {
 			b.WriteString(fmt.Sprintf("\nMenschliche Angabe (kein maschineller Nachweis) · Ursprung: Aufgabenbestätigung %s · Akteur: %s · Datum: %s\n\n%s\n\n", task.ID, evidenceLabel(task.ConfirmedBy), evidenceLabel(task.ConfirmedAt), task.Evidence))
 		}
 	}
+	b.WriteString(verificationGuide(p))
 	b.WriteString(planScenarioDossier(p, m))
 	b.WriteString("\nDie folgende Anleitung bezieht sich auf original/: dort checksums.sha256 prüfen und original-files/ für Dateien mit Originalmetadaten verwenden.\n\n" + recoveryGuide(m))
 	return b.String()
@@ -487,6 +498,16 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 		tw.Close()
 		return err
 	}
+	raw, err := json.Marshal(p.VerificationAttempts)
+	if err != nil {
+		return err
+	}
+	if err = tw.WriteHeader(&tar.Header{Name: "machine-verification.json", ModTime: time.Unix(0, 0), Mode: 0600, Size: int64(len(raw)), Typeflag: tar.TypeReg}); err != nil {
+		return err
+	}
+	if _, err = tw.Write(raw); err != nil {
+		return err
+	}
 	if err = tarPrefix(tw, s.backupDir(b), "original/"); err != nil {
 		tw.Close()
 		return err
@@ -498,6 +519,7 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	return tw.Close()
 }
 func (s *Service) verifyPlanFiles(p Plan) error {
+	p.VerificationAttempts = nil
 	root := filepath.Join(s.Root, "plans", p.ID)
 	for name, expected := range map[string]any{"plan.json": p, "mapping.json": p.Mapping} {
 		data, err := os.ReadFile(filepath.Join(root, name))

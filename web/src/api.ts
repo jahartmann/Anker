@@ -210,7 +210,38 @@ export interface Step {
   diff?: string;
   secret?: boolean;
 }
+export interface RecoveryVerificationAttempt {
+  id: string;
+  plan_id: string;
+  backup_id: string;
+  target_id: string;
+  started_at: string;
+  finished_at: string;
+  actor: string;
+  origin: string;
+  state: string;
+  reason: string;
+  identity_state: string;
+  reboot_state: string;
+  services_state: string;
+  volumes_state: string;
+  source_manifest_sha: string;
+  snapshot_sha: string;
+  connection_sha: string;
+  baseline_identity: string;
+  baseline_boot_id: string;
+  baseline_captured_at: string;
+  result?: {
+    protocol: number;
+    observed_at: string;
+    identity: { state: string; value: string };
+    boot: { state: string; value: string };
+    services: Record<string, { state: string; value: string }>;
+    storage_volumes: Record<string, { state: string; volumes?: string[] }>;
+  };
+}
 export interface Plan {
+  verification_attempts?: RecoveryVerificationAttempt[];
   schema_version?: number;
   target_snapshot_id?: string;
   decisions?: Record<string, FileDecision>;

@@ -49,10 +49,18 @@ func (s *Service) recoveryConnectionSHA(h Host) (string, error) {
 		}
 		known = nil
 	}
+	key, keyErr := os.ReadFile(h.KeyPath)
+	if keyErr != nil {
+		switch s.Collector.(type) {
+		case SSHCollector, *SSHCollector:
+			return "", fmt.Errorf("SSH-Schlüsselbezug nicht lesbar: %w", keyErr)
+		}
+		key = nil
+	}
 	material := struct {
-		ID, Address, User, KnownPath, KnownSHA string
-		Port                                   int
-	}{h.ID, h.Address, h.SSHUser, h.KnownHostsPath, Hash(known), h.SSHPort}
+		ID, Address, User, KnownPath, KnownSHA, KeyPath, KeySHA string
+		Port                                                    int
+	}{h.ID, h.Address, h.SSHUser, h.KnownHostsPath, Hash(known), h.KeyPath, Hash(key), h.SSHPort}
 	raw, err := json.Marshal(material)
 	return Hash(raw), err
 }

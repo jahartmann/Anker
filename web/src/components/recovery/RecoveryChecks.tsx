@@ -28,10 +28,12 @@ const manualKinds = new Set(
 export default function RecoveryChecks({
   plan,
   onConfirm,
+  onVerify,
   disabled = false,
   onDirtyChange,
 }: {
   plan: Plan;
+  onVerify?: () => Promise<void>;
   onConfirm?: (task: RecoveryTask, evidence: string) => Promise<boolean>;
   disabled?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
@@ -59,11 +61,101 @@ export default function RecoveryChecks({
         maschinellen Nachweise und geben Netzwerk, Cluster oder
         Storageverwaltung nicht automatisch frei.
       </p>
-      <p className="notice">
-        {plan.result?.reboot_verified
-          ? "Maschineller Neustartnachweis laut Hostresultat vorhanden."
-          : "Neustart maschinell nicht nachgewiesen."}
-      </p>
+      <section
+        aria-label="Maschinelle Prüfversuche"
+        className="recovery-checks"
+      >
+        <h3>Maschinelle Prüfversuche</h3>
+        <p className="field-hint">
+          Frische lesende Abfrage am gebundenen Ziel. Dienste und aufgenommene
+          Volumes werden geprüft; keine automatische Aktivierung, kein Neustart
+          und keine Betriebsfreigabe.
+        </p>
+        {onVerify && (
+          <button
+            className="secondary"
+            disabled={
+              disabled ||
+              plan.schema_version !== 2 ||
+              !plan.target_snapshot_id ||
+              (plan.verification_attempts?.length || 0) >= 100
+            }
+            onClick={() => void onVerify()}
+          >
+            Maschinell prüfen
+          </button>
+        )}
+        {!plan.verification_attempts?.length && (
+          <p className="notice">
+            Keine frische maschinelle Prüfung vorhanden. Neustart maschinell
+            nicht nachgewiesen.
+          </p>
+        )}
+        {(plan.verification_attempts || []).map((a) => (
+          <article className="recovery-task" key={a.id}>
+            <strong>
+              Versuch {a.id} · {verificationLabel(a.state)}
+            </strong>
+            <p>
+              {date(a.started_at)} →{" "}
+              {a.finished_at ? date(a.finished_at) : "Abschluss fehlt"} ·
+              Ausgelöst von {a.actor || "unbekannt"}
+            </p>
+            <p>
+              Identität: {verificationLabel(a.identity_state)} · Neustart:{" "}
+              {verificationLabel(a.reboot_state)} · Dienste:{" "}
+              {verificationLabel(a.services_state)} · Aufgenommene Volumes:{" "}
+              {verificationLabel(a.volumes_state)}
+            </p>
+            <p>{a.reason}</p>
+            <details className="recovery-disclosure">
+              <summary>Herkunft und Bindung</summary>
+              <p>
+                Ursprung: Maschinenabfrage · Plan {a.plan_id} · Sicherung{" "}
+                {a.backup_id} · Ziel {a.target_id}
+              </p>
+              <p>
+                Quellmanifest SHA256: {a.source_manifest_sha || "unbekannt"}
+              </p>
+              <p>Zielaufnahme SHA256: {a.snapshot_sha || "unbekannt"}</p>
+              <p>Verbindung SHA256: {a.connection_sha || "unbekannt"}</p>
+              <p>
+                Baseline: {date(a.baseline_captured_at)} · Maschinenhash:{" "}
+                {a.baseline_identity || "unbekannt"} · Boot-ID:{" "}
+                {a.baseline_boot_id || "unbekannt"}
+              </p>
+              {a.result && (
+                <>
+                  <p>
+                    Abfrage: {date(a.result.observed_at)} · Protokoll{" "}
+                    {a.result.protocol}
+                  </p>
+                  <p>
+                    Aktueller Maschinenhash:{" "}
+                    {a.result.identity.value || "unbekannt"} · Boot-ID:{" "}
+                    {a.result.boot.value || "unbekannt"}
+                  </p>
+                  <ul>
+                    {Object.entries(a.result.services).map(([name, q]) => (
+                      <li key={name}>
+                        {name}: {verificationLabel(q.state)}
+                      </li>
+                    ))}
+                    {Object.entries(a.result.storage_volumes).map(
+                      ([name, q]) => (
+                        <li key={name}>
+                          Storage {name}: {verificationLabel(q.state)} ·{" "}
+                          {q.volumes?.length || 0} gelistete Volumes
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </>
+              )}
+            </details>
+          </article>
+        ))}
+      </section>
       {tasks.length > 25 && (
         <Field label="Aufgaben durchsuchen">
           <input
@@ -187,5 +279,23 @@ export default function RecoveryChecks({
         />
       )}
     </section>
+  );
+}
+
+function verificationLabel(state: string) {
+  return (
+    (
+      {
+        passed: "nachgewiesen",
+        failed: "fehlgeschlagen",
+        unknown: "unbekannt",
+        unsupported: "nicht unterstützt",
+        interrupted: "unterbrochen",
+        observed: "beobachtet",
+        unchanged: "Boot-ID unverändert",
+        ok: "erfolgreich",
+        limit: "Limit erreicht",
+      } as Record<string, string>
+    )[state] || "unbekannt"
   );
 }

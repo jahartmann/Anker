@@ -239,25 +239,26 @@ type Step struct {
 	Diff            string           `json:"diff,omitempty"`
 }
 type Plan struct {
-	SchemaVersion     int                     `json:"schema_version,omitempty"`
-	TargetSnapshotSHA string                  `json:"target_snapshot_sha,omitempty"`
-	Decisions         map[string]FileDecision `json:"decisions,omitempty"`
-	Preserved         []RecoveryPreservation  `json:"preserved,omitempty"`
-	Tasks             []RecoveryTask          `json:"tasks,omitempty"`
-	TargetSnapshotID  string                  `json:"target_snapshot_id,omitempty"`
-	ID                string                  `json:"id"`
-	BackupID          string                  `json:"backup_id"`
-	TargetID          string                  `json:"target_id"`
-	Scenario          string                  `json:"scenario"`
-	CreatedAt         string                  `json:"created_at"`
-	State             string                  `json:"state"`
-	Source            Inventory               `json:"source"`
-	Target            Inventory               `json:"target"`
-	Mapping           Mapping                 `json:"mapping"`
-	Steps             []Step                  `json:"steps"`
-	Blockers          []string                `json:"blockers"`
-	Manual            []string                `json:"manual"`
-	Result            *ApplyResult            `json:"result,omitempty"`
+	VerificationAttempts []RecoveryVerificationAttempt `json:"verification_attempts,omitempty"`
+	SchemaVersion        int                           `json:"schema_version,omitempty"`
+	TargetSnapshotSHA    string                        `json:"target_snapshot_sha,omitempty"`
+	Decisions            map[string]FileDecision       `json:"decisions,omitempty"`
+	Preserved            []RecoveryPreservation        `json:"preserved,omitempty"`
+	Tasks                []RecoveryTask                `json:"tasks,omitempty"`
+	TargetSnapshotID     string                        `json:"target_snapshot_id,omitempty"`
+	ID                   string                        `json:"id"`
+	BackupID             string                        `json:"backup_id"`
+	TargetID             string                        `json:"target_id"`
+	Scenario             string                        `json:"scenario"`
+	CreatedAt            string                        `json:"created_at"`
+	State                string                        `json:"state"`
+	Source               Inventory                     `json:"source"`
+	Target               Inventory                     `json:"target"`
+	Mapping              Mapping                       `json:"mapping"`
+	Steps                []Step                        `json:"steps"`
+	Blockers             []string                      `json:"blockers"`
+	Manual               []string                      `json:"manual"`
+	Result               *ApplyResult                  `json:"result,omitempty"`
 }
 type ApplyResult struct {
 	State          string   `json:"state,omitempty"`

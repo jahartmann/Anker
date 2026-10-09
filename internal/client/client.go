@@ -314,6 +314,11 @@ func (c *Client) Run(ctx context.Context, args []string) error {
 				return err
 			}
 			return call("POST", "plans/"+args[2]+"/apply", map[string]string{"confirmation": *confirmation})
+		case "verify":
+			if len(args) != 3 {
+				return errors.New("anker restore verify PLAN")
+			}
+			return call("POST", "plans/"+url.PathEscape(args[2])+"/verify", map[string]any{})
 		case "status", "reconcile":
 			if len(args) != 3 {
 				return errors.New("anker restore status PLAN")
@@ -579,6 +584,7 @@ Wiederherstellung und Aufträge
   anker job show ID | cancel ID | retry ID | remove ID
   Situationen: files, host, cluster-node, cluster-disaster; alte Szenarien bleiben lesbar.
   Ziel, Dateien und Plan prüfen; Hostwechsel braucht Konsole und isolierte Quelle.
+  anker restore verify PLAN: frische lesende Maschinenprüfung und getrennte Versuchshistorie.
   Gesamtrecovery, neue Hardware und Cluster: auf echten Hosts manuell geführter Plan.
   Anleitung und Originaldateien mit restore export herunterladen.
   Plan bindet die frische Zielaufnahme; compare liest gespeicherte Belege ohne Schreibauftrag.

@@ -61,7 +61,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
   'storage':run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
   'guests':run('guests',['qm','list']), 'containers':run('containers',['pct','list']), 'cluster':cluster,
   'pci':run('pci',['lspci','-nn']), 'boot':run('boot',['proxmox-boot-tool','status']),
-  'capabilities':{'restore_protocol':2,'journal':True,'recovery_read_protocol':1}}
+  'capabilities':{'restore_protocol':2,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1}}
  if (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
  else:details['ceph']='';results['ceph']={'state':'not_applicable'}
  hashes={};metas={};walk_errors=[]
@@ -89,6 +89,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
   try:
    details[key]={str(getattr(x,attribute)):getattr(x,'pw_name' if key=='users' else 'gr_name') for x in getter()};results[key]={'state':'ok'}
   except OSError as exc:details[key]={};results[key]={'state':'failed','error':str(exc)}
+ identity=verification_identity(root);details['machine_identity_sha256']=identity['value'];results['machine_identity']={'state':identity['state']}
  try:details['boot_id']=(root/'proc/sys/kernel/random/boot_id').read_text().strip();results['boot_id']={'state':'ok'}
  except OSError as exc:details['boot_id']='';results['boot_id']={'state':'failed','error':str(exc)}
  try:debian=(root/'etc/debian_version').read_text().strip()
@@ -719,8 +720,43 @@ def sync_directory(path):
  try:os.fsync(fd)
  finally:os.close(fd)
 
+VERIFY_SERVICES=('pve-cluster','pvedaemon','pveproxy')
+def verification_identity(root):
+ try:
+  with (root/'etc/machine-id').open('rb') as f:raw=f.read(129).strip()
+  if not re.fullmatch(b'[0-9a-f]{32}',raw) or raw==b'0'*32:raise ValueError('invalid machine identity')
+  return {'state':'ok','value':digest(raw)}
+ except (OSError,ValueError):return {'state':'unknown','value':''}
+def verification_boot(root):
+ try:
+  with (root/'proc/sys/kernel/random/boot_id').open('rb') as f:raw=f.read(129).strip().decode('ascii')
+  if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',raw):raise ValueError('invalid boot ID')
+  return {'state':'ok','value':raw}
+ except (OSError,ValueError):return {'state':'unknown','value':''}
+def verify_service(name):
+ if name not in VERIFY_SERVICES:raise ValueError('invalid service')
+ # No captured command text or unbounded subprocess pipes: systemctl output is discarded.
+ try:
+  p=subprocess.run(['systemctl','is-active','--quiet',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10,check=False)
+  return {'state':'ok','value':'active'} if p.returncode==0 else {'state':'failed','value':''}
+ except FileNotFoundError:return {'state':'unknown','value':''}
+ except (OSError,subprocess.TimeoutExpired):return {'state':'failed','value':''}
+def verify_recovery(root,services,storage_ids):
+ if not isinstance(services,list) or not isinstance(storage_ids,list) or len(services)>3 or len(storage_ids)>32:raise ValueError('invalid verification selection')
+ if any(not isinstance(v,str) or v not in VERIFY_SERVICES for v in services) or len(set(services))!=len(services):raise ValueError('invalid service selection')
+ if any(not isinstance(v,str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}',v) for v in storage_ids) or len(set(storage_ids))!=len(storage_ids):raise ValueError('invalid storage selection')
+ identity=verification_identity(root);boot=verification_boot(root)
+ deadline=time.monotonic()+RECOVERY_STORAGE_TIMEOUT
+ volumes={ident:recovery_storage_volumes(ident,deadline) for ident in storage_ids}
+ for ident,v in volumes.items():
+  if len(v.get('volumes',[]))>10000 or any(len(name)>256 for name in v.get('volumes',[])):volumes[ident]={'state':'limit','error':'volume limit exceeded'}
+ result={'protocol':1,'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'identity':identity,'boot':boot,'services':{name:verify_service(name) for name in services},'storage_volumes':volumes}
+ if verification_identity(root)!=identity or verification_boot(root)!=boot:raise ValueError('machine changed during verification')
+ if len(json.dumps(result).encode())>256*1024:raise ValueError('verification output limit exceeded')
+ return result
+
 def authorize(operation,read_only=False):
- if operation not in ("probe","collect","read-recovery","apply","restore-status","rollback"):raise ValueError("unknown operation")
+ if operation not in ("probe","collect","read-recovery","verify-recovery","apply","restore-status","rollback"):raise ValueError("unknown operation")
  if read_only and operation in ("apply","restore-status","rollback"):raise ValueError("read-only backup authority cannot restore")
 
 def main(root=None):
@@ -741,6 +777,9 @@ def main(root=None):
    with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as t:
     for p in sorted(out.rglob('*')):t.add(p,arcname=p.relative_to(out).as_posix(),recursive=False)
  elif op=='read-recovery':print(json.dumps(read_recovery_files(root,request.get('paths',[]),request.get('storage_ids',[]),load_host_profile(root))))
+ elif op=='verify-recovery':
+  if set(request)!={'version','operation','services','storage_ids'}:raise ValueError('invalid verification request fields')
+  print(json.dumps(verify_recovery(root,request['services'],request['storage_ids'])))
  elif op=='restore-status':print(json.dumps(restore_status(root,request['plan_id'])))
  elif op=='rollback':print(json.dumps(rollback_files(root,request['plan_id'],request.get('confirm'))))
  elif op=='apply':

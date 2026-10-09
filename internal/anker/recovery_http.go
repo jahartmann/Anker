@@ -3,6 +3,7 @@ package anker
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -371,6 +372,26 @@ func (s *Service) recoveryHTTP(u User, w http.ResponseWriter, r *http.Request) (
 		return true, jsonOut(w, v)
 	}
 	parts := strings.Split(path, "/")
+	if len(parts) == 3 && parts[0] == "plans" && parts[2] == "verify" {
+		if err := require(u, "restore"); err != nil {
+			return true, err
+		}
+		if r.Method != "POST" {
+			return true, fail(405, "POST erforderlich")
+		}
+		data, err := io.ReadAll(io.LimitReader(r.Body, 257))
+		var in map[string]json.RawMessage
+		if err != nil || len(data) > 256 || json.Unmarshal(data, &in) != nil || in == nil || len(in) != 0 {
+			return true, fail(400, "Prüfanfrage muss ein leeres JSON-Objekt sein")
+		}
+		p, err := s.VerifyRecovery(WithRecoveryActor(r.Context(), u.ID), parts[1])
+		if err != nil {
+			return true, err
+		}
+		s.LogAudit(u.ID, "plan.verify", parts[1])
+		return true, jsonOut(w, publicPlan(p))
+	}
+
 	if len(parts) >= 3 && parts[0] == "plans" && (parts[2] == "comparison" || parts[2] == "checks") {
 		if err := require(u, "restore"); err != nil {
 			return true, err

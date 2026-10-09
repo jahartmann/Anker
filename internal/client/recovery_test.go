@@ -221,3 +221,35 @@ func TestRelevantRecoveryMappingRetainsSharedManualReferences(t *testing.T) {
 		}
 	}
 }
+func TestCLIRecoveryVerificationFixedRequest(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "POST" || r.URL.Path != "/api/plans/plan1/verify" {
+			t.Error("wrong route", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if len(body) != 0 {
+			t.Error("client-selected command")
+		}
+		json.NewEncoder(w).Encode(map[string]any{"verification_attempts": []any{map[string]any{"state": "failed"}}})
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	c := &Client{HTTP: server.Client(), Base: server.URL, Out: &out}
+	if err := c.Run(context.Background(), []string{"restore", "verify", "plan1"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "verification_attempts") {
+		t.Fatal("history missing")
+	}
+	for _, args := range [][]string{{"restore", "verify"}, {"restore", "verify", "plan1", "--services", "sshd"}} {
+		if err := c.Run(context.Background(), args); err == nil {
+			t.Fatal("invalid verification request accepted")
+		}
+	}
+	if calls != 1 {
+		t.Fatal("invalid command reached server")
+	}
+}
