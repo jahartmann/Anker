@@ -80,10 +80,7 @@ SCENARIOS = {
 }
 
 def read_json(path):
-    with open(path, "rb") as stream:
-        raw = stream.read((1 << 20) + 1)
-    if len(raw) > 1 << 20:
-        raise ValueError("JSON größer als 1 MiB")
+    raw = private_bytes(path, 1 << 20)
     data = json.loads(raw, object_pairs_hook=object_pairs, parse_constant=reject_constant)
     if not isinstance(data, dict):
         raise ValueError("JSON-Objekt erforderlich")

@@ -21,13 +21,20 @@ def reject_constant(value):
 
 def object_pairs(pairs):
     obj = {}
-    folded = set()
     for key, value in pairs:
-        if key.casefold() in folded:
+        if key in obj:
             raise ValueError("Doppelter JSON-Schlüssel")
-        folded.add(key.casefold())
         obj[key] = value
     return obj
+
+
+def reject_field_aliases(obj, fields):
+    # These are fixed schema names, unlike case-sensitive storage identifiers.
+    if not isinstance(obj, dict):
+        raise ValueError("JSON-Objekt erforderlich")
+    canonical = {name.casefold(): name for name in fields}
+    if any(key.casefold() in canonical and key != canonical[key.casefold()] for key in obj):
+        raise ValueError("Abweichende Schreibweise eines Protokollfelds")
 
 
 def exact(obj, required, optional=()):
@@ -86,6 +93,10 @@ def validate_machine(bindings, number, plan_path, snapshot_path, preflight_path)
     plan, plan_digest = private_json(plan_path, 32 << 20)
     snapshot, snapshot_digest = private_json(snapshot_path, 32 << 20)
     preflight, preflight_digest = private_json(preflight_path)
+    reject_field_aliases(plan, "schema_version id backup_id target_id target_snapshot_id target_snapshot_sha source target verification_attempts".split())
+    reject_field_aliases(snapshot, "id backup_id target_id source_manifest_sha connection_sha captured_at target storage_volumes".split())
+    reject_field_aliases(preflight, "kind schema bindings collection_authorized build_sha256 helper_sha256 identity captured_at".split())
+    reject_field_aliases(preflight.get("identity", {}), ("machine_sha256", "boot_id"))
     if type(plan.get("schema_version")) is not int or plan["schema_version"] != 2 or "storage_volumes" not in snapshot:
         raise ValueError("Plan-/Aufnahmeschema fehlt")
     for key in ("source_manifest_sha", "target_snapshot_sha", "connection_sha", "machine_sha256", "build_sha256", "helper_sha256"):
@@ -99,6 +110,7 @@ def validate_machine(bindings, number, plan_path, snapshot_path, preflight_path)
     if snapshot.get("id") != plan.get("target_snapshot_id") or snapshot.get("backup_id") != plan["backup_id"] or snapshot.get("target_id") != plan["target_id"]:
         raise ValueError("Aufnahmebindung abweichend")
     for field in ("source", "target"):
+        reject_field_aliases(plan.get(field, {}), ("fingerprint",))
         if plan.get(field, {}).get("fingerprint") != bindings[field + "_fingerprint"]:
             raise ValueError("Inventarbindung abweichend")
     if preflight.get("kind") != "preflight" or (type(preflight.get("schema")) is not int or preflight["schema"] != 1) or preflight.get("bindings") != bindings or preflight.get("collection_authorized") is not True:
@@ -139,11 +151,17 @@ def validate_machine(bindings, number, plan_path, snapshot_path, preflight_path)
     for field in ("source_manifest_sha", "connection_sha"):
         if snapshot.get(field) != bindings[field]:
             raise ValueError("Quell-/Vertrauensbindung abweichend")
+    reject_field_aliases(snapshot.get("target", {}), ("details",))
     details = snapshot.get("target", {}).get("details", {})
+    reject_field_aliases(details, ("command_results", "capabilities", "machine_identity_sha256", "boot_id"))
+    reject_field_aliases(details.get("capabilities", {}), ("recovery_verify_protocol",))
     capability = details.get("capabilities", {}).get("recovery_verify_protocol")
     if type(capability) is not int or capability != 1:
         raise ValueError("Aufgenommene Helferfähigkeit fehlt")
     commands = details.get("command_results", {})
+    reject_field_aliases(commands, ("machine_identity", "boot_id"))
+    for name in ("machine_identity", "boot_id"):
+        reject_field_aliases(commands.get(name, {}), ("state",))
     if commands.get("machine_identity", {}).get("state") != "ok" or commands.get("boot_id", {}).get("state") != "ok":
         raise ValueError("Private positive Vorherabfrage fehlt; Preflight kann sie nicht ersetzen")
     identity, boot = details.get("machine_identity_sha256", ""), details.get("boot_id", "")
@@ -178,7 +196,7 @@ def validate_machine(bindings, number, plan_path, snapshot_path, preflight_path)
     volumes = exact(result["storage_volumes"], baseline_volumes)
     for key, current in volumes.items():
         exact(current, ("state", "volumes"), ("error",))
-        prior = baseline_volumes[key]
+        prior = exact(baseline_volumes[key], ("state", "volumes"), ("error",))
         if prior.get("state") != "ok" or current["state"] != "ok" or not isinstance(current["volumes"], list) or not isinstance(prior.get("volumes"), list):
             raise ValueError("Volumeabfrage unbekannt")
         if any(not isinstance(v, str) for v in current["volumes"] + prior["volumes"]) or not set(prior["volumes"]) <= set(current["volumes"]):

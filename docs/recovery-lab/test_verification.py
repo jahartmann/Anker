@@ -166,6 +166,18 @@ class VerificationTests(unittest.TestCase):
         link=self.root/"link";link.symlink_to(self.snapshot_path)
         with self.assertRaises((ValueError, OSError)): private_json(link)
 
+    def test_case_distinct_storage_ids_match_real_exact_membership_contract(self):
+        self.snapshot["storage_volumes"]["Local"] = {"state":"ok", "volumes":["Local:vm-200-disk-0"]}
+        self.write("snapshot.json", self.snapshot)
+        digest = hashlib.sha256(self.snapshot_path.read_bytes()).hexdigest()
+        self.bindings["target_snapshot_sha"] = self.plan["target_snapshot_sha"] = self.attempt["snapshot_sha"] = digest
+        self.preflight["bindings"] = copy.deepcopy(self.bindings)
+        self.attempt["result"]["storage_volumes"]["Local"] = {"state":"ok", "volumes":["Local:vm-200-disk-0"]}
+        self.assertEqual(self.check()["volumes"], "recorded_membership_only")
+        # Both keys must actually survive parsing and be checked independently.
+        self.attempt["result"]["storage_volumes"]["Local"]["volumes"] = []
+        with self.assertRaises(ValueError): self.check()
+
     def test_actual_go_rfc3339nano_timestamps_on_python39(self):
         for text in ("2026-10-09T12:34:56.123456789Z", "2026-10-09T12:34:56.1+00:00", "2026-10-09T12:34:56Z"):
             with self.subTest(text=text):
@@ -188,8 +200,12 @@ class VerificationTests(unittest.TestCase):
     def test_rejects_protocol_booleans_and_case_alias_in_inputs(self):
         self.attempt["result"]["protocol"] = True
         with self.assertRaises(ValueError): self.check()
-        self.plan_path.write_text('{"id":"plan","ID":"other"}')
-        with self.assertRaises(ValueError): private_json(self.plan_path)
+        self.attempt["result"]["protocol"] = 1
+        self.plan["ID"] = "other"
+        with self.assertRaises(ValueError): self.check()
+        del self.plan["ID"]
+        self.preflight["Identity"] = self.preflight["identity"]
+        with self.assertRaises(ValueError): self.check()
 
     def test_machine_id_exact_helper_definition(self):
         for raw in (b"0"*32,b"A"*32,b"a"*31,b"a"*33,b"bad"):

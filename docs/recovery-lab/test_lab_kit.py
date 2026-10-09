@@ -86,6 +86,7 @@ class LabKitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             bindings = Path(root) / "bindings.json"
             bindings.write_text(json.dumps(self.bindings()))
+            bindings.chmod(0o600)
             report = Path(root) / "scenario.json"
             result = subprocess.run([sys.executable, str(ROOT / "lab-kit.py"), "scenario", "--bindings", str(bindings), "--number", "8", "--output", str(report)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2, result.stderr)
@@ -97,6 +98,48 @@ class LabKitTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(ROOT / "lab-kit.py"), "preflight", "--bindings", str(bindings), "--output", str(output)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertEqual(json.loads(output.read_text())["observations"], {})
+
+    def test_json_inputs_require_private_regular_bounded_files(self):
+        kit = self.load()
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "bindings.json"
+            path.write_text('{"lab_id":"fixture"}')
+            path.chmod(0o600)
+            self.assertEqual(kit.read_json(path), {"lab_id":"fixture"})
+            path.chmod(0o644)
+            with self.assertRaises(ValueError): kit.read_json(path)
+            path.chmod(0o600)
+            link = Path(root) / "link.json"
+            link.symlink_to(path)
+            with self.assertRaises((OSError, ValueError)): kit.read_json(link)
+            path.write_bytes(b" " * ((1 << 20) + 1))
+            with self.assertRaises(ValueError): kit.read_json(path)
+            path.write_text('{"id":"first","id":"second"}')
+            with self.assertRaises(ValueError): kit.read_json(path)
+            path.write_text('{"id":NaN}')
+            with self.assertRaises(ValueError): kit.read_json(path)
+            path.write_text('{"lab_id":"fixture"}')
+            Path(root).chmod(0o755)
+            try:
+                with self.assertRaises(ValueError): kit.read_json(path)
+            finally:
+                Path(root).chmod(0o700)
+
+    def test_cli_fifo_input_is_rejected_promptly_without_reader_hang(self):
+        import os
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as root:
+            fifo = Path(root) / "scenario.json"
+            os.mkfifo(fifo, 0o600)
+            # subprocess.run kills and waits for the child on timeout, so a RED
+            # regression cannot hang the suite or leave a blocked child behind.
+            for args in (["review", "--input", str(fifo)],
+                         ["scenario", "--bindings", str(fifo), "--number", "8", "--output", str(Path(root) / "output.json")]):
+                result = subprocess.run([sys.executable, str(ROOT / "lab-kit.py"), *args],
+                                        capture_output=True, text=True, timeout=1)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("Laborprotokoll unvollständig", result.stdout)
 
     def test_reports_are_private_no_overwrite_and_no_symlink_write(self):
         kit = self.load()
