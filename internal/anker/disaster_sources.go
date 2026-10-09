@@ -130,6 +130,11 @@ func disasterCheckSeparate(dir *os.File, prefix string, p *disasterPackage, sour
 	if err := disasterWalk(dir, prefix, piece, false, &total, &nodes); err != nil {
 		return err
 	}
+	// Archived material validation checks the manifest inside the archive; the
+	// captured loose manifest must independently exist and match the catalog.
+	if err := disasterValidateSources(piece); err != nil {
+		return fmt.Errorf("Separate Quelle ist vorhanden, aber ungültig: %w", err)
+	}
 	stage, err := os.MkdirTemp("", "anker-separate-check-")
 	if err != nil {
 		return err

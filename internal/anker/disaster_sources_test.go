@@ -334,3 +334,59 @@ func TestDisasterUnknownManifestRemainsUnknown(t *testing.T) {
 		t.Fatal("non-digest catalog data admitted to public inspect inventory")
 	}
 }
+
+func TestDisasterArchivedSourceRequiresLooseManifest(t *testing.T) {
+	for _, damage := range []string{"valid", "missing", "corrupt"} {
+		t.Run(damage, func(t *testing.T) {
+			s, id := disasterFixture(t)
+			if err := s.ArchiveBackup(id); err != nil {
+				t.Fatal(err)
+			}
+			b, err := s.Backup(id)
+			if err != nil || !b.Archived {
+				t.Fatal("fixture is not archived", err)
+			}
+			manifestPath := filepath.Join(s.backupDir(b), "manifest.json")
+			switch damage {
+			case "missing":
+				err = os.Remove(manifestPath)
+			case "corrupt":
+				err = os.WriteFile(manifestPath, []byte("{}"), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The archive and its internal manifest are still valid in all cases.
+			// Export must also validate the captured loose manifest's catalog binding.
+			if err = s.checkBackupUnlocked(id); err != nil {
+				t.Fatal("archive itself is not a valid control", err)
+			}
+			for _, mode := range []string{"include", "separate"} {
+				t.Run(mode, func(t *testing.T) {
+					var out bytes.Buffer
+					err := ExportDisasterWithBackupData(s.Root, "", mode, []byte("pass"), &out)
+					if damage != "valid" {
+						if err == nil || out.Len() != 0 {
+							t.Fatalf("%s accepted %s loose manifest: err=%v package bytes=%d", mode, damage, err, out.Len())
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal("valid archived source rejected", err)
+					}
+					info, err := InspectDisaster(bytes.NewReader(out.Bytes()), []byte("pass"))
+					if err != nil || len(info.Sources) != 1 {
+						t.Fatal("valid archived package cannot be inspected", info, err)
+					}
+					want := "included"
+					if mode == "separate" {
+						want = "separate"
+					}
+					if info.Sources[0] != (DisasterSource{BackupID: b.ID, HostID: b.HostID, ManifestSHA: b.ManifestSHA, State: want}) {
+						t.Fatal("archived source coverage/binding changed", info.Sources)
+					}
+				})
+			}
+		})
+	}
+}
