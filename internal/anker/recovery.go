@@ -1,6 +1,9 @@
 package anker
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func recoveryGuide(m Manifest) string {
 	return fmt.Sprintf(`# Anker Wiederherstellung
@@ -42,4 +45,38 @@ Warnungen: %v
 Konsistenz: %s
 Ein Live-Dateibaum außerhalb der SQLite-Sicherung ist kein global atomarer Hostzustand. Für Migrationen den finalen Stand im Änderungsstopp sichern.
 `, m.Inventory.Hostname, m.ID, m.Inventory.PVEVersion, m.Status, m.CreatedAt, m.CompletedAt, m.Warnings, m.Consistency)
+}
+
+func evidenceLabel(s string) string {
+	if s == "" {
+		return "unbekannt"
+	}
+	return s
+}
+
+// The dossier is rebuilt on every export from the current private plan and
+// original manifest. It never promotes human confirmations to machine evidence.
+func planScenarioDossier(p Plan, m Manifest) string {
+	var b strings.Builder
+	b.WriteString("\n## Reihenfolge für dieses Szenario\n\n")
+	switch p.Scenario {
+	case "cluster-node":
+		b.WriteString("1. Gesunden, isolierten Testcluster und ausgeschlossenen alten Node nachweisen.\n2. Frisches Ziel und aktuelle gemeinsame Clusterkonfiguration prüfen. Keine alte config.db einsetzen.\n3. HALT vor Entfernung/Beitritt, Quorum, Ceph und HA: eigener versionsgerechter manueller Ablauf erforderlich.\n4. Erst nach Freigabe ausgewählte lokale Dateien übernehmen; Gäste und Dienste separat prüfen.\n")
+	case "cluster-disaster":
+		b.WriteString("1. Vollständige Isolation und Abwesenheit aktiver alter Nodes belegen.\n2. Geeigneten gemeinsamen Sicherungsstand sowie Gast-/PBS-/Storage-Abhängigkeiten bestimmen.\n3. HALT vor config.db-Rekonstruktion, Join, Quorum, Ceph oder HA. Nur operatorgeführte Rekonstruktion anhand passender PVE-Anleitung.\n4. Gemeinsamen Zustand und danach jeden Node, Gäste und Dienste einzeln prüfen.\n")
+	case "host", "migration":
+		b.WriteString("1. Alten Host isolieren; neues PVE mit eigener Boot-/Rootinstallation bereitstellen.\n2. Abweichende NIC-Namen nach physischer Funktion, Disk-/Storage-Backing und externe Gast-/PBS-Abhängigkeiten prüfen.\n3. HALT bei unbekannter Identität, Backing oder fehlenden Gästen; keine Datenträger oder Pools automatisch erzeugen.\n4. Ziel-vorher sichern; einzelne vorbereitete Dateien und manuelle Schritte getrennt freigeben.\n")
+	default:
+		b.WriteString("1. Quelle, Zielidentität und ausgewählte Einzeldateien erneut vergleichen.\n2. Ziel-vorher und Rückweg prüfen; betroffene Dienste und fremde Schreiber kontrollieren.\n3. HALT vor Übernahme: separate Plan-ID-Bestätigung erforderlich.\n4. Journal abgleichen; Rücksetzung nur nach eigener Bestätigung und ohne Fremddrift.\n")
+	}
+	b.WriteString("\nFür alle Szenarien: Bei Unterbrechung keinen blinden zweiten Apply starten. Bei Platzmangel stoppen, Quelle unverändert erhalten. Drift erfordert neue Prüfung und Entscheidungen. Neustart ausschließlich durch Operator; anschließend frischen planbezogenen Maschinennachweis einschließlich Maschinenidentität und Boot-Baseline verlangen. Diese Prüffähigkeit ist bis Task 8/Integration Task 12 unvollständig; fehlende Nachweise bleiben offen. Reale PVE-Laborabnahme wurde nicht ausgeführt.\n")
+	b.WriteString(fmt.Sprintf("\n## Abhängigkeiten und Herkunft\n\nQuelle: Sicherung %s, Host %s, Erfassung %s bis %s. Ziel: %s, Aufnahme %s, Erfassung %s. Inventar-Fingerprints: Quelle %s · Ziel %s.\n", p.BackupID, m.HostID, evidenceLabel(m.CreatedAt), evidenceLabel(m.CompletedAt), p.TargetID, evidenceLabel(p.TargetSnapshotID), evidenceLabel(p.Target.CapturedAt), evidenceLabel(p.Source.Fingerprint), evidenceLabel(p.Target.Fingerprint)))
+	if len(m.Dependencies) == 0 {
+		b.WriteString("\nKeine strukturierten Quellabhängigkeiten erfasst: unbekannt, nicht vollständig belegt.\n")
+	}
+	for _, d := range m.Dependencies {
+		fmt.Fprintf(&b, "- Referenz %s · Rolle: Konfigurationsabhängigkeit · Ursprung %s · Status %s · %s\n", d.Path, evidenceLabel(d.Source), evidenceLabel(d.State), d.Reason)
+	}
+	b.WriteString("\nExterne Referenzen vor Nutzung im separaten Laborprotokoll ergänzen: Gast-/PBS-Sicherung, Verschlüsselungsschlüssel-Verwahrort, Storage-/Disk-Backing, Netz-/Konsolenzugang, PVE-Installationsmedium und Build/Helfer. Je Referenz Rolle, Ort/ID (ohne Zugangsdaten), verantwortliche Person, Prüftermin und Status angeben. Unbekannte Orte, fehlende Artefakte oder unklare Rechte lassen das Szenario unvollständig. Keine Passwörter, Schlüssel oder privaten Config-Inhalte in das Protokoll kopieren.\n")
+	return b.String()
 }

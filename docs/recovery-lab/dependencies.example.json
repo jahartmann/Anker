@@ -1,0 +1,13 @@
+{
+  "status": "incomplete",
+  "lab_id": "",
+  "plan_id": "",
+  "references": [
+    {"role": "Gast-/PBS-Sicherung", "location_or_id": "", "owner": "", "checked_at": "", "status": "unknown"},
+    {"role": "Schlüsselverwahrort (nur Referenz, kein Schlüssel)", "location_or_id": "", "owner": "", "checked_at": "", "status": "unknown"},
+    {"role": "Disk-/Storage-Backing", "location_or_id": "", "owner": "", "checked_at": "", "status": "unknown"},
+    {"role": "Konsole/Netz/Isolation", "location_or_id": "", "owner": "", "checked_at": "", "status": "unknown"},
+    {"role": "PVE-Installationsmedium/Version", "location_or_id": "", "owner": "", "checked_at": "", "status": "unknown"}
+  ],
+  "residual_failures": []
+}

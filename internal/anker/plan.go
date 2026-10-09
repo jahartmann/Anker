@@ -422,6 +422,8 @@ func (s *Service) savePlan(p Plan) error {
 func planGuide(p Plan, m Manifest) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# Zielbezogene Wiederherstellung\n\nPlan %s · Szenario %s · Status %s\n\nQuelle %s (%s) → Ziel %s (%s)\n\n", p.ID, p.Scenario, p.State, p.Source.Hostname, p.Source.PVEVersion, p.Target.Hostname, p.Target.PVEVersion))
+	b.WriteString(fmt.Sprintf("Sicherung %s · Ziel-ID %s · erstellt %s\n\n", p.BackupID, p.TargetID, p.CreatedAt))
+	b.WriteString("Paket offline prüfen: `anker plan-package verify --input plan.tar`. package-index.json (Version 1) und package-checksums.sha256 decken Inhalte und Originalmetadaten ab; keine Herkunftsbestätigung und kein Wiederherstellungserfolg. Nicht direkt nach / entpacken.\n\n")
 	b.WriteString("target-before/ enthält ausschließlich private Zielnachweise; target-snapshot.json dokumentiert deren Metadaten und Prüfsummen. Ausgeschlossene Quellconfigs sind ausschließlich Originalreferenzen im original/-Export und keine Übernahmeempfehlung. Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Ausführung und Rücksetzung\n\nBetroffene Dienste und fremde Schreiber vor Übernahme anhalten. Der Host speichert journal.json unter /var/lib/anker-host/rollback/" + p.ID + "/. Nach Abbruch Hostzustand abgleichen und nicht blind erneut anwenden. Rücksetzung benötigt eine separate Plan-ID-Bestätigung und erhält Fremdänderungen. Netzwerkdateien nur manuell mit Konsolenzugang und geprüftem Rückweg übernehmen.\n\n## Haltepunkte\n\n")
 	for _, x := range p.Blockers {
 		b.WriteString("- " + x + "\n")
@@ -444,7 +446,11 @@ func planGuide(p Plan, m Manifest) string {
 			state = fmt.Sprintf("vom Benutzer bestätigt: %s, %s", task.ConfirmedBy, task.ConfirmedAt)
 		}
 		b.WriteString(fmt.Sprintf("- %s [%s]: %s. Voraussetzungen: %s. %s\n", task.ID, state, task.Title, strings.Join(task.Requires, ", "), task.Instruction))
+		if task.Evidence != "" {
+			b.WriteString(fmt.Sprintf("\nMenschliche Angabe (kein maschineller Nachweis) · Ursprung: Aufgabenbestätigung %s · Akteur: %s · Datum: %s\n\n%s\n\n", task.ID, evidenceLabel(task.ConfirmedBy), evidenceLabel(task.ConfirmedAt), task.Evidence))
+		}
 	}
+	b.WriteString(planScenarioDossier(p, m))
 	b.WriteString("\nDie folgende Anleitung bezieht sich auf original/: dort checksums.sha256 prüfen und original-files/ für Dateien mit Originalmetadaten verwenden.\n\n" + recoveryGuide(m))
 	return b.String()
 }
@@ -475,9 +481,9 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tw := tar.NewWriter(w)
+	tw := &indexedPlanTar{Writer: tar.NewWriter(w)}
 	root := filepath.Join(s.Root, "plans", id)
-	if err = tarPlanTree(tw, root); err != nil {
+	if err = tarPlanTree(tw, root, []byte(planGuide(p, m))); err != nil {
 		tw.Close()
 		return err
 	}
@@ -538,7 +544,7 @@ func (s *Service) verifyPlanFiles(p Plan) error {
 	}
 	return nil
 }
-func tarPrefix(w *tar.Writer, root, prefix string) error {
+func tarPrefix(w tarEntryWriter, root, prefix string) error {
 	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || p == root {
 			return err

@@ -140,7 +140,7 @@ func (s *Service) ExportBackup(id string, w io.Writer) error {
 }
 
 // The caller holds a readable backup lease and has verified its manifest/tree.
-func (s *Service) tarOriginalFiles(tw *tar.Writer, b Backup, m Manifest, prefix string) error {
+func (s *Service) tarOriginalFiles(tw tarEntryWriter, b Backup, m Manifest, prefix string) error {
 	for _, e := range m.Entries {
 		h := &tar.Header{Name: prefix + "original-files/" + e.Path, Mode: int64(e.Mode), Uid: e.UID, Gid: e.GID, ModTime: unixTime(e.MTime)}
 		h.Xattrs = map[string]string{}

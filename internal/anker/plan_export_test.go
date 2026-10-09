@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,7 +86,7 @@ func TestPlanExportContainsOriginalMetadataAndLinks(t *testing.T) {
 					t.Fatal(readErr)
 				}
 			}
-			for _, path := range []string{"plan.json", "mapping.json", "WIEDERHERSTELLUNG.md", "prepared-files/etc/example.conf", "original/manifest.json", "original/checksums.sha256", "original/WIEDERHERSTELLUNG.md", "original/original-files/etc/network/interfaces", "original/original-files/etc/network", "original/original-files/etc/network-link"} {
+			for _, path := range []string{"package-index.json", "package-checksums.sha256", "plan.json", "mapping.json", "WIEDERHERSTELLUNG.md", "prepared-files/etc/example.conf", "original/manifest.json", "original/checksums.sha256", "original/WIEDERHERSTELLUNG.md", "original/original-files/etc/network/interfaces", "original/original-files/etc/network", "original/original-files/etc/network-link"} {
 				if _, ok := headers[path]; !ok {
 					t.Errorf("plan export is missing %s", path)
 				}
@@ -117,5 +118,15 @@ func TestPlanExportContainsOriginalMetadataAndLinks(t *testing.T) {
 				t.Fatal("export changed the inert source link", err)
 			}
 		})
+	}
+}
+
+func TestPlanGuideIncludesHumanEvidenceAndBindings(t *testing.T) {
+	p := Plan{ID: "plan-7", BackupID: "backup-7", TargetID: "target-7", CreatedAt: "2026-10-09T08:00:00Z", Scenario: "cluster-disaster", Tasks: []RecoveryTask{{ID: "check", Title: "Isolation", State: "user_confirmed", ConfirmedBy: "operator-7", ConfirmedAt: "2026-10-09T09:00:00Z", Evidence: "Kabel getrennt.\nKonsole geprüft."}}}
+	guide := planGuide(p, Manifest{})
+	for _, want := range []string{"Kabel getrennt.\nKonsole geprüft.", "operator-7", "2026-10-09T09:00:00Z", "backup-7", "target-7", "2026-10-09T08:00:00Z", "Menschliche Angabe", "Abhängigkeiten", "Quorum"} {
+		if !strings.Contains(guide, want) {
+			t.Errorf("readable evidence/dossier missing %q", want)
+		}
 	}
 }

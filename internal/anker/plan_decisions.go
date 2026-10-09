@@ -182,7 +182,7 @@ func (s *Service) PlanContainsSecrets(id string) (bool, error) {
 }
 
 // Export names distinguish captured evidence from files prepared for installation.
-func tarPlanTree(w *tar.Writer, root string) error {
+func tarPlanTree(w tarEntryWriter, root string, guide []byte) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || path == root {
 			return err
@@ -205,11 +205,18 @@ func tarPlanTree(w *tar.Writer, root string) error {
 		} else if strings.HasPrefix(h.Name, "target-files/") {
 			h.Name = "target-before/" + strings.TrimPrefix(h.Name, "target-files/")
 		}
+		if h.Name == "WIEDERHERSTELLUNG.md" {
+			h.Size = int64(len(guide))
+		}
 		if err = w.WriteHeader(h); err != nil {
 			return err
 		}
 		if st.Mode().IsRegular() {
 			data, err := os.ReadFile(path)
+			if h.Name == "WIEDERHERSTELLUNG.md" {
+				data = guide
+				err = nil
+			}
 			if err != nil {
 				return err
 			}

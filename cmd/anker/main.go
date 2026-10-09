@@ -71,6 +71,9 @@ func runWithTerminal(args []string, terminal bool, launch func(*client.Client) e
 		}
 		return nil
 	}
+	if command[0] == "plan-package" {
+		return runPlanPackage(command[1:])
+	}
 	if command[0] == "disaster" {
 		return runDisaster(*data, command[1:])
 	}

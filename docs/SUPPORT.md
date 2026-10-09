@@ -176,3 +176,11 @@ Bestehende Hosts benötigen vor automatischen Übernahmen eine erneute Anbindung
 Lokaler Nachweis für 0.2.8: vollständige Go-Suite mit Race Detector und Vet, 53 Helfer- und 14 Installerprüfungen, 83 Browserfälle; nach Fokus-/Kopfzeilenkorrektur 20 relevante Fälle nochmals bestanden. Laptop- und mobile Mappingansichten wurden visuell geprüft. Unabhängiger Nachreview ist erfolgt. Der [Release-Prüflauf](https://github.com/jahartmann/Anker/actions/runs/37630929952) und die [Repositoryprüfung desselben Codes](https://github.com/jahartmann/Anker/actions/runs/37630894379) sind bestanden, einschließlich 83 Browserfällen und echter Linux-/systemd-Installation mit Update-Rückfall. Beide Linux-Pakete wurden unabhängig auf Signatur, SHA-256, Architektur, aktuellen Hosthelfer und Handbuch geprüft und als [0.2.8](https://github.com/jahartmann/Anker/releases/tag/v0.2.8) veröffentlicht.
 
 Der tatsächliche Anker-Updater hat die öffentliche Version 0.2.8 für amd64 und arm64 ohne GitHub-Token abgerufen, die Signatur mit der eingebetteten offiziellen Identität geprüft und beide Binärdateien heruntergeladen.
+
+## Offline-Recovery und Laborbelege
+
+Planpakete lokal mit `anker plan-package verify --input PLAN.tar` prüfen. `complete` beschreibt ausschließlich interne Prüfsummenabdeckung; `limited` ist ein lesbarer Altexport ohne vollständigen Index. Herkunft und Recovery-Erfolg bleiben separat unbewiesen. Bei Fehlern Paket unverändert aufbewahren, kein direktes Entpacken nach `/` und keine Übernahme fortsetzen.
+
+Das [PVE-Abnahmekit](recovery-lab/README.md) sammelt nur begrenzte strukturelle/versionierte lokale Belege und stellt private 0600-Protokolle bereit. Menschliche Aussagen enthalten Person/Zeit/Referenz und werden nicht in Maschinenergebnisse umgedeutet. Paket, Index, Original-/Zielkonfigurationen, Journale, Bindungen und Freitext können vertraulich sein: nur benötigte redigierte Referenzen/Fehler teilen, keine Zugangsdaten oder Rohkonfigurationen. Build-/Helferdigests und Plan-/Backup-/Ziel-IDs sind für den privaten Abgleich nötig.
+
+Lokale Werkzeugtests sind kein realer Proxmox-Labortest. Ohne isoliertes Testsystem, verifizierte Abhängigkeiten und Task8-Maschinenprüfung bleibt die Abnahme unvollständig; keine Wiederherstellungszusage ableiten.

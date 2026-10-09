@@ -1,0 +1,21 @@
+{
+  "lab_id": "",
+  "operator": "",
+  "date": "",
+  "permitted_scenarios": [],
+  "isolation_confirmed": false,
+  "isolation_reference": "",
+  "build_id": "",
+  "helper_privileges_reference": "",
+  "pve_expected": "",
+  "source_backup_id": "",
+  "source_fingerprint": "",
+  "plan_id": "",
+  "plan_package_sha256": "",
+  "target_id": "",
+  "target_fingerprint": "",
+  "baseline_boot_id": "",
+  "backing_reference": "",
+  "dependency_dossier_reference": "",
+  "preflight_reference": ""
+}
