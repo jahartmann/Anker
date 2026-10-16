@@ -25,6 +25,9 @@ async function openSettings(page: Page) {
     }),
   );
   await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Hosts", exact: true }),
+  ).toBeVisible();
   const openNavigation = page.getByRole("button", {
     name: "Navigation öffnen",
     exact: true,

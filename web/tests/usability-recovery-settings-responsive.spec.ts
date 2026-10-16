@@ -14,6 +14,9 @@ for (const [width, height] of [
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize({ width, height });
     await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Hosts", exact: true }),
+    ).toBeVisible();
     async function navigate(name: string) {
       const menu = page.getByRole("button", {
         name: "Navigation öffnen",
