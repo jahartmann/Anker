@@ -8,6 +8,7 @@ import Access from "./Access";
 import Updates from "./Updates";
 import Certificates from "./Certificates";
 import Storage from "./Storage";
+import SystemDiagnosis from "../components/SystemDiagnosis";
 
 const settingsTabs = [
   "Zeitplan",
@@ -15,12 +16,12 @@ const settingsTabs = [
   "Benachrichtigungen",
   "Zugriff",
   "Zertifikate",
+  "Updates",
   "Betrieb",
 ] as const;
 
 const betriebAreas = [
   ["betrieb-speicher", "Speicher", "Volumes und Prognose"],
-  ["betrieb-updates", "Updates", "Releases installieren"],
   ["betrieb-pruefung", "Prüfung", "Doctor und Index"],
   ["betrieb-protokoll", "Protokoll", "Letzte Aktionen"],
 ] as const;
@@ -172,7 +173,7 @@ export default function Settings({
           ) : undefined
         }
       />
-      <div className="tabs">
+      <div className="tabs settings-tabs" aria-label="Einstellungsbereiche">
         {settingsTabs.map((t) => (
           <button
             key={t}
@@ -499,6 +500,11 @@ export default function Settings({
           <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
         </div>
       </div>
+      {tab === "Updates" && (
+        <div className="updates-page">
+          <Updates canInstall={!dirty && !certificateDirty} />
+        </div>
+      )}
       {tab === "Betrieb" && (
         <>
           <nav className="jump-nav" aria-label="Bereiche im Betrieb">
@@ -523,22 +529,15 @@ export default function Settings({
           <section id="betrieb-speicher" className="betrieb-section">
             <Storage notify={notify} />
           </section>
-          <section id="betrieb-updates" className="betrieb-section">
-            <Updates canInstall={!dirty && !certificateDirty} />
-          </section>
           <section id="betrieb-pruefung" className="betrieb-section">
             <DetailSection title="Systemprüfung">
               {systemError && (
                 <LoadError message={systemError} retry={inspect} />
               )}
               {inspecting && <p role="status">Systemdaten werden geladen …</p>}
-              <pre className="system-output">
-                {doctor
-                  ? JSON.stringify(doctor, null, 2)
-                  : systemError
-                    ? "Keine aktuellen Prüfdaten verfügbar."
-                    : "Wird geladen …"}
-              </pre>
+              {doctor != null && !systemError && !inspecting && (
+                <SystemDiagnosis value={doctor} />
+              )}
               <button
                 className="secondary"
                 onClick={async () => {

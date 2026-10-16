@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.11
+
+- Eigener, direkt sichtbarer Updates-Reiter mit getrennten Bereichen für Versionsstatus, Aktionen und Updatequelle. Einstellungsreiter bleiben auf schmalen Ansichten sichtbar; ungespeicherte Änderungen und die Installationssperre bleiben erhalten.
+- Übersicht zeigt betroffene Hosts und aktive Aufträge vor einklappbaren Quellnachweisen. Der Nachweisblock kennzeichnet seinen einzelnen Sicherungsstand und führt zu Sicherungen und Prüfungen.
+- Hostliste zeigt den letzten Sicherungszeitpunkt auch auf schmalen Ansichten. Wiederherstellung erklärt den Gesamtumfang mit Schrittzähler und Vorschau auf alle fünf Schritte.
+- Systemprüfung mit verständlichen Ergebnissen und konkreten nächsten Maßnahmen. Herunterladbarer Diagnosebericht mit ausschließlich freigegebenen Versions-, Betriebsmodus- und Speicherwerten; keine lokalen Pfade, Zugangsdaten, Hostadressen oder Aktivitätsprotokolle. Technische Details bleiben einsehbar.
+- Reale Proxmox-, Hardware-, Cluster-, Reboot- und Stromausfallabnahmen bleiben offen; die Systemdiagnose behauptet keine geprüfte Wiederherstellbarkeit.
+
 ## 0.2.10
 
 - Vier Recovery-Situationen in fünf Schritten mit frischem Zielinhalt, privaten Snapshots, expliziten Dateientscheidungen und Inhalts-/Metadatenvergleich in Web, CLI und Terminal.

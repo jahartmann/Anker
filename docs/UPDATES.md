@@ -71,7 +71,7 @@ Die root-eigene Zertifikatsverwaltung verwendet denselben Dienst und startet auc
 
 ## Updater auf dem Server einrichten
 
-Im Web unter **Einstellungen → Betrieb → Updates → Updatequelle einrichten** die Anker-Quelle wählen und bestätigen. Repository und öffentlicher Schlüssel sind in der Anwendung enthalten. Der Dialog zeigt den Fingerprint; nur ein angemeldeter Administrator kann die Quelle speichern. Die Änderung gilt sofort und bleibt nach einem Neustart erhalten. Fehlt ein veröffentlichter Release, kann die Quelle trotzdem eingerichtet werden; installiert wird erst eine erfolgreich geprüfte verfügbare Version.
+Im Web unter **Einstellungen → Updates → Updatequelle einrichten** die Anker-Quelle wählen und bestätigen. Repository und öffentlicher Schlüssel sind in der Anwendung enthalten. Der Dialog zeigt den Fingerprint; nur ein angemeldeter Administrator kann die Quelle speichern. Die Änderung gilt sofort und bleibt nach einem Neustart erhalten. Fehlt ein veröffentlichter Release, kann die Quelle trotzdem eingerichtet werden; installiert wird erst eine erfolgreich geprüfte verfügbare Version.
 
 Der mitgelieferte Ed25519-Schlüssel hat folgenden SHA-256-Fingerprint über seine 32 Rohbytes:
 
@@ -118,7 +118,7 @@ Der Workflow erstellt einen **Entwurf**. Paketinhalt und Release-Hinweise prüfe
 
 ## Update installieren
 
-Web: „Einstellungen → Betrieb → Updates → Nach Updates suchen“. Version und Release-Hinweise prüfen, danach „Update installieren“ bestätigen.
+Web: „Einstellungen → Updates → Nach Updates suchen“. Version und Release-Hinweise prüfen, danach „Update installieren“ bestätigen.
 
 Shell:
 

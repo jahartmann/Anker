@@ -112,6 +112,14 @@ export default function RecoveryWizard({
         · {d.openFiles + d.openMappings} offene Entscheidungen
       </p>
       <nav aria-label="Vorbereitungsschritte" className="recovery-steps">
+        <p className="recovery-progress" role="status">
+          Schritt {d.step} von 5
+        </p>
+        <p className="field-hint recovery-step-preview">
+          Quelle wählen → Ziel prüfen → Dateien entscheiden → Plan prüfen →
+          Ausführen und nachprüfen. Der letzte Schritt erfolgt im gespeicherten
+          Plan.
+        </p>
         <ol>
           {[
             "Quelle und Situation",

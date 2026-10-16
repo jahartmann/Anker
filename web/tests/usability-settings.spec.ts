@@ -14,6 +14,30 @@ test.beforeEach(async ({ page }) => {
   ).toBeVisible();
 });
 
+test("update tab preserves unsaved schedule settings on narrow screens", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page.getByLabel("Startzeit", { exact: true }).fill("03:14");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const updatesTab = page.getByRole("button", { name: "Updates", exact: true });
+  await expect(updatesTab).toBeVisible();
+  await updatesTab.click();
+  await expect(
+    page.getByText("Ungespeicherte Änderungen", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Updates", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Zeitplan", exact: true }).click();
+  await expect(page.getByLabel("Startzeit", { exact: true })).toHaveValue(
+    "03:14",
+  );
+});
+
 test("settings save reports local errors and dirty state", async ({ page }) => {
   await page
     .getByRole("navigation")
@@ -109,7 +133,7 @@ test("completed update reloads assets once even after leaving settings and tempo
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await page.getByRole("button", { name: "Updates", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();
@@ -184,7 +208,7 @@ test("failed update preserves page and never triggers a reload loop", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await page.getByRole("button", { name: "Updates", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();

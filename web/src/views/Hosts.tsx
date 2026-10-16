@@ -977,6 +977,9 @@ export default function Hosts({
                             <div className="secondary-line mono">
                               {h.address}
                             </div>
+                            <div className="secondary-line host-backup-mobile">
+                              Letzter Stand: {date(state.backup?.created_at)}
+                            </div>
                           </td>
                           <td>
                             <span

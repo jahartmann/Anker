@@ -495,14 +495,6 @@ export default function App() {
                     )}
                   </p>
                 </section>
-                <BackupReadiness
-                  backup={
-                    [...status.backups].sort((a, b) =>
-                      b.created_at.localeCompare(a.created_at),
-                    )[0]
-                  }
-                  compact
-                />
                 <section>
                   <div className="section-heading">
                     <div className="section-heading-title">
@@ -590,6 +582,27 @@ export default function App() {
                   )}
                 </section>
                 <ActiveJobs status={status} openJob={common.openJob} />
+                <details className="detail-section overview-evidence">
+                  <summary>Quellnachweise des neuesten Stands</summary>
+                  <p className="muted">
+                    Diese Nachweise gelten für einen einzelnen Sicherungsstand.
+                    Sie bewerten nicht automatisch alle Hosts.
+                  </p>
+                  <BackupReadiness
+                    backup={
+                      [...status.backups].sort((a, b) =>
+                        b.created_at.localeCompare(a.created_at),
+                      )[0]
+                    }
+                    compact
+                  />
+                  <button
+                    className="secondary"
+                    onClick={() => navigate("Sicherungen")}
+                  >
+                    Sicherungen prüfen und vergleichen
+                  </button>
+                </details>
                 <section className="detail-section overview-history">
                   <h3>Letzte abgeschlossene Aufträge</h3>
                   <Jobs

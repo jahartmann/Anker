@@ -323,30 +323,13 @@ export default function Updates({
     <section className="update-section">
       <div className="section-heading">
         <div>
-          <h3>Updates</h3>
+          <h2>Updates</h2>
           <p className="muted">
             Signierte Releases installieren. Einstellungen und Sicherungen
             bleiben erhalten.
           </p>
         </div>
         <ActionBar label="Updateaktionen">
-          <button
-            type="button"
-            className="secondary"
-            disabled={
-              busy ||
-              installing ||
-              state?.busy ||
-              !state ||
-              !configuration ||
-              configuration.demo
-            }
-            onClick={() => setConfigure(true)}
-          >
-            {state?.configured
-              ? "Updatequelle ändern"
-              : "Updatequelle einrichten"}
-          </button>
           <button
             type="button"
             className="secondary"
@@ -384,20 +367,12 @@ export default function Updates({
               <dt>Installierte Version</dt>
               <dd className="mono">{state.current}</dd>
             </div>
-            {state.configured && (
-              <div>
-                <dt>Quelle</dt>
-                <dd>
-                  <a
-                    href={"https://github.com/" + state.repository}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {state.repository}
-                  </a>
-                </dd>
-              </div>
-            )}
+            <div>
+              <dt>Verfügbare Version</dt>
+              <dd className="mono">
+                {state.available?.version || "Keine Version ermittelt"}
+              </dd>
+            </div>
             <div>
               <dt>Letzte Prüfung</dt>
               <dd>{date(state.checked_at)}</dd>
@@ -406,11 +381,13 @@ export default function Updates({
           {!state.configured ? (
             <div className="update-note">
               <p>{state.message}</p>
-              <p className="muted">
-                {configuration?.demo
-                  ? "Die Updatequelle lässt sich auf dem eigenen Server direkt hier einrichten."
-                  : "Offizielle Anker-Releases auswählen, Signierschlüssel bestätigen und nach Updates suchen. Die Einrichtung benötigt keinen Dienstneustart."}
-              </p>
+              {!configuration?.demo && (
+                <p className="muted">
+                  Offizielle Anker-Releases auswählen, Signierschlüssel
+                  bestätigen und nach Updates suchen. Die Einrichtung benötigt
+                  keinen Dienstneustart.
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -485,6 +462,33 @@ export default function Updates({
           )}
         </>
       )}
+      <div className="update-source">
+        <div>
+          <h3>Updatequelle</h3>
+          <p className="muted">
+            {state?.configured
+              ? state.repository
+              : "Noch keine Updatequelle eingerichtet."}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="secondary"
+          disabled={
+            busy ||
+            installing ||
+            state?.busy ||
+            !state ||
+            !configuration ||
+            configuration.demo
+          }
+          onClick={() => setConfigure(true)}
+        >
+          {state?.configured
+            ? "Updatequelle ändern"
+            : "Updatequelle einrichten"}
+        </button>
+      </div>
       {configurationError && (
         <LoadError
           message={configurationError}

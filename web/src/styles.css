@@ -787,9 +787,85 @@ td strong {
 .settings-form {
   max-width: 670px;
 }
+.settings-tabs {
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  overflow: visible;
+}
+.settings-tabs button {
+  min-height: 42px;
+}
+.updates-page .update-section {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.updates-page .update-facts {
+  padding: 20px;
+  background: var(--surface, #f6f7f4);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.update-source {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 22px;
+}
+.update-source h3,
+.update-source p {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.host-backup-mobile {
+  display: none;
+}
+.diagnosis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.diagnosis-check {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+}
+.diagnosis-check h4 {
+  margin: 0 0 10px;
+}
+.diagnosis-check p {
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+.overview-evidence summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.recovery-progress {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+@media (max-width: 760px) {
+  .host-table .host-backup-mobile {
+    display: block;
+    font-size: 11px;
+    white-space: normal;
+  }
+  .updates-page .update-section {
+    padding: 18px;
+  }
+  .jump-nav {
+    grid-template-columns: 1fr;
+  }
+}
 .jump-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 8px;
 }
@@ -1213,7 +1289,7 @@ pre {
     gap: 10px;
   }
   .jump-nav {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .settings-form .form-footer > button {
     width: 100%;

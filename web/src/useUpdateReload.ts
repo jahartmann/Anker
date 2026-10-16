@@ -63,7 +63,7 @@ export function useUpdateReload(enabled: boolean, notify: Notify) {
       if (Date.now() - pending!.started > 30 * 60 * 1000) {
         clearPending();
         notify(
-          "Updateergebnis noch nicht bestätigt. Unter Betrieb → Updates erneut prüfen.",
+          "Updateergebnis noch nicht bestätigt. Unter Einstellungen → Updates erneut prüfen.",
           true,
         );
         return;
@@ -89,7 +89,7 @@ export function useUpdateReload(enabled: boolean, notify: Notify) {
         ) {
           clearPending();
           notify(
-            "Update nicht abgeschlossen. Die vorherige Version bleibt aktiv; Details unter Betrieb → Updates.",
+            "Update nicht abgeschlossen. Die vorherige Version bleibt aktiv; Details unter Einstellungen → Updates.",
             true,
           );
           return;

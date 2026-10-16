@@ -278,6 +278,9 @@ test("overview and host detail load only their latest source, not historical row
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
+  await page
+    .getByText("Quellnachweise des neuesten Stands", { exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Quellnachweise" }),
   ).toContainText("history-119");

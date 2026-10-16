@@ -1586,7 +1586,9 @@ test("update panel describes setup when the updater is unavailable", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  const updatesTab = page.getByRole("button", { name: "Updates", exact: true });
+  await expect(updatesTab).toBeVisible();
+  await updatesTab.click();
   await expect(
     page.getByRole("heading", { name: "Updates", exact: true }),
   ).toBeVisible();
@@ -1596,6 +1598,13 @@ test("update panel describes setup when the updater is unavailable", async ({
   await expect(
     page.getByRole("button", { name: "Nach Updates suchen" }),
   ).toBeDisabled();
+  await expect(
+    page.getByRole("heading", { name: "Speicher auf dem Anker-Server" }),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Updates", exact: true }),
+  ).not.toBeVisible();
 });
 
 test("web certificate settings keep demo isolated", async ({ page }) => {
@@ -1724,7 +1733,7 @@ test("update installation requires a reviewed version and recovers after a resta
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await page.getByRole("button", { name: "Updates", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();
@@ -2175,7 +2184,7 @@ test("official update source can be configured after fingerprint confirmation", 
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await page.getByRole("button", { name: "Updates", exact: true }).click();
   await page
     .getByRole("button", { name: "Updatequelle einrichten", exact: true })
     .click();
@@ -2226,7 +2235,7 @@ test("custom update source needs a valid key and renewed trust confirmation", as
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
+  await page.getByRole("button", { name: "Updates", exact: true }).click();
   await page
     .getByRole("button", { name: "Updatequelle einrichten", exact: true })
     .click();
