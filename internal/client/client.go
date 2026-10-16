@@ -696,7 +696,7 @@ Einstellungen, Benutzer, Zertifikat und Speicher
   nach neuem Plan und Mountbestätigung; Laufwerke werden nicht formatiert.
 
 Updates
-  Web: Einstellungen → System → Updates; Quelle einrichten, prüfen, bestätigen.
+  Web: Einstellungen → Betrieb → Updates; Quelle einrichten, prüfen, bestätigen.
   sudo anker update status | check | install
   Releases brauchen eine gültige Signatur und passende Prüfsummen. Eigene Quellen
   brauchen einen unabhängig geprüften Schlüssel. Aktive Aufträge sperren Updates.

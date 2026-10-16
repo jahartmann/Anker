@@ -19,6 +19,7 @@ test("storage settings keep demo isolated", async ({ page }) => {
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText(/Speicherverwaltung ist in der Demo ausgeschaltet/),
@@ -140,6 +141,7 @@ test("storage shows consumption and requires a fresh confirmed growth plan", asy
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
@@ -212,6 +214,7 @@ test("LXC storage assistant creates only an explicit host resize command", async
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await page.getByRole("button", { name: "Erweitern", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -261,6 +264,7 @@ test("storage retries unavailable reports and keeps the last values on refresh f
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText("Mount nicht erreichbar", { exact: true }),
@@ -320,6 +324,7 @@ test("storage polling failure keeps an accepted operation running and blocks dup
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText(
@@ -363,6 +368,7 @@ test("new backup drive offers a downloadable manual migration with mount checks"
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await page
     .getByRole("button", { name: "Neues Laufwerk einbinden", exact: true })
@@ -1577,7 +1583,7 @@ test("update panel describes setup when the updater is unavailable", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Updates", exact: true }),
   ).toBeVisible();
@@ -1594,7 +1600,7 @@ test("web certificate settings keep demo isolated", async ({ page }) => {
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Zertifikate", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Webzertifikat", exact: true }),
   ).toBeVisible();
@@ -1650,7 +1656,7 @@ test("web certificate renewal confirms browser trust and keeps policy after fail
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Zertifikate", exact: true }).click();
   await page.getByText("Zertifikatsdetails", { exact: true }).click();
   await expect(page.getByText("AA11", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText(
@@ -1715,7 +1721,7 @@ test("update installation requires a reviewed version and recovers after a resta
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();
@@ -2166,7 +2172,7 @@ test("official update source can be configured after fingerprint confirmation", 
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page
     .getByRole("button", { name: "Updatequelle einrichten", exact: true })
     .click();
@@ -2217,7 +2223,7 @@ test("custom update source needs a valid key and renewed trust confirmation", as
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page
     .getByRole("button", { name: "Updatequelle einrichten", exact: true })
     .click();

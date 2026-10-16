@@ -35,6 +35,7 @@ test("settings save reports local errors and dirty state", async ({ page }) => {
     page.getByRole("alert").filter({ hasText: "Gültige Zeitzone" }),
   ).toBeVisible();
   await timezone.fill("Europe/Berlin");
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
   await page.route("**/api/settings", (r) =>
     r.request().method() === "PUT"
       ? r.fulfill({
@@ -108,7 +109,7 @@ test("completed update reloads assets once even after leaving settings and tempo
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();
@@ -183,7 +184,7 @@ test("failed update preserves page and never triggers a reload loop", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "System", exact: true }).click();
+  await page.getByRole("button", { name: "Betrieb", exact: true }).click();
   await page
     .getByRole("button", { name: "Update installieren", exact: true })
     .click();
@@ -213,7 +214,12 @@ test("retention explains per-host buckets and can disable automatic archiving wi
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await expect(page.getByText(/Regeln gelten für jeden Host/)).toBeVisible();
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
+  await expect(
+    page.getByText("Je Host der neueste erfolgreiche Stand pro Zeitraum.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     page.getByText(/Ein Stand kann mehrere Regeln erfüllen/),
   ).toBeVisible();
@@ -250,6 +256,7 @@ test("retention explains per-host buckets and can disable automatic archiving wi
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
   await expect(
     page.getByLabel("Ältere Stände automatisch archivieren", { exact: true }),
   ).not.toBeChecked();

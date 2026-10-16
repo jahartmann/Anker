@@ -706,7 +706,7 @@ func runSetup(configureUpdates bool) (result error) {
 		display.Note("Zertifikat gültig bis " + leaf.NotAfter.UTC().Format("02.01.2006"))
 		if web.SelfSigned {
 			display.Note("Vor Bestätigen der Browserwarnung den Fingerprint vergleichen.")
-			display.Note("Erneuerung: Einstellungen → System → Webzertifikat.")
+			display.Note("Erneuerung: Einstellungen → Zertifikate.")
 			display.Note("Nach Erneuerung kann eine neue Browserfreigabe nötig sein.")
 		}
 	}

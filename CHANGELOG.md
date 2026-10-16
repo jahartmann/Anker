@@ -1,12 +1,15 @@
 # Änderungen
 
-## Unveröffentlicht — Recovery und Oberfläche
+## 0.2.9
 
 - Vier Recovery-Situationen in fünf Schritten mit frischem Zielinhalt, privaten Snapshots, expliziten Dateientscheidungen und Inhalts-/Metadatenvergleich in Web, CLI und Terminal.
 - Nachvollziehbare Vorbereitung unterstützter Netzwerk-, Hostnamen- und Gast-Storagefelder; unbekannte Abhängigkeiten bleiben manuell. Keine neue automatische Gesamtrecovery.
 - Verlorene Anfrage bei noch bereitem Schema-2-Plan sicher mit dem Hostjournal abgleichen: ein fehlendes Journal gibt dieselbe Plan-ID niemals erneut zur Übernahme frei.
 - Sichere öffentliche Inventar-Abfragestände ohne Rohdiagnostik, verbesserte Listen/Formulare und korrigierte Sammelentscheidungen, Tabfokus und Hostnavigation. Alte Sicherungen/Pläne und Offlineexporte bleiben lesbar.
-- Lokale Integration mit echtem Python-Helfer ergänzt; reale Proxmox-/Hardware-/Cluster-/Rebootabnahme bleibt offen. Kein Release durch diese Änderung.
+- Quellenvergleich, Ordnernavigation, lesende Maschinenprüfung, Integritäts- und Kopienprüfung sowie geschützte Sicherungsreferenzen und reviewte Zuordnungsrezepte.
+- Verschlüsselte Cold-Pakete mit isoliertem Import, geprüfte Offline-Pakete und koordinierte Cluster-Quellsets für die manuelle Wiederherstellungsplanung. Historische Journale und separate Archivquellen bleiben an ihre ursprünglichen Nachweise gebunden.
+- Einstellungen in Zeitplan, Aufbewahrung, Benachrichtigungen, Zugriff, Zertifikate und Betrieb gegliedert. Updates und Updatehinweise sind unter Betrieb erreichbar.
+- Lokale Integration mit echtem Python-Helfer und ausführbares Recovery-Labkit ergänzt; reale Proxmox-/Hardware-/Cluster-/Rebootabnahme bleibt offen.
 
 ## 0.2.8
 

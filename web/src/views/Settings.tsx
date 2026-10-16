@@ -8,6 +8,23 @@ import Access from "./Access";
 import Updates from "./Updates";
 import Certificates from "./Certificates";
 import Storage from "./Storage";
+
+const settingsTabs = [
+  "Zeitplan",
+  "Aufbewahrung",
+  "Benachrichtigungen",
+  "Zugriff",
+  "Zertifikate",
+  "Betrieb",
+] as const;
+
+const betriebAreas = [
+  ["betrieb-speicher", "Speicher", "Volumes und Prognose"],
+  ["betrieb-updates", "Updates", "Releases installieren"],
+  ["betrieb-pruefung", "Prüfung", "Doctor und Index"],
+  ["betrieb-protokoll", "Protokoll", "Letzte Aktionen"],
+] as const;
+
 export default function Settings({
   notify,
   onDirtyChange,
@@ -19,7 +36,7 @@ export default function Settings({
 }) {
   const [value, setValue] = useState<Values | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState("Sicherung");
+  const [tab, setTab] = useState("Zeitplan");
   const [audit, setAudit] = useState<
     { at: string; action: string; object: string; user_id: string }[]
   >([]);
@@ -30,7 +47,7 @@ export default function Settings({
   const [timezoneError, setTimezoneError] = useState("");
   const timezoneInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (timezoneError && tab === "Sicherung") timezoneInput.current?.focus();
+    if (timezoneError && tab === "Zeitplan") timezoneInput.current?.focus();
   }, [timezoneError, tab]);
   const [systemError, setSystemError] = useState("");
   const [inspecting, setInspecting] = useState(false);
@@ -86,7 +103,7 @@ export default function Settings({
       setTimezoneError(
         "Gültige Zeitzone eingeben, zum Beispiel Europe/Berlin.",
       );
-      if (tab !== "Sicherung") setTab("Sicherung");
+      if (tab !== "Zeitplan") setTab("Zeitplan");
       timezoneInput.current?.focus();
       return;
     }
@@ -146,7 +163,7 @@ export default function Settings({
     <>
       <Heading
         title="Einstellungen"
-        description="Zeitplan, Aufbewahrung und Zugriff zentral verwalten."
+        description="Zeitplan, Aufbewahrung, Zugriff und Betrieb an einem Ort."
         action={
           dirty || certificateDirty ? (
             <span className="save-state" role="status">
@@ -156,297 +173,278 @@ export default function Settings({
         }
       />
       <div className="tabs">
-        {[
-          "Sicherung",
-          "Speicher",
-          "Benachrichtigungen",
-          "Zugriff",
-          "System",
-        ].map((t) => (
+        {settingsTabs.map((t) => (
           <button
             key={t}
+            type="button"
             className={t === tab ? "selected" : ""}
             aria-pressed={t === tab}
             onClick={() => {
               setTab(t);
-              if (t === "System") inspect();
+              if (t === "Betrieb") inspect();
             }}
           >
             {t}
           </button>
         ))}
       </div>
-      {tab === "Speicher" && <Storage notify={notify} />}
-      {["Sicherung", "Benachrichtigungen"].includes(tab) && (
+      {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
           {saveControls}
           <fieldset className="form-fields" disabled={busy || updating}>
-            {tab === "Sicherung" ? (
-              <>
-                <section>
-                  <h3>Zeitplan</h3>
-                  <p className="muted">
-                    Hosts starten zeitlich versetzt innerhalb einer Stunde.
-                    Eigene Hostzeiten haben Vorrang. Änderungen gelten für noch
-                    nicht eingeplante Läufe; ein bereits eingeplanter Tageslauf
-                    wird nicht erneut gestartet.
-                  </p>
-                  <div className="form-grid">
-                    <Field label="Startzeit">
-                      <input
-                        type="time"
-                        required
-                        value={value.schedule}
-                        onChange={(e) => set("schedule", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Zeitzone" error={timezoneError}>
-                      <input
-                        ref={timezoneInput}
-                        name="timezone"
-                        required
-                        value={value.timezone}
-                        onChange={(e) => set("timezone", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Parallele Aufträge">
-                      <input
-                        type="number"
-                        min={1}
-                        max={16}
-                        value={value.parallel}
-                        onChange={(e) => set("parallel", +e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Wiederholungen">
-                      <input
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={value.retries}
-                        onChange={(e) => set("retries", +e.target.value)}
-                      />
-                    </Field>
-                  </div>
-                  <p className="hint">
-                    Ein neues Parallelitätslimit gilt für wartende Aufträge.
-                    Laufende Aufträge werden dafür nicht abgebrochen.
-                  </p>
-                  <div className="freshness-setting">
-                    <Field
-                      label="Überfällig nach Stunden"
-                      hint="Ohne aktuelle erfolgreiche Sicherung erscheint ein Hinweis am Host. Diese Grenze löscht keine Daten."
-                    >
-                      <input
-                        type="number"
-                        min={1}
-                        required
-                        value={value.stale_hours}
-                        onChange={(e) => set("stale_hours", +e.target.value)}
-                      />
-                    </Field>
-                  </div>
-                </section>
-                <section>
-                  <h3>Aufbewahrung</h3>
-                  <p className="muted">
-                    Die Regeln gelten für jeden Host einzeln. Anker behält
-                    jeweils den neuesten erfolgreichen Stand pro Tag, Woche und
-                    Monat. Gezählt werden Zeiträume, in denen eine Sicherung
-                    vorhanden ist.
-                  </p>
-                  <div className="retention-rules">
-                    {(
-                      [
-                        [
-                          "daily",
-                          "Tagesstände",
-                          "Ein Stand je Sicherungstag – für Änderungen der letzten Tage.",
-                        ],
-                        [
-                          "weekly",
-                          "Wochenstände",
-                          "Ein Stand je Kalenderwoche – für den Blick weiter zurück.",
-                        ],
-                        [
-                          "monthly",
-                          "Monatsstände",
-                          "Ein Stand je Kalendermonat – für die langfristige Historie.",
-                        ],
-                      ] as const
-                    ).map(([k, l, hint]) => (
-                      <Field key={k} label={l} hint={hint}>
-                        <input
-                          type="number"
-                          min={1}
-                          required
-                          value={value[k]}
-                          onChange={(e) => set(k, +e.target.value)}
-                        />
-                      </Field>
-                    ))}
-                  </div>
-                  <div
-                    className="retention-summary"
-                    role="status"
-                    aria-label="Aufbewahrungsübersicht"
+            {tab === "Zeitplan" ? (
+              <section>
+                <h3>Zeitplan</h3>
+                <p className="muted">
+                  Hosts starten zeitlich versetzt innerhalb einer Stunde.
+                </p>
+                <div className="form-grid">
+                  <Field
+                    label="Startzeit"
+                    hint="Eigene Hostzeiten haben Vorrang. Änderungen gelten für noch nicht eingeplante Läufe; ein bereits eingeplanter Tageslauf wird nicht erneut gestartet."
                   >
-                    <span className="count-badge">Je Host</span>
-                    <span>{value.daily} Tage</span>
-                    <span>{value.weekly} Wochen</span>
-                    <span>{value.monthly} Monate</span>
-                  </div>
-                  <p className="field-hint">
-                    Ein Stand kann mehrere Regeln erfüllen; die Zahlen werden
-                    nicht addiert. Stände außerhalb dieser Regeln werden bei der
-                    täglichen Wartung gelöscht.
-                  </p>
-                  <div className="retention-protection">
-                    <span className="count-badge success">
-                      Bleiben erhalten
-                    </span>
-                    <p>
-                      Der letzte erfolgreiche Stand, geschützte Stände,
-                      unvollständige oder beschädigte Sicherungen und Stände aus
-                      Wiederherstellungsplänen.
-                    </p>
-                  </div>
-                  <div className="archive-policy">
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={value.archive_days > 0}
-                        onChange={(e) =>
-                          set(
-                            "archive_days",
-                            e.target.checked ? archiveAfter : 0,
-                          )
-                        }
-                      />
-                      Ältere Stände automatisch archivieren
-                    </label>
-                    <p className="field-hint">
-                      Archivierung spart Platz: Die Dateien werden komprimiert,
-                      der Stand bleibt im Web lesbar und herunterladbar. Sie
-                      verlängert die Aufbewahrung nicht.
-                    </p>
-                    <Field
-                      label="Archivierung nach Tagen"
-                      hint="Geschützte und in Plänen verwendete Stände bleiben als lesbare Ordner erhalten."
-                    >
-                      <input
-                        type="number"
-                        min={1}
-                        required={value.archive_days > 0}
-                        disabled={value.archive_days === 0}
-                        value={value.archive_days || archiveAfter}
-                        onChange={(e) => {
-                          setArchiveAfter(+e.target.value);
-                          set("archive_days", +e.target.value);
-                        }}
-                      />
-                    </Field>
-                    {value.archive_days === 0 && (
-                      <p className="field-hint">
-                        Automatische Archivierung ist ausgeschaltet. Die
-                        Aufbewahrungsregeln gelten weiterhin.
-                      </p>
-                    )}
-                  </div>
-                </section>
-              </>
-            ) : (
-              <>
-                <section>
-                  <h3>Benachrichtigungen</h3>
-                  <p className="muted">
-                    Anker meldet fehlgeschlagene Sicherungen und die
-                    anschließende Erholung.
-                  </p>
-                  <Field label="Webhook-URL">
                     <input
-                      type="url"
-                      value={value.webhook}
-                      onChange={(e) => set("webhook", e.target.value)}
+                      type="time"
+                      required
+                      value={value.schedule}
+                      onChange={(e) => set("schedule", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Zeitzone" error={timezoneError}>
+                    <input
+                      ref={timezoneInput}
+                      name="timezone"
+                      required
+                      value={value.timezone}
+                      onChange={(e) => set("timezone", e.target.value)}
                     />
                   </Field>
                   <Field
-                    label="SMTP-Server"
-                    hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
+                    label="Parallele Aufträge"
+                    hint="Ein neues Parallelitätslimit gilt für wartende Aufträge. Laufende Aufträge werden dafür nicht abgebrochen."
                   >
                     <input
-                      value={value.smtp_server}
-                      onChange={(e) => set("smtp_server", e.target.value)}
-                      placeholder="mail.example.de:587"
+                      type="number"
+                      min={1}
+                      max={16}
+                      value={value.parallel}
+                      onChange={(e) => set("parallel", +e.target.value)}
                     />
                   </Field>
-                  <div className="form-grid">
-                    <Field label="SMTP-Benutzer">
-                      <input
-                        value={value.smtp_user}
-                        onChange={(e) => set("smtp_user", e.target.value)}
-                      />
-                    </Field>
-                    <Field
-                      label="SMTP-Passwort"
-                      hint="Leer lassen, um das vorhandene Passwort zu behalten."
-                    >
-                      <input
-                        type="password"
-                        autoComplete="new-password"
-                        value={value.smtp_password || ""}
-                        onChange={(e) => set("smtp_password", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Absender">
-                      <input
-                        type="email"
-                        value={value.mail_from}
-                        onChange={(e) => set("mail_from", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Empfänger">
-                      <input
-                        type="email"
-                        value={value.mail_to}
-                        onChange={(e) => set("mail_to", e.target.value)}
-                      />
-                    </Field>
-                  </div>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={dirty || busy || testing}
-                    title={
-                      dirty ? "Zuerst die Änderungen speichern" : undefined
-                    }
-                    onClick={async () => {
-                      setTesting(true);
-                      setTestError("");
-                      try {
-                        await api("notifications/test", "POST", {});
-                        notify("Testnachricht gesendet");
-                      } catch (e) {
-                        setTestError((e as Error).message);
-                      } finally {
-                        setTesting(false);
-                      }
-                    }}
+                  <Field label="Wiederholungen">
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      value={value.retries}
+                      onChange={(e) => set("retries", +e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div className="freshness-setting">
+                  <Field
+                    label="Überfällig nach Stunden"
+                    hint="Ohne aktuelle erfolgreiche Sicherung erscheint ein Hinweis am Host. Diese Grenze löscht keine Daten."
                   >
-                    {testing ? "Testet …" : "Gespeicherte Verbindung testen"}
-                  </button>
-                  {testError && (
-                    <p className="form-error" role="alert">
-                      {testError}
-                    </p>
-                  )}
-                  {dirty && (
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={value.stale_hours}
+                      onChange={(e) => set("stale_hours", +e.target.value)}
+                    />
+                  </Field>
+                </div>
+              </section>
+            ) : tab === "Aufbewahrung" ? (
+              <section>
+                <h3>Aufbewahrung</h3>
+                <p className="muted">
+                  Je Host der neueste erfolgreiche Stand pro Zeitraum.
+                </p>
+                <div className="retention-rules">
+                  {(
+                    [
+                      [
+                        "daily",
+                        "Tagesstände",
+                        "Ein Stand je Sicherungstag – für Änderungen der letzten Tage.",
+                      ],
+                      [
+                        "weekly",
+                        "Wochenstände",
+                        "Ein Stand je Kalenderwoche – für den Blick weiter zurück.",
+                      ],
+                      [
+                        "monthly",
+                        "Monatsstände",
+                        "Ein Stand je Kalendermonat – für die langfristige Historie.",
+                      ],
+                    ] as const
+                  ).map(([k, l, hint]) => (
+                    <Field key={k} label={l} hint={hint}>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={value[k]}
+                        onChange={(e) => set(k, +e.target.value)}
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <div
+                  className="retention-summary"
+                  role="status"
+                  aria-label="Aufbewahrungsübersicht"
+                >
+                  <span className="count-badge">Je Host</span>
+                  <span>{value.daily} Tage</span>
+                  <span>{value.weekly} Wochen</span>
+                  <span>{value.monthly} Monate</span>
+                </div>
+                <p className="field-hint">
+                  Gezählt werden Zeiträume, in denen eine Sicherung vorhanden
+                  ist. Ein Stand kann mehrere Regeln erfüllen; die Zahlen werden
+                  nicht addiert. Stände außerhalb dieser Regeln werden bei der
+                  täglichen Wartung gelöscht.
+                </p>
+                <div className="retention-protection">
+                  <span className="count-badge success">Bleiben erhalten</span>
+                  <p>
+                    Der letzte erfolgreiche Stand, geschützte Stände,
+                    unvollständige oder beschädigte Sicherungen und Stände aus
+                    Wiederherstellungsplänen.
+                  </p>
+                </div>
+                <div className="archive-policy">
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={value.archive_days > 0}
+                      onChange={(e) =>
+                        set("archive_days", e.target.checked ? archiveAfter : 0)
+                      }
+                    />
+                    Ältere Stände automatisch archivieren
+                  </label>
+                  <p className="field-hint">
+                    Archivierung spart Platz: Die Dateien werden komprimiert,
+                    der Stand bleibt im Web lesbar und herunterladbar. Sie
+                    verlängert die Aufbewahrung nicht.
+                  </p>
+                  <Field
+                    label="Archivierung nach Tagen"
+                    hint="Geschützte und in Plänen verwendete Stände bleiben als lesbare Ordner erhalten."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      required={value.archive_days > 0}
+                      disabled={value.archive_days === 0}
+                      value={value.archive_days || archiveAfter}
+                      onChange={(e) => {
+                        setArchiveAfter(+e.target.value);
+                        set("archive_days", +e.target.value);
+                      }}
+                    />
+                  </Field>
+                  {value.archive_days === 0 && (
                     <p className="field-hint">
-                      Zum Testen zuerst die Änderungen speichern.
+                      Automatische Archivierung ist ausgeschaltet. Die
+                      Aufbewahrungsregeln gelten weiterhin.
                     </p>
                   )}
-                </section>
-              </>
+                </div>
+              </section>
+            ) : (
+              <section>
+                <h3>Benachrichtigungen</h3>
+                <p className="muted">
+                  Anker meldet fehlgeschlagene Sicherungen und die anschließende
+                  Erholung.
+                </p>
+                <Field label="Webhook-URL">
+                  <input
+                    type="url"
+                    value={value.webhook}
+                    onChange={(e) => set("webhook", e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="SMTP-Server"
+                  hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
+                >
+                  <input
+                    value={value.smtp_server}
+                    onChange={(e) => set("smtp_server", e.target.value)}
+                    placeholder="mail.example.de:587"
+                  />
+                </Field>
+                <div className="form-grid">
+                  <Field label="SMTP-Benutzer">
+                    <input
+                      value={value.smtp_user}
+                      onChange={(e) => set("smtp_user", e.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="SMTP-Passwort"
+                    hint="Leer lassen, um das vorhandene Passwort zu behalten."
+                  >
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={value.smtp_password || ""}
+                      onChange={(e) => set("smtp_password", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Absender">
+                    <input
+                      type="email"
+                      value={value.mail_from}
+                      onChange={(e) => set("mail_from", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Empfänger">
+                    <input
+                      type="email"
+                      value={value.mail_to}
+                      onChange={(e) => set("mail_to", e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={dirty || busy || testing}
+                  title={dirty ? "Zuerst die Änderungen speichern" : undefined}
+                  onClick={async () => {
+                    setTesting(true);
+                    setTestError("");
+                    try {
+                      await api("notifications/test", "POST", {});
+                      notify("Testnachricht gesendet");
+                    } catch (e) {
+                      setTestError((e as Error).message);
+                    } finally {
+                      setTesting(false);
+                    }
+                  }}
+                >
+                  {testing ? "Testet …" : "Gespeicherte Verbindung testen"}
+                </button>
+                {testError && (
+                  <p className="form-error" role="alert">
+                    {testError}
+                  </p>
+                )}
+                {dirty && (
+                  <p className="field-hint">
+                    Zum Testen zuerst die Änderungen speichern.
+                  </p>
+                )}
+              </section>
             )}
           </fieldset>
         </form>
@@ -457,13 +455,10 @@ export default function Settings({
             {saveControls}
             <section>
               <h3>Anmeldung</h3>
-              <p className="muted">
-                Eine Anmeldung ist immer erforderlich. Die Dauer gilt für neue
-                Sitzungen, auch über einen Neustart hinweg.
-              </p>
+              <p className="muted">Eine Anmeldung ist immer erforderlich.</p>
               <Field
                 label="Sitzungsdauer in Tagen"
-                hint="1 bis 365 Tage. Standard: 30 Tage."
+                hint="1 bis 365 Tage. Standard: 30 Tage. Gilt für neue Sitzungen, auch über einen Neustart hinweg."
               >
                 <input
                   type="number"
@@ -499,58 +494,96 @@ export default function Settings({
           />
         </div>
       )}
-      <section className="detail-section" hidden={tab !== "System"}>
+      <div hidden={tab !== "Zertifikate"}>
         <div inert={updating}>
           <Certificates notify={notify} onDirtyChange={setCertificateDirty} />
         </div>
-        <Updates canInstall={!dirty && !certificateDirty} />
-        <DetailSection title="Systemprüfung">
-          {systemError && <LoadError message={systemError} retry={inspect} />}
-          {inspecting && <p role="status">Systemdaten werden geladen …</p>}
-          <pre className="system-output">
-            {doctor
-              ? JSON.stringify(doctor, null, 2)
-              : systemError
-                ? "Keine aktuellen Prüfdaten verfügbar."
-                : "Wird geladen …"}
-          </pre>
-          <button
-            className="secondary"
-            onClick={async () => {
-              try {
-                const r = await api<{ indexed: number }>("reindex", "POST", {});
-                notify(r.indexed + " Sicherungen neu eingelesen");
-              } catch (e) {
-                notify((e as Error).message, true);
-              }
-            }}
-          >
-            Sicherungsindex neu einlesen
-          </button>
-        </DetailSection>
-        <DetailSection title="Aktivitätsprotokoll">
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Zeitpunkt</th>
-                  <th>Aktion</th>
-                  <th>Ziel</th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.map((a, i) => (
-                  <tr key={i}>
-                    <td className="date">{date(a.at)}</td>
-                    <td>{a.action}</td>
-                    <td className="mono">{a.object}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </DetailSection>
-      </section>
+      </div>
+      {tab === "Betrieb" && (
+        <>
+          <nav className="jump-nav" aria-label="Bereiche im Betrieb">
+            {betriebAreas.map(([id, label, hint]) => (
+              <button
+                key={id}
+                type="button"
+                className="secondary"
+                aria-label={label}
+                onClick={() =>
+                  document.getElementById(id)?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  })
+                }
+              >
+                <span aria-hidden="true">{label}</span>
+                <small aria-hidden="true">{hint}</small>
+              </button>
+            ))}
+          </nav>
+          <section id="betrieb-speicher" className="betrieb-section">
+            <Storage notify={notify} />
+          </section>
+          <section id="betrieb-updates" className="betrieb-section">
+            <Updates canInstall={!dirty && !certificateDirty} />
+          </section>
+          <section id="betrieb-pruefung" className="betrieb-section">
+            <DetailSection title="Systemprüfung">
+              {systemError && (
+                <LoadError message={systemError} retry={inspect} />
+              )}
+              {inspecting && <p role="status">Systemdaten werden geladen …</p>}
+              <pre className="system-output">
+                {doctor
+                  ? JSON.stringify(doctor, null, 2)
+                  : systemError
+                    ? "Keine aktuellen Prüfdaten verfügbar."
+                    : "Wird geladen …"}
+              </pre>
+              <button
+                className="secondary"
+                onClick={async () => {
+                  try {
+                    const r = await api<{ indexed: number }>(
+                      "reindex",
+                      "POST",
+                      {},
+                    );
+                    notify(r.indexed + " Sicherungen neu eingelesen");
+                  } catch (e) {
+                    notify((e as Error).message, true);
+                  }
+                }}
+              >
+                Sicherungsindex neu einlesen
+              </button>
+            </DetailSection>
+          </section>
+          <section id="betrieb-protokoll" className="betrieb-section">
+            <DetailSection title="Aktivitätsprotokoll">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Zeitpunkt</th>
+                      <th>Aktion</th>
+                      <th>Ziel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {audit.map((a, i) => (
+                      <tr key={i}>
+                        <td className="date">{date(a.at)}</td>
+                        <td>{a.action}</td>
+                        <td className="mono">{a.object}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DetailSection>
+          </section>
+        </>
+      )}
     </>
   );
 }
