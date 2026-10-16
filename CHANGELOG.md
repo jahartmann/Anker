@@ -1,6 +1,6 @@
 # Änderungen
 
-## 0.2.9
+## 0.2.10
 
 - Vier Recovery-Situationen in fünf Schritten mit frischem Zielinhalt, privaten Snapshots, expliziten Dateientscheidungen und Inhalts-/Metadatenvergleich in Web, CLI und Terminal.
 - Nachvollziehbare Vorbereitung unterstützter Netzwerk-, Hostnamen- und Gast-Storagefelder; unbekannte Abhängigkeiten bleiben manuell. Keine neue automatische Gesamtrecovery.

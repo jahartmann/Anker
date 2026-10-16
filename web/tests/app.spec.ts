@@ -607,6 +607,7 @@ test("settings load failure offers retry and changes have a visible saved state"
   );
   fail = false;
   await page.getByRole("button", { name: "Erneut laden", exact: true }).click();
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
   await page.getByLabel("Tagesstände").fill("37");
   await expect(
     page
@@ -658,6 +659,7 @@ test("settings drafts stay intact when navigating away is cancelled", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
   await page.getByLabel("Tagesstände").fill("39");
   await page
     .getByRole("navigation")
@@ -1121,6 +1123,7 @@ test("settings save and mobile navigation", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Einstellungen", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Aufbewahrung", exact: true }).click();
   await page.getByLabel("Tagesstände").fill("35");
   await page.getByRole("button", { name: "Einstellungen speichern" }).click();
   await expect(page.getByText("Einstellungen gespeichert")).toBeVisible();
