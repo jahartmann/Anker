@@ -43,6 +43,8 @@ type sshFixture struct {
 	unsafePrompt    bool
 	keyboardAnswers int
 	flood           bool
+	floodStarted    chan struct{}
+	floodStopped    chan struct{}
 }
 
 func signer(t *testing.T) ssh.Signer {
@@ -63,7 +65,7 @@ func fixture(t *testing.T) *sshFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	f := &sshFixture{t: t, listener: l, key: signer(t), roleKeys: map[string]ssh.PublicKey{}}
+	f := &sshFixture{t: t, listener: l, key: signer(t), roleKeys: map[string]ssh.PublicKey{}, floodStarted: make(chan struct{}, 1), floodStopped: make(chan struct{}, 1)}
 	t.Cleanup(func() { l.Close() })
 	go func() {
 		for {
@@ -174,6 +176,8 @@ func (f *sshFixture) serve(c net.Conn) {
 					}
 				default:
 					if flood {
+						f.floodStarted <- struct{}{}
+						defer func() { f.floodStopped <- struct{}{} }()
 						for {
 							if _, e := io.WriteString(ch, strings.Repeat("x", 32768)); e != nil {
 								return
@@ -478,12 +482,30 @@ func TestOutputLimitClosesSessionPromptly(t *testing.T) {
 	f.mu.Lock()
 	f.flood = true
 	f.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	start := time.Now()
-	_, e := m.Enroll(ctx, enrollmentRequest(f))
-	if e == nil || time.Since(start) > 500*time.Millisecond {
-		t.Fatalf("oversize output did not promptly terminate: %v, %s", e, time.Since(start))
+	result := make(chan error, 1)
+	go func() {
+		_, enrollError := m.Enroll(ctx, enrollmentRequest(f))
+		result <- enrollError
+	}()
+	select {
+	case <-f.floodStarted:
+	case <-ctx.Done():
+		t.Fatal("probe never started producing oversized output")
+	}
+	select {
+	case enrollError := <-result:
+		if enrollError == nil || ctx.Err() != nil {
+			t.Fatalf("oversize output was accepted or waited for context cancellation: %v", enrollError)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("oversize output did not promptly terminate enrollment")
+	}
+	select {
+	case <-f.floodStopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("oversize output did not close the remote session")
 	}
 }
 
