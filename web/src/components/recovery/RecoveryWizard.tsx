@@ -103,22 +103,62 @@ export default function RecoveryWizard({
           Vorbereitung schließen
         </button>
       </div>
-      <p className="recovery-draft-context">
-        Quelle:{" "}
-        {status.backups.find((b) => b.id === d.backup)?.host_name ||
-          "Noch auswählen"}{" "}
-        · Ziel:{" "}
-        {status.hosts.find((h) => h.id === d.target)?.name || "Noch auswählen"}{" "}
-        · {d.openFiles + d.openMappings} offene Entscheidungen
-      </p>
+      <section
+        className="recovery-draft-context"
+        aria-label="Vorbereitungskontext"
+      >
+        <dl className="recovery-context">
+          <div>
+            <dt>Quelle</dt>
+            <dd>
+              {status.backups.find((backup) => backup.id === d.backup)
+                ?.host_name || "Noch auswählen"}
+            </dd>
+          </div>
+          <div>
+            <dt>Ziel</dt>
+            <dd>
+              {status.hosts.find((host) => host.id === d.target)?.name ||
+                "Noch auswählen"}
+            </dd>
+          </div>
+          <div>
+            <dt>Entscheidungen</dt>
+            <dd>
+              {!d.inspection
+                ? "Nach Zielprüfung ermitteln"
+                : d.needsInspection
+                  ? "Erneute Zielprüfung erforderlich"
+                  : `${d.openFiles + d.openMappings} offen`}
+            </dd>
+          </div>
+          <div>
+            <dt>Nächster Schritt</dt>
+            <dd>
+              {d.step === 1
+                ? "Quelle und Dateien auswählen"
+                : d.step === 2
+                  ? d.needsInspection
+                    ? "Ziel erneut prüfen"
+                    : d.inspection
+                      ? "Weiter zu Entscheidungen"
+                      : "Ziel auswählen und prüfen"
+                  : d.step === 3
+                    ? d.needsInspection
+                      ? "Zuordnungen erneut prüfen"
+                      : decisionsReady
+                        ? "Weiter zur Planprüfung"
+                        : "Dateien und Zuordnungen entscheiden"
+                    : confirmationsReady
+                      ? "Plan prüfen und speichern"
+                      : "Erforderliche Bestätigungen prüfen"}
+            </dd>
+          </div>
+        </dl>
+      </section>
       <nav aria-label="Vorbereitungsschritte" className="recovery-steps">
         <p className="recovery-progress" role="status">
           Schritt {d.step} von 5
-        </p>
-        <p className="field-hint recovery-step-preview">
-          Quelle wählen → Ziel prüfen → Dateien entscheiden → Plan prüfen →
-          Ausführen und nachprüfen. Der letzte Schritt erfolgt im gespeicherten
-          Plan.
         </p>
         <ol>
           {[
@@ -131,13 +171,25 @@ export default function RecoveryWizard({
             <li
               key={label}
               aria-current={d.step === i + 1 ? "step" : undefined}
+              data-step-state={
+                d.step === i + 1
+                  ? "current"
+                  : d.step > i + 1
+                    ? "previous"
+                    : "upcoming"
+              }
             >
               <span>{i + 1}</span>
-              {label}
-              {i === 4 && <small>Im gespeicherten Plan</small>}
+              <span className="recovery-step-label">
+                {label}
+                {i === 4 && <small>Im gespeicherten Plan</small>}
+              </span>
             </li>
           ))}
         </ol>
+        <p className="field-hint recovery-step-next">
+          Schritt 5: Ausführen und nachprüfen – im gespeicherten Plan.
+        </p>
       </nav>
       <fieldset className="form-fields" disabled={busy}>
         {d.step === 1 && <RecoverySource status={status} draft={d} />}
@@ -265,7 +317,6 @@ export default function RecoveryWizard({
           >
             Zurück
           </button>
-          <span>Schritt {d.step} von 5</span>
           {d.step === 1 && (
             <button
               type="button"

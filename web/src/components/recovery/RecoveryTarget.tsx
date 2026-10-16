@@ -61,7 +61,13 @@ export default function RecoveryTarget({
           <strong>
             {d.inspection.source.hostname} → {d.inspection.target.hostname}
           </strong>
-          <span className="state success">Ziel geprüft</span>
+          <span
+            className={`state ${d.inspection.comparison_complete ? "success" : "warning"}`}
+          >
+            {d.inspection.comparison_complete
+              ? "Ziel geprüft"
+              : "Zielaufnahme mit Hinweisen"}
+          </span>
         </div>
       )}
       {d.inspection && (

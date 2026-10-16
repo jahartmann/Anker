@@ -166,7 +166,25 @@ export default function Restore({
             }
           />
           {status.plans.length ? (
-            <div>
+            <div className="restore-plan-overview">
+              <div className="restore-plan-summary">
+                <p className="collection-count" role="status">
+                  {plans.length} von {status.plans.length}{" "}
+                  {status.plans.length === 1 ? "Plan" : "Plänen"}
+                </p>
+                {(planQuery || planState) && (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setPlanQuery("");
+                      setPlanState("");
+                      setPlanPage(1);
+                    }}
+                  >
+                    Planfilter zurücksetzen
+                  </button>
+                )}
+              </div>
               <div className="restore-plan-filters">
                 <input
                   aria-label="Wiederherstellungspläne durchsuchen"
@@ -202,7 +220,10 @@ export default function Restore({
                 </select>
               </div>
               <div className="table-scroll">
-                <table className="restore-plans">
+                <table
+                  className="restore-plans"
+                  aria-label="Wiederherstellungspläne"
+                >
                   <thead>
                     <tr>
                       <th>Quelle → Ziel</th>
@@ -277,7 +298,9 @@ export default function Restore({
           ) : (
             <Empty title="Noch keine Wiederherstellungspläne">
               Eine Sicherung und einen Zielhost auswählen. Anker zeigt danach
-              die möglichen Schritte und offenen Entscheidungen.
+              die möglichen Schritte und offenen Entscheidungen. Ein
+              gespeicherter Plan ändert noch keine Zieldateien; eine Übernahme
+              wird später gesondert bestätigt.
             </Empty>
           )}
         </>

@@ -368,7 +368,8 @@ export default function RecoveryPlan({
         <div>
           <h1>Wiederherstellungsplan</h1>
           <p>
-            Gespeicherter Plan · <code>{plan.id}</code>
+            Gespeicherter Plan · <code>{plan.id}</code> ·{" "}
+            {labels[plan.scenario]}
           </p>
         </div>
       </header>
@@ -392,31 +393,57 @@ export default function RecoveryPlan({
           </div>
         </div>
       )}
-      <div className="plan-meta">
-        <strong>
-          {plan.source.hostname} → {plan.target.hostname}
-        </strong>
-        <State value={rollbackUncertain ? "unknown" : plan.state} />
-      </div>
+      <section className="recovery-plan-summary" aria-label="Planübersicht">
+        <dl className="recovery-context">
+          <div>
+            <dt>Quelle</dt>
+            <dd>
+              {plan.source.hostname}
+              <small>Proxmox {plan.source.pve_version || "Unbekannt"}</small>
+            </dd>
+          </div>
+          <div>
+            <dt>Ziel</dt>
+            <dd>
+              {plan.target.hostname}
+              <small>Proxmox {plan.target.pve_version || "Unbekannt"}</small>
+            </dd>
+          </div>
+          <div>
+            <dt>Planstatus</dt>
+            <dd>
+              <State value={rollbackUncertain ? "unknown" : plan.state} />
+            </dd>
+          </div>
+          <div>
+            <dt>Dateiaktionen</dt>
+            <dd>
+              {plan.steps.filter((step) => step.action === "apply").length}{" "}
+              Dateien übernehmen ·{" "}
+              {plan.steps.filter((step) => step.action === "keep").length} Ziel
+              behalten ·{" "}
+              {plan.steps.filter((step) => step.action === "manual").length}{" "}
+              manuelle Dateien
+            </dd>
+          </div>
+        </dl>
+        <div className="plan-next-task">
+          <strong>Nächste Aufgabe</strong>
+          <p>
+            {plan.tasks?.find((task) => task.state !== "user_confirmed")
+              ?.title ||
+              (plan.state === "ready"
+                ? "Dateiübernahme prüfen und gesondert bestätigen"
+                : "Planstatus und Hostnachweise prüfen")}
+          </p>
+        </div>
+      </section>
       {journalState && (
         <p className="field-hint">
           Hostjournal: {labels[journalState] || journalState} · Serverplan:{" "}
           {labels[plan.state] || plan.state}
         </p>
       )}
-      <p className="dialog-intro">
-        {labels[plan.scenario]} · Quelle {plan.source.pve_version} · Ziel{" "}
-        {plan.target.pve_version}
-      </p>
-      <div className="plan-next-task">
-        <strong>Nächste Aufgabe</strong>
-        <p>
-          {plan.tasks?.find((task) => task.state !== "user_confirmed")?.title ||
-            (plan.state === "ready"
-              ? "Dateiübernahme prüfen und gesondert bestätigen"
-              : "Planstatus und Hostnachweise prüfen")}
-        </p>
-      </div>
       <nav className="plan-section-nav" aria-label="Planabschnitte">
         <a href="#plan-evidence">Nachweise</a>
         <a href="#plan-files">Dateien</a>
@@ -435,12 +462,6 @@ export default function RecoveryPlan({
           verfügbar.
         </p>
       )}
-      <p className="field-hint">
-        {plan.steps.filter((s) => s.action === "apply").length} Dateien
-        übernehmen · {plan.steps.filter((s) => s.action === "keep").length} Ziel
-        behalten · {plan.steps.filter((s) => s.action === "manual").length}{" "}
-        manuelle Dateien
-      </p>
       <p className="field-hint">
         Vergleiche verwenden die gespeicherte Zielaufnahme. Vor der Übernahme
         prüft Anker erneut auf Änderungen am Ziel.

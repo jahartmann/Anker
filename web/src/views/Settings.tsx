@@ -20,6 +20,48 @@ const settingsTabs = [
   "Betrieb",
 ] as const;
 
+const settingsSections = {
+  Zeitplan: ["schedule", "timezone", "parallel", "retries", "stale_hours"],
+  Aufbewahrung: ["daily", "weekly", "monthly", "archive_days"],
+  Benachrichtigungen: [
+    "webhook",
+    "smtp_server",
+    "smtp_user",
+    "smtp_password",
+    "mail_from",
+    "mail_to",
+  ],
+  Zugriff: ["session_days", "password_min_length"],
+} satisfies Record<string, (keyof Values)[]>;
+
+const settingsContext: Record<string, [string, string]> = {
+  Zeitplan: [
+    "Zeitplan",
+    "Hosts starten zeitlich versetzt innerhalb einer Stunde.",
+  ],
+  Aufbewahrung: [
+    "Aufbewahrung",
+    "Je Host der neueste erfolgreiche Stand pro Zeitraum.",
+  ],
+  Benachrichtigungen: [
+    "Benachrichtigungen",
+    "Anker meldet fehlgeschlagene Sicherungen und die anschließende Erholung.",
+  ],
+  Zugriff: ["Zugriff", "Anmeldung, Sitzungsdauer und Benutzer verwalten."],
+  Zertifikate: [
+    "HTTPS und Erneuerung",
+    "Webzertifikat prüfen und die automatische Erneuerung verwalten.",
+  ],
+  Updates: [
+    "Software verwalten",
+    "Installierte Version, Updatequelle und verfügbare Updates prüfen.",
+  ],
+  Betrieb: [
+    "Betrieb",
+    "Speicher, Systemprüfung und letzte Aktionen im Blick behalten.",
+  ],
+};
+
 const betriebAreas = [
   ["betrieb-speicher", "Speicher", "Volumes und Prognose"],
   ["betrieb-pruefung", "Prüfung", "Doctor und Index"],
@@ -58,6 +100,13 @@ export default function Settings({
   const [archiveAfter, setArchiveAfter] = useState(90);
   const dirty = !!value && JSON.stringify(value) !== saved;
   const [certificateDirty, setCertificateDirty] = useState(false);
+  const savedValue = saved ? (JSON.parse(saved) as Values) : null;
+  const changedSections = Object.entries(settingsSections)
+    .filter(([, keys]) =>
+      keys.some((key) => value && savedValue && value[key] !== savedValue[key]),
+    )
+    .map(([name]) => name);
+  if (certificateDirty) changedSections.push("Zertifikate");
   useEffect(() => {
     onDirtyChange(dirty || certificateDirty);
   }, [dirty, certificateDirty, onDirtyChange]);
@@ -138,15 +187,20 @@ export default function Settings({
     }
   }
   const saveControls = (
-    <footer className="form-footer">
+    <footer className="form-footer settings-savebar">
       {saveError && (
         <p className="form-error" role="alert">
           {saveError}
         </p>
       )}
-      <span className="save-state" role="status">
-        {dirty ? "Ungespeicherte Änderungen" : "Alle Änderungen gespeichert"}
-      </span>
+      <div className="settings-save-details">
+        <span className="save-state" role="status">
+          {dirty ? "Ungespeicherte Änderungen" : "Alle Änderungen gespeichert"}
+        </span>
+        <small className="muted">
+          Speichert alle geänderten Einstellungsbereiche.
+        </small>
+      </div>
       <button disabled={busy || updating || !dirty}>
         {busy ? "Speichert …" : "Einstellungen speichern"}
       </button>
@@ -180,14 +234,43 @@ export default function Settings({
             type="button"
             className={t === tab ? "selected" : ""}
             aria-pressed={t === tab}
+            title={
+              changedSections.includes(t)
+                ? `${t}: ungespeicherte Änderungen`
+                : undefined
+            }
             onClick={() => {
               setTab(t);
               if (t === "Betrieb") inspect();
             }}
           >
             {t}
+            {changedSections.includes(t) && (
+              <span className="settings-tab-dirty" aria-hidden="true">
+                •
+              </span>
+            )}
           </button>
         ))}
+      </div>
+      {changedSections.length > 0 && (
+        <div
+          className="settings-change-summary"
+          role="status"
+          aria-label="Ungespeicherte Bereiche"
+        >
+          <span>Geändert:</span>
+          {changedSections.map((name) => (
+            <span key={name}>{name}</span>
+          ))}
+          {certificateDirty && (
+            <small>Zertifikate separat im Bereich speichern.</small>
+          )}
+        </div>
+      )}
+      <div className="settings-context">
+        <h3>{settingsContext[tab][0]}</h3>
+        <p className="muted">{settingsContext[tab][1]}</p>
       </div>
       {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
@@ -195,74 +278,77 @@ export default function Settings({
           <fieldset className="form-fields" disabled={busy || updating}>
             {tab === "Zeitplan" ? (
               <section>
-                <h3>Zeitplan</h3>
-                <p className="muted">
-                  Hosts starten zeitlich versetzt innerhalb einer Stunde.
-                </p>
-                <div className="form-grid">
-                  <Field
-                    label="Startzeit"
-                    hint="Eigene Hostzeiten haben Vorrang. Änderungen gelten für noch nicht eingeplante Läufe; ein bereits eingeplanter Tageslauf wird nicht erneut gestartet."
-                  >
-                    <input
-                      type="time"
-                      required
-                      value={value.schedule}
-                      onChange={(e) => set("schedule", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Zeitzone" error={timezoneError}>
-                    <input
-                      ref={timezoneInput}
-                      name="timezone"
-                      required
-                      value={value.timezone}
-                      onChange={(e) => set("timezone", e.target.value)}
-                    />
-                  </Field>
-                  <Field
-                    label="Parallele Aufträge"
-                    hint="Ein neues Parallelitätslimit gilt für wartende Aufträge. Laufende Aufträge werden dafür nicht abgebrochen."
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      max={16}
-                      value={value.parallel}
-                      onChange={(e) => set("parallel", +e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Wiederholungen">
-                    <input
-                      type="number"
-                      min={0}
-                      max={5}
-                      value={value.retries}
-                      onChange={(e) => set("retries", +e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <div className="freshness-setting">
-                  <Field
-                    label="Überfällig nach Stunden"
-                    hint="Ohne aktuelle erfolgreiche Sicherung erscheint ein Hinweis am Host. Diese Grenze löscht keine Daten."
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      required
-                      value={value.stale_hours}
-                      onChange={(e) => set("stale_hours", +e.target.value)}
-                    />
-                  </Field>
-                </div>
+                <fieldset className="settings-group">
+                  <legend>Start und Zeitzone</legend>
+                  <div className="form-grid">
+                    <Field
+                      label="Startzeit"
+                      hint="Eigene Hostzeiten haben Vorrang. Änderungen gelten für noch nicht eingeplante Läufe; ein bereits eingeplanter Tageslauf wird nicht erneut gestartet."
+                    >
+                      <input
+                        type="time"
+                        required
+                        value={value.schedule}
+                        onChange={(e) => set("schedule", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Zeitzone" error={timezoneError}>
+                      <input
+                        ref={timezoneInput}
+                        name="timezone"
+                        required
+                        value={value.timezone}
+                        onChange={(e) => set("timezone", e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </fieldset>
+                <fieldset className="settings-group">
+                  <legend>Ausführung</legend>
+                  <div className="form-grid">
+                    <Field
+                      label="Parallele Aufträge"
+                      hint="Ein neues Parallelitätslimit gilt für wartende Aufträge. Laufende Aufträge werden dafür nicht abgebrochen."
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={16}
+                        value={value.parallel}
+                        onChange={(e) => set("parallel", +e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Wiederholungen">
+                      <input
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={value.retries}
+                        onChange={(e) => set("retries", +e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </fieldset>
+                <fieldset className="settings-group">
+                  <legend>Aktualität</legend>
+                  <div className="freshness-setting">
+                    <Field
+                      label="Überfällig nach Stunden"
+                      hint="Ohne aktuelle erfolgreiche Sicherung erscheint ein Hinweis am Host. Diese Grenze löscht keine Daten."
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={value.stale_hours}
+                        onChange={(e) => set("stale_hours", +e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </fieldset>
               </section>
             ) : tab === "Aufbewahrung" ? (
               <section>
-                <h3>Aufbewahrung</h3>
-                <p className="muted">
-                  Je Host der neueste erfolgreiche Stand pro Zeitraum.
-                </p>
                 <div className="retention-rules">
                   {(
                     [
@@ -360,61 +446,62 @@ export default function Settings({
               </section>
             ) : (
               <section>
-                <h3>Benachrichtigungen</h3>
-                <p className="muted">
-                  Anker meldet fehlgeschlagene Sicherungen und die anschließende
-                  Erholung.
-                </p>
-                <Field label="Webhook-URL">
-                  <input
-                    type="url"
-                    value={value.webhook}
-                    onChange={(e) => set("webhook", e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="SMTP-Server"
-                  hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
-                >
-                  <input
-                    value={value.smtp_server}
-                    onChange={(e) => set("smtp_server", e.target.value)}
-                    placeholder="mail.example.de:587"
-                  />
-                </Field>
-                <div className="form-grid">
-                  <Field label="SMTP-Benutzer">
+                <fieldset className="settings-group">
+                  <legend>Webhook</legend>
+                  <Field label="Webhook-URL">
                     <input
-                      value={value.smtp_user}
-                      onChange={(e) => set("smtp_user", e.target.value)}
+                      type="url"
+                      value={value.webhook}
+                      onChange={(e) => set("webhook", e.target.value)}
                     />
                   </Field>
+                </fieldset>
+                <fieldset className="settings-group">
+                  <legend>E-Mail (SMTP)</legend>
                   <Field
-                    label="SMTP-Passwort"
-                    hint="Leer lassen, um das vorhandene Passwort zu behalten."
+                    label="SMTP-Server"
+                    hint="Hostname und Port; verschlüsselte Verbindung erforderlich."
                   >
                     <input
-                      type="password"
-                      autoComplete="new-password"
-                      value={value.smtp_password || ""}
-                      onChange={(e) => set("smtp_password", e.target.value)}
+                      value={value.smtp_server}
+                      onChange={(e) => set("smtp_server", e.target.value)}
+                      placeholder="mail.example.de:587"
                     />
                   </Field>
-                  <Field label="Absender">
-                    <input
-                      type="email"
-                      value={value.mail_from}
-                      onChange={(e) => set("mail_from", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Empfänger">
-                    <input
-                      type="email"
-                      value={value.mail_to}
-                      onChange={(e) => set("mail_to", e.target.value)}
-                    />
-                  </Field>
-                </div>
+                  <div className="form-grid">
+                    <Field label="SMTP-Benutzer">
+                      <input
+                        value={value.smtp_user}
+                        onChange={(e) => set("smtp_user", e.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="SMTP-Passwort"
+                      hint="Leer lassen, um das vorhandene Passwort zu behalten."
+                    >
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={value.smtp_password || ""}
+                        onChange={(e) => set("smtp_password", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Absender">
+                      <input
+                        type="email"
+                        value={value.mail_from}
+                        onChange={(e) => set("mail_from", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Empfänger">
+                      <input
+                        type="email"
+                        value={value.mail_to}
+                        onChange={(e) => set("mail_to", e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </fieldset>
                 <button
                   type="button"
                   className="secondary"

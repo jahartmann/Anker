@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.2.14
+
+- Wiederherstellung mit kompakter Fünf-Schritte-Übersicht, beschriftetem Quellen-/Zielkontext und nächster Aktion. Noch nicht ermittelte Entscheidungen erscheinen nicht als null offene Punkte.
+- Unvollständige Zielaufnahmen zeigen Hinweise statt einer uneingeschränkten grünen Prüfmarkierung. Gespeicherte Pläne bündeln Quelle, Ziel, Status, Dateiaktionen und nächste Aufgabe; Warnungen und gesonderte Bestätigungen bleiben erhalten.
+- Planliste mit Trefferzahl und Filterrücksetzung; der Einstieg erklärt die Trennung zwischen Vorbereitung und tatsächlicher Übernahme.
+- Einstellungen mit klaren Formulargruppen für Start, Ausführung, Aktualität sowie Webhook und SMTP. Kompaktere erreichbare Speicherleiste und sichtbare Hinweise auf geänderte Bereiche auch nach einem Reiterwechsel; Updates bleiben ein eigener Reiter.
+- Sicherheitsabfragen, Schutz ungespeicherter Entwürfe und Update-/Zertifikatsfreigaben bleiben bestehen. Reale Proxmox-, Hardware-, Cluster-, Reboot- und Stromausfallabnahmen bleiben offen.
+
 ## 0.2.13
 
 - Übersicht mit anklickbaren Kennzahlen und passenden Filtern, kompakterem Handlungsbedarf und kurzer Auftragsaktivität statt einer zweiten Verlaufstabelle.
