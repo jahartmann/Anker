@@ -181,7 +181,12 @@ export function ActionMenu({
 }: {
   label: string;
   disabled?: boolean;
-  actions: { label: string; run: () => void }[];
+  actions: {
+    label: string;
+    run: () => void;
+    disabled?: boolean;
+    title?: string;
+  }[];
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
@@ -214,7 +219,7 @@ export function ActionMenu({
   useLayoutEffect(() => {
     if (open && position)
       panel.current
-        ?.querySelector<HTMLButtonElement>("button")
+        ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
         ?.focus({ preventScroll: true });
   }, [open, position]);
   useEffect(() => {
@@ -296,7 +301,9 @@ export function ActionMenu({
               if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
                 e.preventDefault();
                 const buttons = Array.from(
-                  e.currentTarget.querySelectorAll("button"),
+                  e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                    "button:not(:disabled)",
+                  ),
                 );
                 const index = buttons.indexOf(
                   document.activeElement as HTMLButtonElement,
@@ -318,6 +325,8 @@ export function ActionMenu({
               <button
                 type="button"
                 key={action.label}
+                disabled={action.disabled}
+                title={action.title}
                 onClick={() => {
                   setOpen(false);
                   trigger.current?.focus();

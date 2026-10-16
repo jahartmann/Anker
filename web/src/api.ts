@@ -556,7 +556,7 @@ export function hostState(h: Host, s: Status) {
       tone: latestJob.state === "failed" ? "danger" : "warning",
       backup: b,
     };
-  if (!b) return { text: "Ohne Sicherung", tone: "muted", backup: undefined };
+  if (!b) return { text: "Ohne Sicherung", tone: "warning", backup: undefined };
   if (Date.now() - new Date(b.created_at).getTime() > s.stale_hours * 3600000)
     return { text: "Überfällig", tone: "warning", backup: b };
   return { text: "Gesichert", tone: "success", backup: b };

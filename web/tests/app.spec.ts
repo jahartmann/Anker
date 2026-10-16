@@ -1251,7 +1251,20 @@ test("file restore plans and executes only after exact confirmation", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Aufträge", exact: true })
     .click();
-  await expect(page.getByText("Abgeschlossen", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("table", { name: "Auftragsverlauf" })
+      .getByText("Erfolgreich", { exact: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("button", {
+        name: "Wiederherstellungsplan prüfen",
+        exact: true,
+      })
+      .first(),
+  ).toBeVisible();
 });
 
 test("backup queue and changed-file comparison use the service", async ({
@@ -1269,7 +1282,10 @@ test("backup queue and changed-file comparison use the service", async ({
     .getByRole("button", { name: "Aufträge", exact: true })
     .click();
   await expect(
-    page.getByText("Abgeschlossen", { exact: true }).first(),
+    page
+      .getByRole("table", { name: "Auftragsverlauf" })
+      .getByRole("button", { name: "Sicherung öffnen", exact: true })
+      .first(),
   ).toBeVisible();
   await page
     .getByRole("navigation")

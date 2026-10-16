@@ -51,6 +51,7 @@ test("recovery job result links to reconciliation", async ({ page }) => {
     .getByRole("button", { name: "Auftrag recovery-job ansehen" })
     .click();
   await page
+    .getByRole("dialog")
     .getByRole("button", { name: "Wiederherstellungsplan prüfen", exact: true })
     .click();
   await expect(page).toHaveTitle("Wiederherstellung · Anker");

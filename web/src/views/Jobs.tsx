@@ -33,6 +33,9 @@ export default function Jobs({
   limit,
   initialJob,
   onJobClose,
+  initialStateFilter,
+  onInitialStateFilterConsumed,
+  onOpenHosts,
 }: {
   status: Status;
   notify: Notify;
@@ -44,12 +47,15 @@ export default function Jobs({
   limit?: number;
   initialJob?: string;
   onJobClose?: () => void;
+  initialStateFilter?: string;
+  onInitialStateFilterConsumed?: () => void;
+  onOpenHosts?: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [host, setHost] = useState("");
   const [kind, setKind] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState(initialStateFilter || "");
   const [detail, setDetail] = useState<Job | null>(null);
   const [detailID, setDetailID] = useState("");
   const detailSequence = useRef(0);
@@ -65,7 +71,7 @@ export default function Jobs({
     (j) =>
       (!host || j.host_id === host) &&
       (!kind || j.kind === kind) &&
-      (!state || j.state === state) &&
+      (!state || (state === "active" ? active(j) : j.state === state)) &&
       (!search ||
         [
           j.id,
@@ -103,6 +109,12 @@ export default function Jobs({
   useEffect(() => {
     if (initialJob) void load(initialJob);
   }, [initialJob]);
+  useEffect(() => {
+    if (!initialStateFilter) return;
+    setState(initialStateFilter);
+    setPage(1);
+    onInitialStateFilterConsumed?.();
+  }, [initialStateFilter, onInitialStateFilterConsumed]);
   function resetFilters() {
     setQuery("");
     setHost("");
@@ -176,8 +188,92 @@ export default function Jobs({
       setBusy(false);
     }
   }
+  function resultAction(job: Job) {
+    if (
+      job.kind === "backup" &&
+      job.state === "successful" &&
+      job.result_id &&
+      status.backups.some((backup) => backup.id === job.result_id)
+    )
+      return (
+        <button
+          className="text-button"
+          onClick={() => openBackup(job.result_id!)}
+        >
+          Sicherung öffnen
+        </button>
+      );
+    if (
+      job.kind === "restore" &&
+      job.result_id &&
+      openPlan &&
+      status.plans.some((plan) => plan.id === job.result_id)
+    )
+      return (
+        <>
+          {job.error && (
+            <span className="warning job-error" title={job.error}>
+              {job.error}
+            </span>
+          )}
+          <button
+            className="text-button"
+            onClick={() => openPlan?.(job.result_id!)}
+          >
+            Wiederherstellungsplan prüfen
+          </button>
+        </>
+      );
+    return job.error ? (
+      <span className="warning job-error" title={job.error}>
+        {job.error}
+      </span>
+    ) : job.state === "successful" ? (
+      "Abgeschlossen"
+    ) : job.state === "running" ? (
+      "Versuch " + job.attempts
+    ) : (
+      "—"
+    );
+  }
   return (
     <>
+      {!limit && (
+        <div
+          className="jobs-status-filters"
+          role="group"
+          aria-label="Aufträge nach Status filtern"
+        >
+          {[
+            ["", "Alle", status.jobs.length],
+            ["active", "Aktiv", status.jobs.filter(active).length],
+            [
+              "successful",
+              "Erfolgreich",
+              status.jobs.filter((job) => job.state === "successful").length,
+            ],
+            [
+              "failed",
+              "Fehlgeschlagen",
+              status.jobs.filter((job) => job.state === "failed").length,
+            ],
+          ].map(([value, label, count]) => (
+            <button
+              key={value}
+              className={
+                "jobs-status-chip" + (state === value ? " is-active" : "")
+              }
+              aria-pressed={state === value}
+              onClick={() => {
+                setState(String(value));
+                setPage(1);
+              }}
+            >
+              {label} <span>{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {!limit && status.jobs.length > 0 && (
         <div className="collection-toolbar jobs-toolbar">
           <Field label="Aufträge suchen">
@@ -242,6 +338,7 @@ export default function Jobs({
             >
               <option value="">Alle Status</option>
               {[
+                ["active", "Aktive Aufträge"],
                 ["running", "Laufende Aufträge"],
                 ["queued", "Aufträge in Warteschlange"],
                 ["successful", "Erfolgreiche Aufträge"],
@@ -256,6 +353,12 @@ export default function Jobs({
             </select>
           </Field>
         </div>
+      )}
+      {!limit && (
+        <p className="collection-count jobs-filter-count" role="status">
+          {filtered.length} von {status.jobs.length}{" "}
+          {status.jobs.length === 1 ? "Auftrag" : "Aufträgen"}
+        </p>
       )}
       {!limit && hasFilters && (
         <button className="text-button collection-reset" onClick={resetFilters}>
@@ -277,7 +380,36 @@ export default function Jobs({
           </span>
         </div>
       )}
-      {jobs.length ? (
+      {jobs.length && limit ? (
+        <ul className="jobs-recent-list" aria-label="Letzte Aufträge">
+          {jobs.map((job) => (
+            <li className="jobs-recent-item" key={job.id}>
+              <div className="jobs-recent-main">
+                <strong>{labels[job.kind] || job.kind}</strong>
+                <span className="secondary-line">
+                  {hostNames.get(job.host_id) || job.host_id}
+                </span>
+              </div>
+              <State
+                value={job.state}
+                label={job.state === "successful" ? "Erfolgreich" : undefined}
+              />
+              <div className="jobs-recent-meta">
+                <span>{date(job.created_at)}</span>
+                {jobDuration(job) && <span>{jobDuration(job)}</span>}
+              </div>
+              <div className="jobs-result-actions">{resultAction(job)}</div>
+              <button
+                className="text-button"
+                aria-label={`Auftrag ${job.id} ansehen`}
+                onClick={() => load(job.id)}
+              >
+                Details
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : jobs.length ? (
         <div>
           <div className="table-scroll">
             <table className="jobs-table" aria-label="Auftragsverlauf">
@@ -314,19 +446,7 @@ export default function Jobs({
                     </td>
                     <td className="date">{date(j.created_at)}</td>
                     <td className="date">{jobDuration(j) || "—"}</td>
-                    <td>
-                      {j.error ? (
-                        <span className="warning job-error" title={j.error}>
-                          {j.error}
-                        </span>
-                      ) : j.state === "successful" ? (
-                        "Abgeschlossen"
-                      ) : j.state === "running" ? (
-                        "Versuch " + j.attempts
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+                    <td>{resultAction(j)}</td>
                     <td>
                       <button
                         className="text-button"
@@ -356,6 +476,11 @@ export default function Jobs({
       ) : !status.jobs.length ? (
         <Empty title="Noch keine Aufträge">
           Gestartete Vorgänge erscheinen hier mit ihrem Ergebnis.
+          {onOpenHosts && !limit && (
+            <button className="secondary" onClick={onOpenHosts}>
+              Zu den Hosts
+            </button>
+          )}
         </Empty>
       ) : !limit && !filtered.length ? (
         <Empty title="Keine passenden Aufträge">
@@ -390,7 +515,14 @@ export default function Jobs({
                   <div>
                     <dt>Status</dt>
                     <dd>
-                      <State value={selected.state} />
+                      <State
+                        value={selected.state}
+                        label={
+                          selected.state === "successful"
+                            ? "Erfolgreich"
+                            : undefined
+                        }
+                      />
                     </dd>
                   </div>
                   <div>

@@ -587,6 +587,35 @@ function ManualHostForm({
     </Dialog>
   );
 }
+export type HostStateFilter = "" | "active" | "saved" | "attention" | "paused";
+
+function BackupAge({ createdAt }: { createdAt?: string }) {
+  if (!createdAt) return <>—</>;
+  const seconds = Math.max(
+    0,
+    (Date.now() - new Date(createdAt).getTime()) / 1000,
+  );
+  const formatter = new Intl.RelativeTimeFormat("de", { numeric: "always" });
+  const relative =
+    seconds < 60
+      ? "gerade eben"
+      : seconds < 3600
+        ? formatter.format(-Math.floor(seconds / 60), "minute")
+        : seconds < 86400
+          ? formatter.format(-Math.floor(seconds / 3600), "hour")
+          : formatter.format(-Math.floor(seconds / 86400), "day");
+  const exact = date(createdAt);
+  return (
+    <time
+      dateTime={createdAt}
+      title={exact}
+      aria-label={`${relative} · ${exact}`}
+    >
+      {relative}
+    </time>
+  );
+}
+
 export default function Hosts({
   status,
   notify,
@@ -599,6 +628,8 @@ export default function Hosts({
   onRestore,
   initialHost = "",
   onInitialHostConsumed,
+  initialStateFilter = "",
+  onInitialStateFilterConsumed,
 }: {
   status: Status;
   notify: Notify;
@@ -611,16 +642,29 @@ export default function Hosts({
   onRestore: (id: string) => void;
   initialHost?: string;
   onInitialHostConsumed?: () => void;
+  initialStateFilter?: HostStateFilter;
+  onInitialStateFilterConsumed?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
-  const [stateFilter, setStateFilter] = useState("");
+  const [stateFilter, setStateFilter] =
+    useState<HostStateFilter>(initialStateFilter);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(initialHost);
   useEffect(() => {
     if (initialHost) onInitialHostConsumed?.();
   }, [initialHost, onInitialHostConsumed]);
   const [tab, setTab] = useState("Übersicht");
+  useEffect(() => {
+    if (!initialStateFilter) return;
+    setStateFilter(initialStateFilter);
+    setQuery("");
+    setGroup("");
+    setPage(1);
+    setSelected("");
+    setTab("Übersicht");
+    onInitialStateFilterConsumed?.();
+  }, [initialStateFilter, onInitialStateFilterConsumed]);
   const [form, setForm] = useState<Host | "new" | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -636,14 +680,18 @@ export default function Hosts({
       (!stateFilter ||
         (stateFilter === "paused"
           ? !h.enabled
-          : stateFilter === "attention"
-            ? h.enabled && hostState(h, status).tone !== "success"
-            : h.enabled && hostState(h, status).tone === "success")),
+          : stateFilter === "active"
+            ? h.enabled
+            : stateFilter === "attention"
+              ? h.enabled && hostState(h, status).tone !== "success"
+              : h.enabled && hostState(h, status).tone === "success")),
   );
   const currentPage = Math.min(page, Math.max(1, Math.ceil(hosts.length / 25)));
   const saved = status.hosts.filter(
     (h) => hostState(h, status).tone === "success",
   ).length;
+  const paused = status.hosts.filter((h) => !h.enabled).length;
+  const attention = status.hosts.length - paused - saved;
   async function action(path: string, message: string) {
     try {
       await api(path, "POST", {});
@@ -734,14 +782,18 @@ export default function Hosts({
             openJob={openJob}
           />
           {tab === "Übersicht" && (
-            <div className="detail-section">
+            <div className="detail-section host-overview-detail">
               <dl className="properties">
                 <dt>Sicherungsstatus</dt>
                 <dd className={hostState(host, status).tone}>
                   {hostState(host, status).text}
                 </dd>
                 <dt>Letzte Sicherung</dt>
-                <dd>{date(hostState(host, status).backup?.created_at)}</dd>
+                <dd>
+                  <BackupAge
+                    createdAt={hostState(host, status).backup?.created_at}
+                  />
+                </dd>
                 <dt>Proxmox</dt>
                 <dd>{host.inventory?.pve_version || "Noch nicht geprüft"}</dd>
                 <dt>Cluster</dt>
@@ -778,13 +830,18 @@ export default function Hosts({
                   {host.probe_error}
                 </p>
               )}
-              <BackupReadiness
-                backup={
-                  status.backups
-                    .filter((b) => b.host_id === host.id)
-                    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
-                }
-              />
+              <details className="host-readiness-details" key={host.id}>
+                <summary>Quellnachweise anzeigen</summary>
+                <BackupReadiness
+                  backup={
+                    status.backups
+                      .filter((b) => b.host_id === host.id)
+                      .sort((a, b) =>
+                        b.created_at.localeCompare(a.created_at),
+                      )[0]
+                  }
+                />
+              </details>
               <div className="section-rule" />
               <h3>Wiederherstellung vorbereiten</h3>
               <p className="muted">
@@ -904,6 +961,34 @@ export default function Hosts({
               )
             }
           />
+          <div
+            className="host-filter-chips"
+            role="group"
+            aria-label="Host-Schnellfilter"
+          >
+            {[
+              { value: "", label: "Alle", count: status.hosts.length },
+              {
+                value: "attention",
+                label: "Handlungsbedarf",
+                count: attention,
+              },
+              { value: "paused", label: "Pausiert", count: paused },
+            ].map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`host-filter-chip${stateFilter === filter.value ? " selected" : ""}`}
+                aria-pressed={stateFilter === filter.value}
+                onClick={() => {
+                  setStateFilter(filter.value as HostStateFilter);
+                  setPage(1);
+                }}
+              >
+                {filter.label} <span>{filter.count}</span>
+              </button>
+            ))}
+          </div>
           <div className="toolbar host-toolbar">
             <div className="search-field">
               <Search size={15} aria-hidden="true" />
@@ -935,11 +1020,12 @@ export default function Hosts({
               aria-label="Hoststatus filtern"
               value={stateFilter}
               onChange={(e) => {
-                setStateFilter(e.target.value);
+                setStateFilter(e.target.value as HostStateFilter);
                 setPage(1);
               }}
             >
               <option value="">Alle Status</option>
+              <option value="active">Aktive Hosts</option>
               <option value="attention">Handlungsbedarf</option>
               <option value="saved">Aktuell gesichert</option>
               <option value="paused">Pausiert</option>
@@ -978,7 +1064,8 @@ export default function Hosts({
                               {h.address}
                             </div>
                             <div className="secondary-line host-backup-mobile">
-                              Letzter Stand: {date(state.backup?.created_at)}
+                              Letzter Stand:{" "}
+                              <BackupAge createdAt={state.backup?.created_at} />
                             </div>
                           </td>
                           <td>
@@ -991,7 +1078,7 @@ export default function Hosts({
                             </span>
                           </td>
                           <td className="date">
-                            {date(state.backup?.created_at)}
+                            <BackupAge createdAt={state.backup?.created_at} />
                           </td>
                           <td>
                             <span className={"state " + state.tone}>

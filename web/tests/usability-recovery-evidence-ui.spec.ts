@@ -58,6 +58,9 @@ test("direct previous comparison uses the strictly older same-host stand and can
   await backupsPage(page);
   await page
     .getByRole("row", { name: /Node A.*newest1234/ })
+    .getByRole("button", { name: /^Aktionen für/ })
+    .click();
+  await page
     .getByRole("button", { name: "Mit vorherigem Stand vergleichen" })
     .click();
   const view = page.getByRole("region", { name: "Sicherungsvergleich" });
@@ -79,11 +82,28 @@ test("direct previous comparison uses the strictly older same-host stand and can
   ).toBeVisible();
   await page.getByRole("button", { name: "Zurück zu Sicherungen" }).click();
   await expect(page.getByRole("table", { name: "Sicherungen" })).toBeVisible();
+  await page
+    .getByRole("row", { name: /Node A.*older12345/ })
+    .getByRole("button", { name: /^Aktionen für/ })
+    .click();
   await expect(
-    page.getByRole("row", { name: /Node A.*older12345/ }),
-  ).toContainText("Kein älterer Stand dieses Hosts");
+    page.getByRole("button", {
+      name: "Mit vorherigem Stand vergleichen",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", {
+      name: "Mit vorherigem Stand vergleichen",
+      exact: true,
+    }),
+  ).toHaveAttribute("title", "Kein älterer Stand dieses Hosts");
+  await page.keyboard.press("Escape");
   await page
     .getByRole("row", { name: /Node A.*newest1234/ })
+    .getByRole("button", { name: /^Aktionen für/ })
+    .click();
+  await page
     .getByRole("button", { name: "Mit vorherigem Stand vergleichen" })
     .click();
   await view
@@ -95,6 +115,9 @@ test("direct previous comparison uses the strictly older same-host stand and can
   await backupsPage(page);
   await page
     .getByRole("row", { name: /Node A.*newest1234/ })
+    .getByRole("button", { name: /^Aktionen für/ })
+    .click();
+  await page
     .getByRole("button", { name: "Mit vorherigem Stand vergleichen" })
     .click();
   await view
@@ -290,6 +313,7 @@ test("overview and host detail load only their latest source, not historical row
     .getByRole("button", { name: "Hosts", exact: true })
     .click();
   await page.getByRole("button", { name: host.name, exact: true }).click();
+  await page.getByText("Quellnachweise anzeigen", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Quellnachweise" }),
   ).toContainText("history-119");

@@ -108,6 +108,10 @@ export default function App() {
   const [file, setFile] = useState("");
   const [selectedJob, setSelectedJob] = useState("");
   const [selectedHost, setSelectedHost] = useState("");
+  const [hostFilter, setHostFilter] = useState<
+    "" | "active" | "saved" | "attention" | "paused"
+  >("");
+  const [jobFilter, setJobFilter] = useState("");
   const [planRequest, setPlanRequest] = useState<{
     id: string;
     sequence: number;
@@ -391,6 +395,8 @@ export default function App() {
               <Hosts
                 {...common}
                 initialHost={selectedHost}
+                initialStateFilter={hostFilter}
+                onInitialStateFilterConsumed={() => setHostFilter("")}
                 onInitialHostConsumed={() => setSelectedHost("")}
                 canEdit={user.role === "admin"}
                 canOperate={user.role !== "reader"}
@@ -452,21 +458,25 @@ export default function App() {
                         label: "Aktive Hosts",
                         count: enabledHosts.length,
                         tone: "neutral",
+                        filter: "active" as const,
                       },
                       {
                         label: "Aktuell gesichert",
                         count: enabledHosts.length - overdue.length,
                         tone: "success",
+                        filter: "saved" as const,
                       },
                       {
                         label: "Handlungsbedarf",
                         count: overdue.length,
                         tone: overdue.length ? "warning" : "neutral",
+                        filter: "attention" as const,
                       },
                       {
                         label: "Aktive Aufträge",
                         count: active.length,
                         tone: active.length ? "active" : "neutral",
+                        filter: "jobs" as const,
                       },
                     ].map((metric) => (
                       <div
@@ -474,7 +484,23 @@ export default function App() {
                         key={metric.label}
                       >
                         <dt>{metric.label}</dt>
-                        <dd>{metric.count}</dd>
+                        <dd>
+                          <button
+                            className="overview-metric-link"
+                            aria-label={`${metric.label}: ${metric.count} anzeigen`}
+                            onClick={() => {
+                              if (metric.filter === "jobs") {
+                                setJobFilter("active");
+                                navigate("Aufträge");
+                              } else {
+                                setHostFilter(metric.filter);
+                                navigate("Hosts");
+                              }
+                            }}
+                          >
+                            {metric.count}
+                          </button>
+                        </dd>
                       </div>
                     ))}
                   </dl>
@@ -511,7 +537,7 @@ export default function App() {
                   {overdue.length ? (
                     <div className="table-scroll">
                       <table
-                        className="responsive-table"
+                        className="responsive-table overview-attention-table"
                         aria-label="Hosts mit Handlungsbedarf"
                       >
                         <thead>
@@ -574,7 +600,10 @@ export default function App() {
                   {overdue.length > 8 && (
                     <button
                       className="text-button"
-                      onClick={() => navigate("Hosts")}
+                      onClick={() => {
+                        setHostFilter("attention");
+                        navigate("Hosts");
+                      }}
                     >
                       Alle {overdue.length} Hosts mit Handlungsbedarf in der
                       Hostansicht prüfen
@@ -627,7 +656,6 @@ export default function App() {
               <>
                 <Heading
                   title="Aufträge"
-                  count={status.jobs.length}
                   description="Sicherungen, Hostprüfungen und Wiederherstellungen nachvollziehen."
                 />
                 <p className="hint">
@@ -644,6 +672,9 @@ export default function App() {
                 <Jobs
                   {...common}
                   initialJob={selectedJob}
+                  initialStateFilter={jobFilter}
+                  onInitialStateFilterConsumed={() => setJobFilter("")}
+                  onOpenHosts={() => navigate("Hosts")}
                   onJobClose={() => setSelectedJob("")}
                 />
               </>

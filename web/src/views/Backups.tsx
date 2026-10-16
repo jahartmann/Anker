@@ -11,7 +11,13 @@ import {
   Pagination,
   State,
 } from "../components/shared";
-import { File, Folder, Link, Search } from "lucide-react";
+import {
+  Download as DownloadIcon,
+  File,
+  Folder,
+  Link,
+  Search,
+} from "lucide-react";
 import FileNavigation, {
   useFileNavigation,
 } from "../components/files/FileNavigation";
@@ -62,6 +68,18 @@ export function BackupTable({
   const sorted = [...backups].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
   );
+  const newestByHost = useMemo(() => {
+    const newest = new Map<string, number>();
+    for (const backup of comparisonPool || backups) {
+      const createdAt = Date.parse(backup.created_at);
+      if (
+        Number.isFinite(createdAt) &&
+        createdAt > (newest.get(backup.host_id) ?? -Infinity)
+      )
+        newest.set(backup.host_id, createdAt);
+    }
+    return newest;
+  }, [comparisonPool, backups]);
   const previous = (backup: Backup) => {
     const selectedAt = Date.parse(backup.created_at);
     if (!Number.isFinite(selectedAt)) return undefined;
@@ -147,140 +165,145 @@ export function BackupTable({
           <tbody>
             {sorted
               .slice((currentPage - 1) * pageSize, currentPage * pageSize)
-              .map((b) => (
-                <tr key={b.id}>
-                  <td>
-                    <strong>{b.host_name}</strong>
-                    <div className="secondary-line">
-                      {preciseDate(b.created_at)} ·{" "}
-                      <code>{b.id.slice(0, 10)}</code>
-                      {b.pinned ? " · Geschützt" : ""}
-                      {references?.[b.host_id]?.backup_id === b.id
-                        ? " · Benannte Referenz (geschützt)"
-                        : ""}
-                      {b.archived ? " · Archiv" : ""}
-                    </div>
-                  </td>
-                  <td>
-                    <State value={b.status} />
-                    {b.verification_error && (
-                      <div className="secondary-line warning">
-                        Prüfung fehlgeschlagen
-                      </div>
-                    )}
-                    {b.warnings?.length > 0 && (
-                      <div className="secondary-line warning">
-                        {b.warnings.length} Hinweise
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {b.files} Einträge
-                    <div className="secondary-line">{bytes(b.size)}</div>
-                  </td>
-                  <td className="right">
-                    <div className="row-actions">
-                      {canDownload && (
-                        <Download
-                          path={"backups/" + b.id + "/download"}
-                          compact
-                          notify={notify}
-                        >
-                          Herunterladen
-                        </Download>
-                      )}
-                      <button
-                        className="text-button"
-                        onClick={() => openBackup(b.id)}
-                      >
-                        Dateien
-                      </button>
-                      {onComparePrevious && previous(b) && (
-                        <button
-                          className="text-button"
-                          onClick={() =>
-                            onComparePrevious(b.id, previous(b)!.id)
-                          }
-                        >
-                          Mit vorherigem Stand vergleichen
-                        </button>
-                      )}
-                      {onComparePrevious && !previous(b) && (
-                        <span className="secondary-line">
-                          Kein älterer Stand dieses Hosts
+              .map((b) => {
+                const older = previous(b);
+                const comparisonActions = [
+                  ...(onComparePrevious
+                    ? [
+                        {
+                          label: "Mit vorherigem Stand vergleichen",
+                          disabled: !older,
+                          title: older
+                            ? undefined
+                            : "Kein älterer Stand dieses Hosts",
+                          run: () => {
+                            if (older) onComparePrevious(b.id, older.id);
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(onCompare
+                    ? [
+                        {
+                          label: "Als Ausgangsstand",
+                          run: () => onCompare("from", b.id),
+                        },
+                        {
+                          label: "Als Vergleichsstand",
+                          run: () => onCompare("to", b.id),
+                        },
+                      ]
+                    : []),
+                ];
+                return (
+                  <tr key={b.id}>
+                    <td>
+                      <strong>{b.host_name}</strong>
+                      {newestByHost.get(b.host_id) ===
+                        Date.parse(b.created_at) && (
+                        <span className="backup-latest-badge">
+                          Neuester Stand
                         </span>
                       )}
-                      {onCompare && !canEdit && (
-                        <ActionMenu
-                          label={
-                            "Vergleich für " +
-                            b.host_name +
-                            " · " +
-                            date(b.created_at)
-                          }
-                          actions={[
-                            {
-                              label: "Als Ausgangsstand",
-                              run: () => onCompare("from", b.id),
-                            },
-                            {
-                              label: "Als Vergleichsstand",
-                              run: () => onCompare("to", b.id),
-                            },
-                          ]}
-                        />
+                      <div className="secondary-line">
+                        {preciseDate(b.created_at)} ·{" "}
+                        <code>{b.id.slice(0, 10)}</code>
+                        {b.pinned ? " · Geschützt" : ""}
+                        {references?.[b.host_id]?.backup_id === b.id
+                          ? " · Benannte Referenz (geschützt)"
+                          : ""}
+                        {b.archived ? " · Archiv" : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <State value={b.status} />
+                      {b.verification_error && (
+                        <div className="secondary-line warning">
+                          Prüfung fehlgeschlagen
+                        </div>
                       )}
-                      {canEdit && (
-                        <ActionMenu
-                          label={
-                            "Aktionen für " +
-                            b.host_name +
-                            " · " +
-                            date(b.created_at)
-                          }
-                          disabled={!!pending}
-                          actions={[
-                            {
-                              label: "Wiederherstellen",
-                              run: () => onRestore(b.id),
-                            },
-                            {
-                              label: "Prüfsummen prüfen",
-                              run: () => act(b, "verify"),
-                            },
-                            {
-                              label: b.pinned
-                                ? "Schutz aufheben"
-                                : "Stand schützen",
-                              run: () => act(b, "pin"),
-                            },
-                            ...(onCompare
-                              ? [
-                                  {
-                                    label: "Als Ausgangsstand",
-                                    run: () => onCompare("from", b.id),
-                                  },
-                                  {
-                                    label: "Als Vergleichsstand",
-                                    run: () => onCompare("to", b.id),
-                                  },
-                                ]
-                              : []),
-                            ...(!b.archived
-                              ? [
-                                  {
-                                    label: "Archivieren",
-                                    run: () => act(b, "archive"),
-                                  },
-                                ]
-                              : []),
-                          ]}
-                        />
+                      {b.warnings?.length > 0 && (
+                        <div className="secondary-line warning">
+                          {b.warnings.length} Hinweise
+                        </div>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      {b.files} Einträge
+                      <div className="secondary-line">{bytes(b.size)}</div>
+                    </td>
+                    <td className="right">
+                      <div className="row-actions backup-actions">
+                        <button
+                          className="backup-files-button"
+                          onClick={() => openBackup(b.id)}
+                        >
+                          Dateien
+                        </button>
+                        {canDownload && (
+                          <span className="backup-download-action">
+                            <Download
+                              path={"backups/" + b.id + "/download"}
+                              compact
+                              notify={notify}
+                            >
+                              <DownloadIcon size={17} aria-hidden="true" />
+                              <span className="sr-only">Herunterladen</span>
+                            </Download>
+                          </span>
+                        )}
+                        {(onCompare || onComparePrevious) && !canEdit && (
+                          <ActionMenu
+                            label={
+                              "Vergleich für " +
+                              b.host_name +
+                              " · " +
+                              date(b.created_at)
+                            }
+                            actions={comparisonActions}
+                          />
+                        )}
+                        {canEdit && (
+                          <ActionMenu
+                            label={
+                              "Aktionen für " +
+                              b.host_name +
+                              " · " +
+                              date(b.created_at)
+                            }
+                            disabled={!!pending}
+                            actions={[
+                              {
+                                label: "Wiederherstellen",
+                                run: () => onRestore(b.id),
+                              },
+                              {
+                                label: "Prüfsummen prüfen",
+                                run: () => act(b, "verify"),
+                              },
+                              {
+                                label: b.pinned
+                                  ? "Schutz aufheben"
+                                  : "Stand schützen",
+                                run: () => act(b, "pin"),
+                              },
+                              ...comparisonActions,
+                              ...(!b.archived
+                                ? [
+                                    {
+                                      label: "Archivieren",
+                                      run: () => act(b, "archive"),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
