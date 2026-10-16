@@ -1,12 +1,13 @@
 # Änderungen
 
-## 0.2.12
+## 0.2.13
 
 - Übersicht mit anklickbaren Kennzahlen und passenden Filtern, kompakterem Handlungsbedarf und kurzer Auftragsaktivität statt einer zweiten Verlaufstabelle.
 - Hosts mit gezählten Schnellfiltern, relativen Sicherungszeiten samt exaktem Datum und einklappbaren Quellnachweisen im Detail.
 - Sicherungen mit hervorgehobenem Dateizugriff, zugänglichem Downloadsymbol, gebündelten Vergleichsaktionen und Markierung des neuesten Stands pro Host über Filter und Seiten hinweg.
 - Aufträge mit einheitlicher Erfolgsanzeige, direkten Ergebnislinks, korrekten Trefferzahlen und Status-Schnellfiltern. Restorefehler bleiben neben Planlinks sichtbar; der kompakte Verlauf bleibt auch schmal bedienbar.
 - Größere Aktionsflächen und Menü-Tastaturbedienung mit deaktivierten Einträgen. Reale Proxmox-, Hardware-, Cluster-, Reboot- und Stromausfallabnahmen bleiben offen.
+- Terminal-Integrationstest prüft den erhaltenen Wiederherstellungsentwurf nach tatsächlicher Neuzeichnung statt unveränderte Bildschirmzeilen erneut im Ausgabestrom zu erwarten. Kandidat v0.2.12 wurde nicht veröffentlicht.
 
 ## 0.2.11
 

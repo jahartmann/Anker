@@ -195,6 +195,8 @@ with tempfile.TemporaryDirectory(prefix='anker-tui-pty-') as directory:
         choice = 'etc/sysctl.d/99-anker.conf=backup'
         send(choice.encode())
         send(b'\x12')  # Ctrl+R refreshes read evidence while preserving the draft.
+        fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 31, 101, 0, 0))
+        os.kill(child, signal.SIGWINCH)
         wait_for('Dateientscheidungen')
         assert choice in visible(recent), 'Fresh target capture lost explicit backup choice'
         send(b'\x13')
