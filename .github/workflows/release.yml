@@ -43,6 +43,54 @@ jobs:
           ANKER_VERSION: ${{ github.ref_name }}
           ANKER_SIGNING_KEY: ${{ secrets.ANKER_SIGNING_KEY }}
         run: scripts/build-release.sh "$ANKER_VERSION"
+      - name: Verify signed packages and start release binary
+        env:
+          ANKER_VERSION: ${{ github.ref_name }}
+        run: |
+          cd dist
+          ../scripts/verify-release.sh ../public.pem anker-linux-amd64.tar.gz
+          ../scripts/verify-release.sh ../public.pem anker-linux-arm64.tar.gz
+          python3 - <<'PY'
+          import hashlib, http.cookiejar, json, os, pathlib, subprocess, tempfile, time, urllib.request
+          manifest = json.loads(pathlib.Path('release.json').read_text())
+          assert manifest['version'] == os.environ['ANKER_VERSION']
+          assert len(manifest['assets']) == 4
+          for asset in manifest['assets']:
+              path = pathlib.Path(asset['name'])
+              assert path.name == str(path), 'Unexpected artifact path'
+              assert path.stat().st_size == asset['size']
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == asset['sha256']
+          binary = pathlib.Path('anker-linux-amd64').resolve()
+          assert subprocess.check_output([str(binary), 'version'], text=True).strip() == 'Anker ' + manifest['version']
+          with tempfile.TemporaryDirectory(prefix='anker-release-smoke-') as directory:
+              process = subprocess.Popen([str(binary), '--data', directory, '--listen', '127.0.0.1:8092', 'demo'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+                  for attempt in range(100):
+                      assert process.poll() is None, 'Release binary exited during startup'
+                      try:
+                          with opener.open('http://127.0.0.1:8092/', timeout=1) as response:
+                              assert response.status == 200
+                          break
+                      except OSError:
+                          time.sleep(0.2)
+                  else:
+                      raise AssertionError('Release did not become ready')
+                  login = urllib.request.Request('http://127.0.0.1:8092/api/login', data=json.dumps({'name': 'demo', 'password': 'anker-demo-2026'}).encode(), headers={'Content-Type': 'application/json', 'X-Anker-Request': '1'})
+                  with opener.open(login, timeout=5) as response:
+                      assert response.status == 200
+                  with opener.open('http://127.0.0.1:8092/api/status', timeout=5) as response:
+                      status = json.load(response)
+                  assert status['demo'] is True and len(status['hosts']) == 6
+                  print('Signed release artifacts verified; exact Linux release binary starts and serves authenticated demo data.')
+              finally:
+                  process.terminate()
+                  try:
+                      process.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      process.kill()
+                      process.wait()
+          PY
       - name: Create draft release for review
         env:
           GH_TOKEN: ${{ github.token }}

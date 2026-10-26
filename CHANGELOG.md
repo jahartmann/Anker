@@ -1,6 +1,6 @@
 # Änderungen
 
-## Unveröffentlicht
+## v0.2.15 – 26. Oktober 2026
 
 - Bestätigungen im Wiederherstellungsplan bleiben bei identischen Hintergrundmeldungen bedienbar. Plan- und Statusantworten werden mit gleicher Inventarprojektion und sortierten Schlüsseln verglichen; abweichende Zustände erfordern weiterhin eine erneute Abfrage. Nachweise übernehmen den Eingabetext direkt im Ereignis. Der Browsertest prüft den gespeicherten Zustand jeder Aufgabe und nutzt für Wiederholungen getrennte Testhostnamen.
 

@@ -8,6 +8,8 @@ Go wurde auf 1.27.3 und Vite auf 8.3.5 aktualisiert. Der npm-Audit meldet keine 
 
 Echte Proxmox-Übernahmen, Linux-/systemd-Betrieb dieses Builds, Neustarts auf realer Hardware und die neun Recovery-Laborszenarien bleiben offen. Schreibtests ausschließlich an entbehrlichen isolierten Testhosts durchführen. Die nachfolgende Tabelle enthält auch frühere komponentenbezogene Nachweise; sie ist keine erneute Gesamtabnahme dieser Systeme.
 
+Der nachfolgende GitHub-Lauf für Commit `864e043` bestand am 26. Oktober 2026 vollständig: [Checks](https://github.com/jahartmann/Anker/actions/runs/40301825706). Er umfasst 313 Browserfälle, Go Race/Vet und Python sowie echte systemd-Installation/Rücksetzung, Terminaleinrichtung, Hostanbindung und ext4-Erweiterung auf einem isolierten Ubuntu-Runner. Ein sporadischer Verlust des Bestätigungsklicks bei identischen Statusmeldungen wurde zuvor reproduziert und behoben; die Wiederherstellungsgruppe bestand anschließend dreimal vollständig und die gesamte lokale Browsersuite erneut. Dieser Linux-Nachweis ergänzt die ursprüngliche macOS-Prüfung, umfasst aber weiterhin keine echte Proxmox-Recovery.
+
 ## Funktionsumfang und frühere Nachweise
 
 | Bereich | Implementiert | Lokal geprüft | Reales Proxmox-Labor |
