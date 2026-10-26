@@ -23,6 +23,24 @@ export interface RecoveryOperation {
   reconcileRefused?: boolean;
   interruptedJournal?: string;
 }
+// Status omits inventory details and is encoded through a map, whose key order
+// differs from individual plan responses. Compare the same public projection.
+function planStatusSignature(plan?: Plan) {
+  if (!plan) return "";
+  return JSON.stringify(
+    {
+      ...plan,
+      source: { ...plan.source, details: undefined, query_states: undefined },
+      target: { ...plan.target, details: undefined, query_states: undefined },
+    },
+    (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value).sort().map((key) => [key, value[key]]),
+          )
+        : value,
+  );
+}
 export default function RecoveryPlan({
   plan,
   status,
@@ -51,14 +69,19 @@ export default function RecoveryPlan({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { pendingJob } = operation;
-  const latestSignature = JSON.stringify(
+  const latestSignature = planStatusSignature(
     status.plans.find((p) => p.id === plan.id),
   );
   const [acknowledgedStatus, setAcknowledgedStatus] = useState(latestSignature);
   const trackedJob = pendingJob && status.jobs.find((j) => j.id === pendingJob);
   const finishedJob =
     !!trackedJob && !["queued", "running"].includes(trackedJob.state);
-  const refreshNeeded = acknowledgedStatus !== latestSignature || finishedJob;
+  // A mutation response already contains the saved plan. An identical status
+  // poll does not require a second read or briefly disable the next task.
+  const refreshNeeded =
+    (acknowledgedStatus !== latestSignature &&
+      planStatusSignature(plan) !== latestSignature) ||
+    finishedJob;
   const [refreshError, setRefreshError] = useState("");
   const journalState = plan.result?.state;
   const journalConflict =

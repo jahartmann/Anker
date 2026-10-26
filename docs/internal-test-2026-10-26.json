@@ -146,5 +146,23 @@
     "https://pkg.go.dev/vuln/GO-2026-5932",
     "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
     "https://github.com/advisories/GHSA-rq7h-c2jc-7f22"
-  ]
+  ],
+  "follow_up": {
+    "date": "2026-10-26",
+    "initial_github_commit": "6d69c13f4772a0f9537a464e4020ff6b80521c8e",
+    "initial_github_run": "https://github.com/jahartmann/Anker/actions/runs/40295973676",
+    "initial_github_result": "Go race/vet, Python and build passed; browser 312 passed and 1 failed; systemd not reached",
+    "correction": "Canonical comparison of individual plan and compact status prevents redundant refresh from disabling a task button between pointerdown and pointerup. Input value captured synchronously; safety gates retained. Test waits for saved task rendering and exact POST response, repeated test targets have unique names.",
+    "local_validation": {
+      "suite": "usability-recovery-wizard.spec.ts, demo, repeat-each=3",
+      "passed": 57,
+      "failed": 0
+    },
+    "files": {
+      "web/src/components/recovery/RecoveryPlan.tsx": "0bff70fdff9b7b369573b4744692e5a373323730cab45129d2da6071c9eb248b",
+      "web/src/components/recovery/RecoveryChecks.tsx": "77a34a80e2b97bb123ad6f63ac39c4ce9ed287258894dc7fdb23ce1896ff8deb",
+      "web/tests/usability-recovery-wizard.spec.ts": "91ed8de02a5e1373b6b1cd33bc3ad973ed3570199f55f0a2a803737642b71564"
+    },
+    "note": "Original source fingerprint and Linux binary hashes above describe the original local candidate. This follow-up records subsequent runtime/test corrections; consult the final GitHub commit checks for Linux acceptance."
+  }
 }

@@ -237,12 +237,15 @@ export default function RecoveryChecks({
                           disabled={!allowed}
                           maxLength={4096}
                           value={value}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            // Capture the input before React restores a controlled
+                            // field during a concurrent plan/status update.
+                            const nextValue = e.currentTarget.value;
                             setEvidence((old) => ({
                               ...old,
-                              [task.id]: e.target.value,
-                            }))
-                          }
+                              [task.id]: nextValue,
+                            }));
+                          }}
                         />
                       </Field>
                       <button

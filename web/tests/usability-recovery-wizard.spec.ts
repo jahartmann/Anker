@@ -298,6 +298,7 @@ test("all four situations save explicit decisions through real demo endpoints", 
 test("administrator connects a new demo target and returns without storing credentials", async ({
   page,
 }) => {
+  const targetName = `recovery-draft-target-${test.info().repeatEachIndex}`;
   const base = await start(page);
   await page
     .getByRole("button", { name: "Neues Ziel anbinden", exact: true })
@@ -311,7 +312,7 @@ test("administrator connects a new demo target and returns without storing crede
     .click();
   await dialog
     .getByLabel("Hostname", { exact: true })
-    .fill("recovery-draft-target");
+    .fill(targetName);
   await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.240");
   await dialog
     .getByRole("button", { name: "Host speichern", exact: true })
@@ -320,9 +321,9 @@ test("administrator connects a new demo target and returns without storing crede
   const target = page.getByLabel("Zielhost", { exact: true });
   await expect(target).toHaveValue(base.hosts[0].id);
   await expect(
-    target.getByRole("option", { name: "recovery-draft-target", exact: true }),
+    target.getByRole("option", { name: targetName, exact: true }),
   ).toHaveCount(1);
-  await target.selectOption({ label: "recovery-draft-target" });
+  await target.selectOption({ label: targetName });
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await page
     .getByLabel("Wiederherstellungsdateien durchsuchen")
@@ -599,25 +600,36 @@ test("real demo task confirmations remain user attestations including reboot", a
     "Erreichbarkeit prüfen",
     "Neustart prüfen",
   ]) {
-    const response = page.waitForResponse((r) =>
-      r.url().includes(`/api/plans/${plan.id}/checks/`),
-    );
-    await page
-      .getByLabel(`Nachweis für ${title}`, { exact: true })
-      .fill(`${title}: an lokaler Demo geprüft`);
-    await page
-      .getByRole("button", {
-        name: `Schritt bestätigen: ${title}`,
-        exact: true,
-      })
-      .click();
-    const confirmed = await response;
+    const task = plan.tasks.find((t: { title: string }) => t.title === title);
+    expect(task).toBeDefined();
+    const evidence = page.getByLabel(`Nachweis für ${title}`, { exact: true });
+    await expect(evidence).toBeEnabled();
+    await evidence.fill(`${title}: an lokaler Demo geprüft`);
+    const [confirmed] = await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().endsWith(`/api/plans/${plan.id}/checks/${task.id}`) &&
+          r.request().method() === "POST",
+      ),
+      page
+        .getByRole("button", {
+          name: `Schritt bestätigen: ${title}`,
+          exact: true,
+        })
+        .click({ timeout: 5000 }),
+    ]);
     expect(confirmed.ok()).toBe(true);
     const body = await confirmed.json();
     expect(body.result?.reboot_verified || false).toBe(false);
     expect(Object.keys(confirmed.request().postDataJSON())).toEqual([
       "evidence",
     ]);
+    expect(body.tasks.find((t: { id: string }) => t.id === task.id).state).toBe(
+      "user_confirmed",
+    );
+    // The HTTP response precedes React's state commit. Wait for the saved
+    // task to render before starting its dependent task on slower runners.
+    await expect(evidence).toHaveCount(0);
   }
   const saved = await (await page.request.get(`/api/plans/${plan.id}`)).json();
   expect(

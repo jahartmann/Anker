@@ -2,6 +2,8 @@
 
 ## Unveröffentlicht
 
+- Bestätigungen im Wiederherstellungsplan bleiben bei identischen Hintergrundmeldungen bedienbar. Plan- und Statusantworten werden mit gleicher Inventarprojektion und sortierten Schlüsseln verglichen; abweichende Zustände erfordern weiterhin eine erneute Abfrage. Nachweise übernehmen den Eingabetext direkt im Ereignis. Der Browsertest prüft den gespeicherten Zustand jeder Aufgabe und nutzt für Wiederholungen getrennte Testhostnamen.
+
 - Interner Testkandidat `0.2.0-internal.20261026`: vollständige lokale Go-/Browser-/Python-/Terminalprüfung, Linux-Crossbuilds und dokumentierte Laborgrenzen. Go auf 1.27.3 und Vite fest auf 8.3.5 aktualisiert. Browser-Integration nutzt einen eigenen Demo-Datenbestand; historische Vergleiche prüfen weiterhin das exakte Quellenpaar.
 
 - Dezente Infrastruktur-Details im bestehenden hellen Design: eigene Rack-Symbole, technische Akzente an Cards und Statusanzeigen sowie einheitliche Zahlendarstellung. Hostseiten zeigen das konfigurierte SSH-Ziel für Sicherungen, auch bei IPv6-Adressen. Navigation, Card-Raster und Bedienabläufe bleiben erhalten.
