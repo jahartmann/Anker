@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,7 @@ const StateDir = "/var/lib/anker-updater"
 const BinaryPath = "/usr/local/bin/anker"
 const HelperPath = "/usr/local/libexec/anker-updater"
 const DataDir = "/srv/anker"
+
 // Keep the coordinator lock inside the helper's writable StateDirectory so
 // existing hardened service units can inspect it during startup as well.
 const LocalInstallLock = StateDir + "/local-install.lock"
@@ -144,10 +146,13 @@ func VerifyManifest(raw, sig []byte, key, tag, osName, arch string) (Manifest, A
 }
 
 type GitHub struct {
-	Config Config
-	Token  string
-	HTTP   *http.Client
-	base   string
+	Config  Config
+	Token   string
+	HTTP    *http.Client
+	base    string
+	rateMu  sync.Mutex
+	retryAt time.Time
+	rateErr error
 }
 
 func NewGitHub(c Config, token string) *GitHub {
@@ -172,6 +177,13 @@ func (g *GitHub) fetch(ctx context.Context, path, accept string, max int64) ([]b
 	if !repoPattern.MatchString(g.Config.Repository) || strings.Contains(g.Config.Repository, "..") {
 		return nil, errors.New("GitHub-Repository muss owner/repo sein")
 	}
+	g.rateMu.Lock()
+	if time.Now().Before(g.retryAt) {
+		err := g.rateErr
+		g.rateMu.Unlock()
+		return nil, err
+	}
+	g.rateMu.Unlock()
 	req, err := http.NewRequestWithContext(ctx, "GET", g.base+"/repos/"+g.Config.Repository+path, nil)
 	if err != nil {
 		return nil, err
@@ -188,7 +200,13 @@ func (g *GitHub) fetch(ctx context.Context, path, accept string, max int64) ([]b
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub antwortet mit HTTP %d; Repository, Zugriff und API-Limit prüfen", resp.StatusCode)
+		err, retryAt := githubResponseError(resp, time.Now())
+		if !retryAt.IsZero() {
+			g.rateMu.Lock()
+			g.retryAt, g.rateErr = retryAt, err
+			g.rateMu.Unlock()
+		}
+		return nil, err
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
@@ -199,6 +217,54 @@ func (g *GitHub) fetch(ctx context.Context, path, accept string, max int64) ([]b
 	}
 	return b, nil
 }
+
+// GitHub uses 403 for both exhausted request budgets and access restrictions.
+// Read only bounded error metadata and never forward its diagnostic text.
+func githubResponseError(resp *http.Response, now time.Time) (error, time.Time) {
+	var retryAt time.Time
+	limited := resp.StatusCode == http.StatusTooManyRequests
+	if resp.StatusCode == http.StatusForbidden || limited {
+		limited = limited || resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != ""
+		var diagnostic struct {
+			Message string `json:"message"`
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if json.Unmarshal(body, &diagnostic) == nil {
+			message := strings.ToLower(diagnostic.Message)
+			limited = limited || strings.Contains(message, "rate limit") || strings.Contains(message, "abuse detection")
+		}
+		if limited {
+			if seconds, err := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64); err == nil && seconds > 0 && seconds <= 86400 {
+				retryAt = now.Add(time.Duration(seconds) * time.Second)
+			} else if date, err := http.ParseTime(resp.Header.Get("Retry-After")); err == nil && date.After(now) {
+				retryAt = date
+			}
+			if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+				if seconds, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil && seconds > 0 {
+					reset := time.Unix(seconds, 0)
+					if reset.After(now) && reset.After(retryAt) {
+						retryAt = reset
+					}
+				}
+			}
+			if retryAt.IsZero() {
+				retryAt = now.Add(time.Minute)
+			}
+			return fmt.Errorf("GitHub-Abfragelimit erreicht (HTTP %d). Bitte ab %s erneut prüfen", resp.StatusCode, retryAt.UTC().Format("02.01.2006, 15:04:05 UTC")), retryAt
+		}
+	}
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return errors.New("GitHub-Zugangsdaten ungültig oder abgelaufen (HTTP 401). Den hinterlegten GitHub-Token prüfen"), time.Time{}
+	case http.StatusForbidden:
+		return errors.New("GitHub verweigert den Zugriff (HTTP 403). Repository-Berechtigung und gegebenenfalls den hinterlegten GitHub-Token prüfen"), time.Time{}
+	case http.StatusNotFound:
+		return errors.New("GitHub-Repository oder Release nicht gefunden (HTTP 404). Updatequelle, Veröffentlichung und gegebenenfalls den hinterlegten GitHub-Token prüfen"), time.Time{}
+	default:
+		return fmt.Errorf("GitHub-Anfrage fehlgeschlagen (HTTP %d)", resp.StatusCode), time.Time{}
+	}
+}
+
 func (g *GitHub) Check(ctx context.Context) (Release, error) {
 	var result Release
 	b, err := g.fetch(ctx, "/releases/latest", "application/vnd.github+json", 2<<20)

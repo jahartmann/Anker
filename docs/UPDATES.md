@@ -145,6 +145,22 @@ Die persistente Sperrdatei `/etc/anker/update-maintenance` und ein root-eigenes 
 
 Die Wartungssperre wird erst entfernt und das Verzeichnis synchronisiert, wenn der laufende Dienst die Freigabe bestätigt hat. Ist dessen Socket beim Booten noch nicht bereit, bleibt der Marker für den nächsten Versuch erhalten.
 
+## GitHub meldet HTTP 403
+
+HTTP 403 kann ein erreichtes API-Abfragelimit bedeuten. Bei öffentlichen Releases teilen sich anonyme Anfragen hinter derselben öffentlichen IP das GitHub-Limit. Häufiges erneutes Prüfen hilft während der Sperre nicht. Die Fehlererkennung nach v0.2.15 unterscheidet Limit und Zugriffsfehler, zeigt die nächste Prüfzeit ausdrücklich in UTC und wartet vor weiteren Anfragen. Bestehende v0.2.15- und ältere Installationen zeigen noch die allgemeinere Meldung zu Repository, Zugriff und API-Limit.
+
+Ohne Zugangsdaten auf dem Anker-Server die Antwortheader prüfen:
+
+```sh
+curl -sS -D - -o /dev/null https://api.github.com/repos/jahartmann/Anker/releases/latest
+```
+
+`x-ratelimit-remaining: 0` zusammen mit HTTP 403/429 bedeutet: bis `x-ratelimit-reset` warten. Der Reset ist ein Unix-Zeitstempel; unter Linux mit `date -d @ZEITSTEMPEL` in die Serverzeitzone umrechnen. `retry-after` gibt eine zusätzliche Wartezeit in Sekunden an. Danach einmal **Nach Updates suchen** beziehungsweise `sudo anker update check` ausführen. Die URL muss bei einer eigenen Quelle angepasst werden.
+
+Ohne Limithinweis die konfigurierte Quelle und bei privatem Repository den hinterlegten Lese-Token prüfen. HTTP 401 weist auf ungültige oder abgelaufene Zugangsdaten hin; HTTP 404 kann auch fehlenden privaten Zugriff oder ein noch nicht veröffentlichtes Release bedeuten. Für die öffentliche offizielle Quelle sind keine zusätzlichen Repositoryrechte erforderlich. Zugangsdaten ausschließlich geschützt auf dem Server hinterlegen, nicht in Fehlerberichte kopieren.
+
+Quelle: [GitHub: Rate limits for the REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
 ## Fehler und Rückfall
 
 ```sh
