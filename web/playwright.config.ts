@@ -13,8 +13,15 @@ export default defineConfig({
   projects: [
     {
       name: "demo",
-      testMatch: ["app.spec.ts", "usability-*.spec.ts"],
+      testMatch: "usability-*.spec.ts",
       testIgnore: "usability-draft-comparison.spec.ts",
+    },
+    {
+      // These workflows change the real demo filesystem and create new backups.
+      // Keep that state away from history/evidence fixtures in the demo project.
+      name: "integration",
+      testMatch: "app.spec.ts",
+      use: { baseURL: "http://127.0.0.1:8091" },
     },
     {
       name: "draft",
@@ -28,6 +35,11 @@ export default defineConfig({
     },
   ],
   webServer: [
+    {
+      command: `../bin/anker --data /tmp/anker-integration-browser-${runID} --listen 127.0.0.1:8091 demo`,
+      url: "http://127.0.0.1:8091",
+      reuseExistingServer: false,
+    },
     {
       command: `../bin/anker --data /tmp/anker-draft-browser-${runID} --listen 127.0.0.1:8090 demo`,
       url: "http://127.0.0.1:8090",

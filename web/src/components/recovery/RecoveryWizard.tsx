@@ -1,3 +1,5 @@
+import RemovalFiles from "./RemovalFiles";
+import type { ChangeRecoveryIntent } from "./ChangeRecoveryIntent";
 import { useEffect, useRef, useState } from "react";
 import { api, labels } from "../../api";
 import type { Plan, Status, User } from "../../api";
@@ -15,6 +17,7 @@ export default function RecoveryWizard({
   draft,
   initialBackup,
   initialFile,
+  changeIntent,
   onPlan,
   onClose,
   onConnectTarget,
@@ -26,6 +29,7 @@ export default function RecoveryWizard({
   draft?: RecoveryDraft;
   initialBackup?: string;
   initialFile?: string;
+  changeIntent?: ChangeRecoveryIntent;
   onPlan: (plan: Plan) => void;
   onClose: () => void;
   onConnectTarget: () => void;
@@ -67,7 +71,9 @@ export default function RecoveryWizard({
     !d.openFiles &&
     !d.openMappings &&
     !d.duplicatePorts;
+  const removals = d.selectedPaths.filter((p) => d.decisions[p] === "remove");
   const confirmationsReady =
+    (!removals.length || d.removalsConfirmed) &&
     (!d.inspection?.requires_console || d.consoleOK) &&
     (!d.inspection?.requires_source_offline || d.offline);
   async function create() {
@@ -156,6 +162,42 @@ export default function RecoveryWizard({
           </div>
         </dl>
       </section>
+      {changeIntent && (
+        <section
+          className="rollback-handoff-card"
+          aria-label="Aus der Änderung übernommen"
+        >
+          <span className="eyebrow">Aus der Änderung übernommen</span>
+          <h3>
+            {changeIntent.settingName} · Zielwert {changeIntent.desiredValue}
+          </h3>
+          <p>
+            Die Auswahl umfasst ganze Dateien. Der frühere Wert ist eine
+            Absicht; erst der Vergleich mit dem aktuell gelesenen Ziel zeigt die
+            tatsächlichen Änderungen.
+          </p>
+          <strong>
+            {d.backup === changeIntent.backupID &&
+            d.scenario === "files" &&
+            d.target === changeIntent.targetID &&
+            d.files.length === changeIntent.files.length &&
+            d.removeFiles.length === (changeIntent.removeFiles?.length || 0) &&
+            (changeIntent.removeFiles || []).every((p) =>
+              d.removeFiles.includes(p),
+            ) &&
+            changeIntent.files.every((p) => d.files.includes(p))
+              ? `${d.files.length + d.removeFiles.length} ${d.files.length + d.removeFiles.length === 1 ? "Datei" : "Dateien"} aus der Vorschau ausgewählt${d.removeFiles.length ? ` · ${d.removeFiles.length} ${d.removeFiles.length === 1 ? "Entfernung" : "Entfernungen"} vorgemerkt` : ""}`
+              : "Auswahl gegenüber der Vorschau geändert · Umfang erneut prüfen"}
+          </strong>
+          <p>
+            {!d.inspection
+              ? "Aktuelle Zielprüfung steht noch aus. Keine Dateientscheidung wurde vorweggenommen."
+              : d.needsInspection
+                ? "Erneute Zielprüfung erforderlich."
+                : "Aktuelle Zielaufnahme vorhanden. Die Unterschiede und jede Dateientscheidung vor der Übernahme prüfen."}
+          </p>
+        </section>
+      )}
       <nav aria-label="Vorbereitungsschritte" className="recovery-steps">
         <p className="recovery-progress" role="status">
           Schritt {d.step} von 5
@@ -219,6 +261,7 @@ export default function RecoveryWizard({
                   ["prepared", "Vorbereitete Fassung"],
                   ["keep", "Ziel behalten"],
                   ["manual", "Manuell bearbeiten"],
+                  ["remove", "Dateien entfernen"],
                 ] as const
               ).map(([decision, label]) => (
                 <li key={decision}>
@@ -235,6 +278,33 @@ export default function RecoveryWizard({
               vorbereiteten Dateien und konkrete Unterschiede. Erst dort wird
               eine mögliche Dateiübernahme gesondert bestätigt.
             </p>
+            {!!removals.length && (
+              <section
+                className="removal-cards"
+                aria-label="Dateientfernungen bestätigen"
+              >
+                <h3>
+                  {removals.length} Datei{removals.length === 1 ? "" : "en"}{" "}
+                  würde{removals.length === 1 ? "" : "n"} gelöscht
+                </h3>
+                <p>
+                  Vor dem Löschen werden Inhalt und Eigenschaften im
+                  Rücksetzjournal gesichert. Eine spätere Rücksetzung stellt
+                  fehlende Dateien wieder her und überschreibt keine
+                  zwischenzeitlich neu angelegten Dateien.
+                </p>
+                <RemovalFiles paths={removals} />
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={d.removalsConfirmed}
+                    onChange={(e) => d.setRemovalsConfirmed(e.target.checked)}
+                  />
+                  Ich bestätige die aufgeführten Dateientfernungen und habe den
+                  aktuellen Zielvergleich geprüft.
+                </label>
+              </section>
+            )}
             {d.inspection?.requires_console && (
               <label className="check">
                 <input
@@ -258,17 +328,19 @@ export default function RecoveryWizard({
             {(d.inspection?.requires_console ||
               d.inspection?.requires_source_offline) && (
               <p className="field-hint">
-                Diese Angaben werden als Benutzerbestätigung dokumentiert und
-                ersetzen keinen maschinellen Nachweis. Netzwerk, Cluster und
-                Storageverwaltung bleiben eigene manuelle Schritte.
+                Anker speichert deine Bestätigung, kann diese Angaben aber nicht
+                selbst prüfen. Netzwerk, Cluster und Storage musst du getrennt
+                einrichten.
               </p>
             )}
-            {!confirmationsReady && (
-              <p className="notice">
-                Konsolenzugang und erforderliche Quellisolierung vor Ort prüfen
-                und hier bestätigen.
-              </p>
-            )}
+            {!confirmationsReady &&
+              (d.inspection?.requires_console ||
+                d.inspection?.requires_source_offline) && (
+                <p className="notice">
+                  Konsolenzugang und erforderliche Quellisolierung vor Ort
+                  prüfen und hier bestätigen.
+                </p>
+              )}
           </section>
         )}
         {d.step >= 2 && d.inspection && (

@@ -72,11 +72,18 @@ func sshRun(ctx context.Context, h Host, request any, consume func(io.Reader) er
 		return err
 	}
 	readErr := consume(io.LimitReader(pipe, 2<<30))
-	if readErr != nil {
+	if readErr != nil && !errors.Is(readErr, io.EOF) && !errors.Is(readErr, io.ErrUnexpectedEOF) {
 		cancel()
 	}
 	waitErr := cmd.Wait()
+	if ctx.Err() == nil && sshConnectionFailure(waitErr, stderr.String()) {
+		return errTemporaryConnection
+	}
 	if readErr != nil {
+		var exit *exec.ExitError
+		if errors.As(waitErr, &exit) && exit.ExitCode() == 255 {
+			return errors.New("SSH-Verbindung fehlgeschlagen; Hostschlüssel, Zugang und Rechte prüfen")
+		}
 		return readErr
 	}
 	if waitErr != nil {
@@ -130,6 +137,14 @@ func (c SSHCollector) Apply(ctx context.Context, h Host, p Plan, root string) (A
 	}
 	users, groups := identityNames(p.Source, "users"), identityNames(p.Source, "groups")
 	for _, step := range p.Steps {
+		if step.Action == "remove" {
+			var expected any
+			if json.Unmarshal(metadata[step.Path], &expected) != nil || expected == nil {
+				return result, errors.New("Zielmetadaten für Entfernung fehlen")
+			}
+			files = append(files, map[string]any{"path": step.Path, "action": "remove", "before_sha": step.BeforeSHA, "expected_metadata": expected, "remove_confirmed": true})
+			continue
+		}
 		if step.Action != "apply" {
 			continue
 		}
@@ -202,4 +217,23 @@ func decodeRecoveryResult(r io.Reader) (ApplyResult, error) {
 		return ApplyResult{}, errors.New("Ungültige zusätzliche Hostantwort")
 	}
 	return result, nil
+}
+
+func sshConnectionFailure(err error, diagnostic string) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 255 {
+		return false
+	}
+	text := strings.ToLower(diagnostic)
+	for _, permanent := range []string{"permission denied", "host key verification failed", "remote host identification has changed", "bad permissions", "invalid format", "sudo:"} {
+		if strings.Contains(text, permanent) {
+			return false
+		}
+	}
+	for _, temporary := range []string{"connection timed out", "operation timed out", "connection refused", "connection reset by peer", "broken pipe", "network is unreachable", "no route to host", "temporary failure in name resolution", "connection closed by remote host"} {
+		if strings.Contains(text, temporary) {
+			return true
+		}
+	}
+	return false
 }

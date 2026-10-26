@@ -1,5 +1,15 @@
 # Unterstützungsstand
 
+## Interner Teststand vom 26. Oktober 2026
+
+Version `0.2.0-internal.20261026` ist für die lokale Demo und ein isoliertes internes Labor vorbereitet. Die Gesamtprüfung bestand: 1129 Go-Testfälle einschließlich Untertests mit Race Detector, Go Vet, 313 Browserfälle, 90 Hosthelfer-, 14 Installer-/Skript- und 22 Labkit-Fälle sowie der Terminaltest in einer echten PTY. Ein systemd-Integrationstest wurde unter macOS ausdrücklich übersprungen. Linux amd64 und arm64 wurden gebaut, hier jedoch nicht ausgeführt. Details und Grenzen stehen im [Prüfbericht](internal-test-2026-10-26.json) und unter [Interner Testbetrieb](OPERATIONS.md#interner-testbetrieb).
+
+Go wurde auf 1.27.3 und Vite auf 8.3.5 aktualisiert. Der npm-Audit meldet keine bekannten Befunde. Der Go-Quellscan meldet keine betroffenen importierten Pakete oder erreichbaren Funktionen; ein Modulhinweis betrifft das ungenutzte OpenPGP-Paket. Der Scan der gestrippten Linux-Binaries fällt auf Modulgenauigkeit zurück und meldet denselben Hinweis konservativ auch als Paket-/Symboltreffer. Dies ist keine allgemeine Sicherheitszertifizierung.
+
+Echte Proxmox-Übernahmen, Linux-/systemd-Betrieb dieses Builds, Neustarts auf realer Hardware und die neun Recovery-Laborszenarien bleiben offen. Schreibtests ausschließlich an entbehrlichen isolierten Testhosts durchführen. Die nachfolgende Tabelle enthält auch frühere komponentenbezogene Nachweise; sie ist keine erneute Gesamtabnahme dieser Systeme.
+
+## Funktionsumfang und frühere Nachweise
+
 | Bereich | Implementiert | Lokal geprüft | Reales Proxmox-Labor |
 |---|---|---|---|
 | Lesbare versionierte Sicherungen und Prüfsummen | Ja | Go-Tests, Demo | Offen |
@@ -14,7 +24,7 @@
 | SFTP-Installation | Skripte und Anleitung | Syntax | Reale Ausführung offen |
 | Speicher von Anker und seinen Backup-Laufwerken | Anzeige, Verlauf, bedingte Prognose, begrenzte ext4-/XFS-Erweiterung und manuelle Assistenten | Inventar/Bindmounts, Prognose, Gerätewechsel, Journal, API/CLI und Browser; echte ext4-Erweiterung über systemd bestanden | LXC-/LVM-/XFS-/Migrationsabnahme offen |
 
-Aktueller Recovery-Nachweisstand vom 9. Oktober 2026; frühere Prüfstände unten sind historisch. Kein isoliertes PVE-System steht zur Verfügung. Alle neun realen Szenarien sind weiterhin **unrun**; lokale Fixtures und Crossbuilds ersetzen sie nicht.
+Recovery-Nachweisstand vom 9. Oktober 2026; frühere Prüfstände unten sind historisch. Kein isoliertes PVE-System steht zur Verfügung. Alle neun realen Szenarien sind weiterhin **unrun**; lokale Fixtures und Crossbuilds ersetzen sie nicht.
 
 | Erweiterung | Implementiert und lokaler Nachweis | Extern offen / genaue Grenze |
 |---|---|---|

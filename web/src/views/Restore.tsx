@@ -1,3 +1,4 @@
+import type { ChangeRecoveryIntent } from "../components/recovery/ChangeRecoveryIntent";
 import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
 import type { Plan, Status, User } from "../api";
@@ -12,6 +13,7 @@ export default function Restore({
   status,
   initialBackup,
   initialFile,
+  initialChange,
   initialPlan,
   user,
   notify,
@@ -25,6 +27,7 @@ export default function Restore({
   status: Status;
   initialBackup: string;
   initialFile?: string;
+  initialChange?: ChangeRecoveryIntent;
   initialPlan?: { id: string; sequence: number } | null;
   user: User;
   notify: Notify;
@@ -36,7 +39,7 @@ export default function Restore({
   onOperationChange: (planId: string, operation: RecoveryOperation) => void;
 }) {
   const [wizard, setWizard] = useState(!!initialBackup);
-  const draft = useRecoveryDraft(initialBackup, initialFile);
+  const draft = useRecoveryDraft(initialBackup, initialFile, initialChange);
   const selectedTarget = status.hosts.find((h) => h.id === draft.target);
   const connection = JSON.stringify(
     selectedTarget
@@ -147,7 +150,7 @@ export default function Restore({
           )}
           <Heading
             title="Wiederherstellung"
-            description="Originale bewahren. Änderungen am Ziel zuerst prüfen."
+            description="Dateien auswählen, Ziel prüfen und Wiederherstellung planen."
             action={
               user.role !== "reader" && (
                 <button
@@ -219,7 +222,7 @@ export default function Restore({
                     ))}
                 </select>
               </div>
-              <div className="table-scroll">
+              <div className="table-scroll data-surface">
                 <table
                   className="restore-plans"
                   aria-label="Wiederherstellungspläne"
@@ -310,6 +313,7 @@ export default function Restore({
           status={status}
           user={user}
           draft={draft}
+          changeIntent={initialChange}
           onClose={() => {
             draft.invalidate();
             if (draft.step > 2) draft.setStep(2);
@@ -355,7 +359,12 @@ export default function Restore({
                   ? plan.scenario
                   : "host",
               );
-              draft.changeFiles(plan.steps.map((s) => s.path));
+              draft.changeFiles(
+                plan.steps
+                  .filter((s) => !(plan.remove_files || []).includes(s.path))
+                  .map((s) => s.path),
+              );
+              draft.changeRemovals(plan.remove_files || []);
             }
             draft.invalidate();
             draft.setStep(legacy || !canRevise ? 1 : 2);

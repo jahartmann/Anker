@@ -45,7 +45,7 @@ const settingsContext: Record<string, [string, string]> = {
   ],
   Benachrichtigungen: [
     "Benachrichtigungen",
-    "Anker meldet fehlgeschlagene Sicherungen und die anschließende Erholung.",
+    "Anker meldet Fehler und gibt Bescheid, wenn Sicherungen wieder funktionieren.",
   ],
   Zugriff: ["Zugriff", "Anmeldung, Sitzungsdauer und Benutzer verwalten."],
   Zertifikate: [
@@ -56,10 +56,7 @@ const settingsContext: Record<string, [string, string]> = {
     "Software verwalten",
     "Installierte Version, Updatequelle und verfügbare Updates prüfen.",
   ],
-  Betrieb: [
-    "Betrieb",
-    "Speicher, Systemprüfung und letzte Aktionen im Blick behalten.",
-  ],
+  Betrieb: ["Betrieb", "Speicher prüfen und letzte Aktionen ansehen."],
 };
 
 const betriebAreas = [
@@ -218,7 +215,7 @@ export default function Settings({
     <>
       <Heading
         title="Einstellungen"
-        description="Zeitplan, Aufbewahrung, Zugriff und Betrieb an einem Ort."
+        description="Zeitplan, Speicher und Zugriff verwalten."
         action={
           dirty || certificateDirty ? (
             <span className="save-state" role="status">
@@ -318,7 +315,10 @@ export default function Settings({
                         onChange={(e) => set("parallel", +e.target.value)}
                       />
                     </Field>
-                    <Field label="Wiederholungen">
+                    <Field
+                      label="Wiederholungen"
+                      hint="Nur vorübergehende Verbindungsfehler bei Sicherung und Hostprüfung. 0 deaktiviert Wiederholungen; 1–5 zusätzliche Versuche mit wachsender Wartezeit, im selben Auftrag. Rechte-, Identitäts- und Inhaltsfehler werden nicht wiederholt."
+                    >
                       <input
                         type="number"
                         min={0}

@@ -15,6 +15,7 @@ test("view actions remain reachable at narrow viewport", async ({ page }) => {
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".problem-card summary").first().click();
   const action = page.getByRole("button", { name: /^Host .* prüfen$/ }).first();
   await expect(action).toBeVisible();
   const hostName = (await action.getAttribute("aria-label"))!.slice(5, -7);
@@ -96,6 +97,7 @@ test("browser identity is available before login and follows the current view", 
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await expect(page).toHaveTitle("Sicherungen · Anker");
 });
 
@@ -176,9 +178,10 @@ test("backup file actions remain fully visible on a short laptop viewport", asyn
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("row")
-    .filter({ hasText: "pve-hamburg-02" })
+    .filter({ hasText: "PVE · Hamburg 02" })
     .getByRole("button", { name: "Dateien", exact: true })
     .click();
   const dialog = page.getByRole("dialog", { name: "Dateien · pve-hamburg-02" });
@@ -220,6 +223,7 @@ test("overview host handoff is consumed after dismiss and navigation", async ({
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
   await nav.getByRole("button", { name: "Übersicht", exact: true }).click();
+  await page.locator(".problem-card summary").first().click();
   await page
     .getByRole("button", { name: /^Host .* prüfen$/ })
     .first()

@@ -1,5 +1,20 @@
 # Betrieb
 
+## Interner Testbetrieb
+
+Der geprüfte Kandidat heißt `0.2.0-internal.20261026`. Die lokalen Ergebnisse stehen im [Prüfbericht](internal-test-2026-10-26.json), die offenen Plattformprüfungen im [Unterstützungsstand](SUPPORT.md). Die manuell verteilten Linux-Testarchive enthalten eine `INTERNAL-TEST.txt` mit Start- und Laboranleitung, `test-report.json` und Lizenzhinweisen. Sie sind nicht signiert und werden nicht über den signierten Updater installiert. Prüfsummen vergleichen die Dateien, bestätigen aber keine unabhängige Herkunft.
+
+Zuerst in einem neuen privaten Ordner ohne root die Demo starten:
+
+```sh
+./anker version
+./anker --data ./var/internal-demo --listen 127.0.0.1:8087 demo
+```
+
+Anmeldung: `demo` / `anker-demo-2026`. Für einen entfernten Testserver einen SSH-Tunnel verwenden. Für echte Hosttests eine frische isolierte Debian-13-VM mit systemd und einem separaten Datenverzeichnis verwenden; im entpackten Paket startet `sudo ./scripts/install-server.sh "$PWD/anker"` die interaktive Einrichtung. Keine produktiven Hosts oder Zugangsdaten für den ersten Test verwenden. Die Linux-Pakete sind Crossbuilds; die Ausführung dieses Kandidaten unter Linux und echte Proxmox-Recovery bleiben separat abzunehmen.
+
+Im Labor zuerst Anmeldung und Leserolle, Hostfingerprint, Sicherung und Vergleich prüfen. Danach eine eigens angelegte unkritische Datei mit Vorschau, aktueller Zielprüfung, Übernahme, Ergebnisprüfung und Rücksetzung durchspielen. Dateientfernungen getrennt ausdrücklich bestätigen und zurücksetzen. Abschließend unterbrochene Aufträge und Dienstneustart prüfen. Netzwerk-, Storage-, Boot- und Cluster-Recovery benötigen eigene Szenarien.
+
 ## Produktionsbetrieb
 
 Installation und Einrichtung starten ohne Beispieldaten. Der Linux-Dienst verwendet `/srv/anker` im Produktionsbetrieb. Hosts und weitere Benutzer werden ausdrücklich angelegt. Die optionale Demo wird nur über `anker demo` in einem eigenen, zunächst leeren Datenordner gestartet.

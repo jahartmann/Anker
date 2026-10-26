@@ -1,0 +1,209 @@
+/* Hardware details on the same quiet paper surface. */
+:root {
+  --mono:
+    ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --hardware-line: #c6cec3;
+  --hardware-ink: #586451;
+}
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.brand-wordmark strong {
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.6px;
+}
+.brand-wordmark small {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.035em;
+  color: #626b5c;
+}
+.sidebar {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 7px,
+    #dfe4d833 7px,
+    #dfe4d833 8px,
+    transparent 8px
+  );
+}
+.sidebar .demo-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.025em;
+  border-radius: 4px;
+}
+.server-rack-glyph {
+  flex-shrink: 0;
+}
+.server-rack-glyph .rack-rails {
+  opacity: 0.45;
+  stroke-width: 1;
+}
+.server-rack-glyph .rack-vents {
+  stroke-width: 1;
+}
+.page-emblem {
+  position: relative;
+  border-radius: 8px;
+}
+.page-emblem::before,
+.page-emblem::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--hardware-line);
+  pointer-events: none;
+}
+.page-emblem::before {
+  top: 4px;
+  left: 4px;
+}
+.page-emblem::after {
+  bottom: 4px;
+  right: 4px;
+}
+.host-workspace,
+.compass-intent,
+.overview-metric,
+.journey-value-card {
+  position: relative;
+}
+.host-workspace::before,
+.compass-intent::before,
+.overview-metric::before,
+.journey-value-card::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  width: 14px;
+  height: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--hardware-line) 0 2px,
+    transparent 2px 5px
+  );
+  opacity: 0.7;
+  pointer-events: none;
+}
+.host-endpoint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin: -11px 0 22px;
+  font-size: 11px;
+  color: #596451;
+}
+.host-endpoint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.host-endpoint code {
+  max-width: 100%;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid #dfe4d8;
+  border-radius: 5px;
+  background: #f8faf5;
+  padding: 4px 9px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.host-table .secondary-line.mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+}
+.host-display-name {
+  font-variant-numeric: tabular-nums;
+}
+.host-facts dd,
+.host-status-strip small,
+.pagination-range,
+.date,
+.diff-number {
+  font-variant-numeric: tabular-nums;
+}
+.host-facts dt,
+.host-facts dd {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.state {
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.state::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex: 0 0 4px;
+  background: currentColor;
+  opacity: 0.8;
+}
+.state.active::before,
+.state.queued::before {
+  background: transparent;
+  border: 1px solid currentColor;
+  width: 5px;
+  height: 5px;
+  flex-basis: 5px;
+}
+.data-surface thead,
+.backup-table thead {
+  background: #f6f8f2;
+}
+.data-surface th,
+.backup-table th {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+  color: #606957;
+}
+.host-tabs {
+  border-bottom-color: #dce2d5;
+}
+.host-tabs button.selected {
+  border-bottom-width: 2px;
+}
+@media (max-width: 600px) {
+  .host-endpoint {
+    margin: -8px 0 18px;
+    gap: 7px;
+  }
+  .host-endpoint code {
+    font-size: 10px;
+  }
+  .host-workspace::before,
+  .compass-intent::before {
+    right: 10px;
+    top: 8px;
+  }
+}
+@media (forced-colors: active) {
+  .state {
+    border-color: CanvasText;
+  }
+  .page-emblem::before,
+  .page-emblem::after {
+    background: CanvasText;
+  }
+}

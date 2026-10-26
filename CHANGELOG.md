@@ -1,5 +1,64 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- Interner Testkandidat `0.2.0-internal.20261026`: vollständige lokale Go-/Browser-/Python-/Terminalprüfung, Linux-Crossbuilds und dokumentierte Laborgrenzen. Go auf 1.27.3 und Vite fest auf 8.3.5 aktualisiert. Browser-Integration nutzt einen eigenen Demo-Datenbestand; historische Vergleiche prüfen weiterhin das exakte Quellenpaar.
+
+- Dezente Infrastruktur-Details im bestehenden hellen Design: eigene Rack-Symbole, technische Akzente an Cards und Statusanzeigen sowie einheitliche Zahlendarstellung. Hostseiten zeigen das konfigurierte SSH-Ziel für Sicherungen, auch bei IPv6-Adressen. Navigation, Card-Raster und Bedienabläufe bleiben erhalten.
+
+- Sicherungsseite mit einem kompakten Host-Fokus: letzter Stand, Zusammenfassung der Änderungen und geeignete Wiederherstellungsquelle. Auffällige neueste Stände und unklare Referenzen stehen bei der Auswahl aus allen Hosts zuerst. Vergleiche übernehmen genau die angezeigten Stände; die Wiederherstellung geht weiterhin durch den Assistenten. Sechs Hostgruppen pro Seite, ältere Stände bleiben nach Monat und Tag aufklappbar.
+- Zusammengehörige Cards in Sicherungs-, Host- und Änderungsansichten nutzen gleich hohe Rasterzeilen und einheitliche Abstände. Aktionen stehen am unteren Rand. Der zusätzliche Außenabstand an der Host-Änderungskarte entfällt. Breite, Höhe und Aktionsausrichtung sind durch Browserprüfungen abgedeckt.
+
+- Hostseiten zeigen zuerst den aktuellen Handlungsbedarf und eine passende Aktion. Laufende Aufträge haben Vorrang; eine fehlgeschlagene Verbindung bleibt auch bei aktueller Sicherung sichtbar. Die Übersicht bündelt Dateien, Änderungen und Wiederherstellung in drei Cards. Änderungsspur und Zeitstrahl liegen im Bereich Änderungen, technische Details sind aufklappbar. Die Hostliste zeigt acht Einträge pro Seite und einen direkten Filter für offene Punkte.
+- Kürzere, einfachere Texte in Übersicht, Kompass, Hoststatus, Sicherungsvergleich, Verlauf, Einstellungen und Wiederherstellung. Prüfergebnisse und gespeicherte Werte sind klar von Prüfungen am laufenden Host getrennt.
+
+- Anker Kompass als gemeinsamer Aufgabeneinstieg in allen Ansichten (⌘/Strg + K): Zustand verstehen, Sicherungen ansehen, Konfigurationsreise und Wiederherstellung vorbereiten. Berücksichtigt den geöffneten Host, aktive Aufträge, Leserechte und geeignete Quellen; schützt offene Entwürfe und löst keine Aufträge aus. Hostsuche nach Anzeigename, Adresse und Gruppe mit vier Treffern je Seite. Die Übersicht bietet dieselben Aufgaben als ruhige Cards mit dezenten Farbschatten.
+
+- Automatische lesende Ergebnisprüfung nach Dateiübernahme und Rücksetzung: Soll-/Ist-Prüfsummen, Dateieigenschaften und vorgesehene Entfernungen; unterstützte Einstellungsdeklarationen samt Konflikterkennung. Kompakte Ergebnis-Cards, priorisierte Abweichungen, aufklappbare Nachweise und erneute Zielabfrage. Fehlende oder ungültige Nachweise bleiben offen; Prüfversuche werden getrennt vom unveränderlichen Plan gespeichert.
+
+- Geprüfte Dateientfernungen im Wiederherstellungsassistenten: zunächst abgewählt, aktuelle Zielaufnahme, eigene Dateientscheidung und Löschbestätigungen. Dauerhaftes Rücksetzjournal vor dem Löschen, Wiederherstellung von Inhalt und Rechten sowie Konfliktschutz bei neu angelegten Dateien. Neue Hostfähigkeit `remove_files`; ältere Helfer geben keine Entfernung frei. Kompakte Cards mit aufklappbarem weiterem Umfang und Demorücksetzung.
+
+- Wiederherstellungsvorschau mit dem Assistenten verbunden: Dateiauswahl in kompakten Cards, vorausgewählte Quelle und ursprüngliche Node, anschließend zwingend neue Zielprüfung und ausdrückliche Dateientscheidungen. Keine automatische Plananlage oder Ausführung; fehlende Quellen blockieren eine unvollständige Übergabe.
+
+- Lesende Wiederherstellungsvorschau direkt aus belegten Einstellungsänderungen: gewünschter früherer Wert, vollständige Dateiunterschiede in Rückkehrrichtung, zusätzliche Werte im Dateiumfang sowie sichtbare Anlage-/Entfernungs- und Metadatenänderungen. Vier Dateien je Seite; veraltete oder unvollständig lesbare Nachweise werden abgewiesen. Kein Livezugriff, keine Plananlage und keine Übernahme.
+
+- Verständliche Einordnung geänderter Einstellungen in Konfigurationsreise und Änderungsspur: Bedeutung, mögliche Auswirkungen und passende Liveprüfung. Nachweise verbinden Vorher-/Nachher-Werte mit datierten Sicherungen, gezielt lesbaren Originaldateien und fachlicher Dokumentation. Geschützte, mehrdeutige und ungeordnete Werte erhalten keine Wirkungsbehauptung.
+
+- Konfigurationsreise pro Node mit Zeitregler, Schrittsteuerung, Bereichs-Cards und damaligen Einstellungswerten aus genau den ausgewählten Sicherungen. Direkter Einstieg in historische Detailvergleiche und Änderungsspuren. Nachweislücken, unklare Zeitfolgen und geschützte Werte bleiben erkennbar; überholte Leseanfragen werden abgebrochen.
+
+- Neue Änderungsspur pro Node: einzelne Einstellungen über mehrere Sicherungen verfolgen, identische Werte bündeln, datierte Wertwechsel und Nachweise anzeigen. Einstieg auf der Hostseite und direkt aus unterstützten Dateivergleichen; vier Gruppen pro Ansicht und begrenztes Nachladen älterer Stände. Prüfsummenfehler, geschützte Inhalte, widersprüchliche Deklarationen und unklare Zeitfolgen bleiben sichtbar.
+
+- Änderungsdetails mit bis zu sechs direkt auswählbaren Erklärungskarten und einer Gegenüberstellung geänderter Textstellen. Vollständiger Zeilenkontext und Quellen-IDs bleiben aufklappbar; sichtbare Filterchips ersetzen das Dropdown. Die Seitenauswahl entfällt bei kurzen Ergebnissen.
+
+- Änderungsverlauf mit eigener Datumsspalte, dezenter Zeitlinie, Kennzeichnung des neuesten Stands und kompakteren Cards. Nullzähler entfallen; Erklärungen und Quellen bleiben aufklappbar.
+- Sicherungsvergleich mit kompakteren Bereichsfiltern, klar getrennten Dateilisten und Dateidetails sowie Suche direkt in der Dateiliste. Dateinamen sind hervorgehoben, vollständige Pfade bleiben sichtbar. Wiederherstellungsaktionen stehen in Detailansichten in einem eigenen aufklappbaren Bereich.
+
+- Änderungszeitpunkte zeigen bis zu drei konkrete Kurzbeschreibungen der betroffenen Konfigurationen (z. B. Storage-Anbindungen, VM-Konfiguration, Systemparameter). Gleichartige Hinweise sind gebündelt; Metadaten und reine Zeitangaben bleiben getrennt. Geschützte Dateinamen werden in den Kurzbeschreibungen nicht genannt.
+- Eigenständige breite Änderungsdetailseite pro Node mit Kurzüberblick, Dateiliste und Zeilenvergleich. Quellenwechsel sind aufklappbar; Einstieg aus Zeitstrahl, Zusammenfassung und Host-Sicherungsverlauf. Der Rückweg erhält die vorherige Verlaufsseite, aufgeklappte Cards und den Tastaturfokus.
+
+- Sicherungs- und Prüfaufträge wiederholen nur erkennbare vorübergehende Verbindungsfehler, mit begrenztem exponentiellem Abstand im selben Auftrag. Versuchslimit, nächster Versuch und letzte Störung sind sichtbar; bekannte Identitäts-, Berechtigungs- und Inhaltsfehler werden nicht automatisch wiederholt. Wiederherstellungen bleiben ohne automatische Wiederholung.
+- Wiederholte Wiederholungsanfragen zu einem abgeschlossenen Auftrag liefern denselben Folgeauftrag. Bei bereits veröffentlichtem Ergebnis erfolgt kein weiterer automatischer Sicherungsversuch. Neustart und geordnetes Dienstende hinterlassen klare Meldungen ohne automatisches Wiederanlaufen unbestätigter Arbeit.
+- Hostnamen erhalten eine lesbare Anzeige (z. B. „PVE · Berlin 01“); technische Namen und Verbindungsziele bleiben erhalten. Node-Vergleiche bieten Bereichs-Cards, Vorher-/Nachher-Cards und gezielte Bereichsfilter.
+- Hostbezogener Änderungszeitstrahl mit vier Zeitpunkten pro Seite, bei Bedarf geladenen Metadaten und direktem Detailvergleich des ausgewählten historischen Ständepaars. Unvollständige Stände und Ladefehler ergeben keine Entwarnung.
+
+- Startseite bündelt Handlungsbedarf in höchstens drei ruhigen Cards; betroffene Hosts erscheinen aufklappbar, durchsuchbar und mit maximal vier Einträgen pro Seite.
+- Hostübersicht fasst Änderungen der zwei neuesten geeigneten vollständigen Stände nach Netzwerk, Storage, System und weiterer Konfiguration zusammen. Hinzugefügte, entfernte und geänderte Dateien sowie reine Zeitstempeländerungen werden getrennt gezählt; Detailvergleich übernimmt genau dieses Quellenpaar. Ladefehler ergeben keine Entwarnung.
+
+- Funktionsausbau für den täglichen Sicherungsbetrieb: Hostprobleme mit Begründung und passender nächster Aktion; lokale Sperre gegen doppelte Startanfragen während der Serverantwort.
+- Wiederherstellung schlägt den neuesten vollständigen Stand ohne bekannten Integritätsfehler und mit plausiblem Zeitstempel vor. Ausgeschlossene jüngere Stände werden erklärt; ohne geeigneten Stand bleibt der Direkteinstieg gesperrt. Die Prüfung des tatsächlichen Inhalts und Ziels im Plan bleibt erforderlich.
+- Integritätsfehler und unplausible Sicherungszeiten ergeben keinen grünen Hoststatus mehr. Ungültige Datumswerte bleiben in Oberfläche und Verlauf darstellbar.
+- Überfälligkeitsmeldungen ignorieren bekannte Integritätsfehler und unplausible Quellzeiten bei der Aktualitätsbewertung. Nicht lesbare Vorfallzustände werden gemeldet statt stillschweigend als neuer Vorfall behandelt.
+
+- Allgemeine Button-Hoverregel so begrenzt, dass individuelle Cards und Bedienelemente ihre eigenen Hintergründe behalten. Lesbare Kennzahlen beim Überfahren, stärkere Kontraste in Navigation, Reitern, Zurück-Links und Dateilisten sowie weiße Beschriftung auf roten Löschbuttons. Browserregression prüft Hover und Tastaturfokus über Hauptansichten, Detailreiter, Menüs und Dialoge.
+
+- Einheitliche Seitensymbole mit dunkler Kontur auf Weiß und farbig versetzter Ebene; aktive Navigation ohne grüne Füllung. Tabellen, aktive Aufträge, Dialoge und Leerzustände übernehmen die gemeinsamen Card-Konturen und Schatten.
+
+- Ältere Stände werden erst beim Aufklappen ihres Monats und Tages gerendert; die Gruppierung folgt der eingestellten Zeitzone. Hinweise bleiben schon an geschlossenen Gruppen sichtbar. Hoststatus, Arbeitsbereiche und gemeinsame Oberflächen mit ruhigen Cards und farbig versetzten Schatten; weniger dekorative Symbole in Hostdetails.
+
+- Hostarbeitsbereich mit getrenntem Sicherungs-, Zeitplan- und Verbindungsstatus, direktem Dateizugriff und eigenem Änderungsvergleich. Wiederherstellungen starten mit dem zeitlich neuesten Stand, auch bei unsortierter Statusantwort.
+- Sicherungen standardmäßig nach Host gebündelt; gezielt aufklappbarer, durchsuchbarer Verlauf mit Monats- und Tagesgruppen sowie direkt sichtbarem neuestem Stand. Die vollständige standbezogene Archivansicht bleibt über „Alle Stände“ erreichbar.
+- Übersicht mit kurzer Zustandseinordnung, priorisierten beschädigten/fehlgeschlagenen Hosts und einklappbarem Auftragsverlauf. Einheitliche Navigation und Seitenakzente in Salbei und Ocker mit dezenten Funktionssymbolen.
+
 ## 0.2.14
 
 - Wiederherstellung mit kompakter Fünf-Schritte-Übersicht, beschriftetem Quellen-/Zielkontext und nächster Aktion. Noch nicht ermittelte Entscheidungen erscheinen nicht als null offene Punkte.

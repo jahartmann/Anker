@@ -40,6 +40,7 @@ async function openFiles(page: Page, files: Entry[]) {
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -136,6 +137,7 @@ test("backup overview replaces pages and resets pagination after search and prot
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await expect(page.locator(".backup-table tbody tr")).toHaveCount(25);
   await expect(page.locator(".backup-table tbody tr").first()).toContainText(
     "Server 129",

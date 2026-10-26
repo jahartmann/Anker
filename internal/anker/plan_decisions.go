@@ -68,7 +68,7 @@ func (s *Service) loadPlanSnapshot(p Plan) (RecoverySnapshot, error) {
 			return snapshot, errors.New("ungültiger Zielnachweis")
 		}
 		for _, step := range p.Steps {
-			if step.Action == "apply" {
+			if step.Action == "apply" || step.Action == "remove" {
 				return snapshot, errors.New("automatische Übernahme ohne Zielaufnahme")
 			}
 		}
@@ -85,9 +85,11 @@ func (s *Service) loadPlanSnapshot(p Plan) (RecoverySnapshot, error) {
 	}
 	paths := []string{}
 	for _, step := range p.Steps {
-		paths = append(paths, step.Path)
+		if !containsPath(p.RemoveFiles, step.Path) {
+			paths = append(paths, step.Path)
+		}
 	}
-	r := PlanRequest{BackupID: p.BackupID, TargetID: p.TargetID, Scenario: p.Scenario, Files: paths, Mapping: p.Mapping}
+	r := PlanRequest{BackupID: p.BackupID, TargetID: p.TargetID, Scenario: p.Scenario, Files: paths, RemoveFiles: p.RemoveFiles, Mapping: p.Mapping}
 	selection, err := scenarioSelection(m, r)
 	if err != nil {
 		return snapshot, err
@@ -282,6 +284,23 @@ func validateDecisionSteps(p Plan, m Manifest, snapshot RecoverySnapshot, target
 			return errors.New("inkonsistente Dateientscheidung")
 		}
 		seen[step.Path] = true
+		if containsPath(p.RemoveFiles, step.Path) {
+			if _, present := entries[step.Path]; present || step.Destination != step.Path {
+				return errors.New("ungültiger Entfernungsschritt")
+			}
+			f := before[step.Path]
+			if step.Action == "remove" {
+				if !p.RemovalsConfirmed || step.Decision != DecisionRemove || removalReason(step.Path, f, target) != "" || step.BeforeSHA != f.SHA256 {
+					return errors.New("Entfernung nicht durch Zielaufnahme freigegeben")
+				}
+			} else if step.Action != "keep" || step.Decision != DecisionKeep {
+				return errors.New("ungültige Entfernungsentscheidung")
+			}
+			continue
+		}
+		if step.Decision == DecisionRemove || step.Action == "remove" {
+			return errors.New("Entfernung außerhalb gebundener Auswahl")
+		}
 		if step.Action != "apply" {
 			continue
 		}

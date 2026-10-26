@@ -781,6 +781,7 @@ test("plan compares actual target against prepared content", async ({
       exact: true,
     })
     .click();
+  await page.locator(".comparison-source-reference > summary").click();
   await expect(
     page.getByText("Aufgenommenes Ziel → Vorbereitete Datei", { exact: true }),
   ).toBeVisible();
@@ -1142,9 +1143,9 @@ test("comparison secrets require explicit reveal and stale replies cannot replac
   await page
     .getByRole("button", { name: "Vergleich öffnen: etc/hosts", exact: true })
     .click();
-  await expect(page.locator(".preview-heading")).toHaveText("etc/hosts");
+  await expect(page.locator(".preview-heading code")).toHaveText("etc/hosts");
   release();
-  await expect(page.locator(".preview-heading")).toHaveText("etc/hosts");
+  await expect(page.locator(".preview-heading code")).toHaveText("etc/hosts");
   await expect(page.getByText("explicit-secret", { exact: true })).toHaveCount(
     0,
   );

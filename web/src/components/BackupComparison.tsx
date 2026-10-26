@@ -1,3 +1,14 @@
+import { traceableSettings } from "../settingHistory";
+import { changeSubject } from "../changeHighlights";
+import { displayHostName, HostName } from "../hostNames";
+import { changeArea } from "./ChangeSummary";
+import {
+  Network,
+  HardDrive,
+  Settings2,
+  Files,
+  GitCompareArrows,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, preciseDate } from "../api";
 import type { Backup, FileComparison, FileDiff, User } from "../api";
@@ -25,13 +36,27 @@ export default function BackupComparison({
   notify,
   onRestore,
   selection,
+  spacious = false,
+  collapseSources = spacious,
+  onTrackSetting,
 }: {
   backups: Backup[];
   user: User;
   notify: Notify;
   onRestore: (id: string) => void;
   selection?: ComparisonSelection;
+  spacious?: boolean;
+  collapseSources?: boolean;
+  onTrackSetting?: (id: string) => void;
 }) {
+  const [scope, setScope] = useState("");
+  const [area, setArea] = useState("");
+  const nodes = Array.from(
+    new Map(backups.map((b) => [b.host_id, b.host_name])).entries(),
+  );
+  const scopedBackups = scope
+    ? backups.filter((b) => b.host_id === scope)
+    : backups;
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [rows, setRows] = useState<FileDiff[] | null>(null);
@@ -45,6 +70,7 @@ export default function BackupComparison({
   const [comparison, setComparison] = useState<FileComparison | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const previewRef = useRef<HTMLDivElement>(null);
   const summaryGeneration = useRef(0);
   const contentGeneration = useRef(0);
   function clearFile() {
@@ -60,6 +86,7 @@ export default function BackupComparison({
     setSummaryError("");
     setBusy(false);
     setPage(1);
+    setArea("");
     clearFile();
   }
   function select(side: "from" | "to", id: string) {
@@ -74,6 +101,7 @@ export default function BackupComparison({
   }
   useEffect(() => {
     if (!selection) return;
+    setScope("");
     if (selection.pairedId && selection.side === "to") {
       invalidate();
       setFrom(selection.pairedId);
@@ -137,6 +165,7 @@ export default function BackupComparison({
       (rows || []).filter(
         (r) =>
           r.path.toLowerCase().includes(query.trim().toLowerCase()) &&
+          (!area || changeArea(r.path) === area) &&
           (!filter ||
             (filter === "content"
               ? r.content_changed
@@ -148,7 +177,7 @@ export default function BackupComparison({
                     ? r.secret
                     : r.change === filter)),
       ),
-    [rows, query, filter],
+    [rows, query, filter, area],
   );
   const counts = useMemo(
     () =>
@@ -173,16 +202,9 @@ export default function BackupComparison({
     comparison.state !== "masked" &&
     comparison.state !== "unavailable" &&
     (user.secrets || !selectedRow?.secret);
-  return (
-    <section
-      className="detail-section backup-comparison"
-      aria-label="Sicherungsvergleich"
-    >
-      <h3>Stände vergleichen</h3>
-      <p className="muted">
-        Richtung: Ausgangsstand → Vergleichsstand. Die Auswahl einer
-        Wiederherstellungsquelle erfolgt getrennt.
-      </p>
+  const sourceControls = (
+    <>
+      {" "}
       <div className="comparison-selectors">
         <label>
           Ausgangsstand
@@ -192,7 +214,7 @@ export default function BackupComparison({
             onChange={(e) => select("from", e.target.value)}
           >
             <option value="">Stand wählen</option>
-            {backups.map((b) => (
+            {scopedBackups.map((b) => (
               <option key={b.id} value={b.id}>
                 {stand(b)}
               </option>
@@ -210,7 +232,7 @@ export default function BackupComparison({
             onChange={(e) => select("to", e.target.value)}
           >
             <option value="">Stand wählen</option>
-            {backups
+            {scopedBackups
               .filter((b) => b.id !== from)
               .map((b) => (
                 <option key={b.id} value={b.id}>
@@ -240,12 +262,91 @@ export default function BackupComparison({
           Richtung umkehren
         </button>
       </div>
+    </>
+  );
+  return (
+    <section
+      className="detail-section backup-comparison"
+      aria-label="Sicherungsvergleich"
+    >
+      <div className="comparison-intro">
+        <span className="eyebrow">
+          <GitCompareArrows size={15} aria-hidden="true" /> Sicherungsvergleich
+        </span>
+        <h3>Stände vergleichen</h3>
+        <p>
+          {nodes.length === 1
+            ? "Vergleiche, was sich auf diesem Host geändert hat."
+            : "Wähle einen Host und zwei seiner Sicherungen."}
+        </p>
+      </div>
+      {nodes.length > 1 && (
+        <label className="comparison-node-scope">
+          Node im Vergleich
+          <select
+            aria-label="Node im Vergleich"
+            value={scope}
+            onChange={(e) => {
+              const id = e.target.value;
+              setScope(id);
+              invalidate();
+              setFrom("");
+              setTo("");
+              const candidates = backups
+                .filter(
+                  (b) =>
+                    b.host_id === id &&
+                    b.status === "successful" &&
+                    !b.verification_error &&
+                    Number.isFinite(Date.parse(b.created_at)) &&
+                    Date.parse(b.created_at) <= Date.now() + 300000,
+                )
+                .sort(
+                  (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+                );
+              const after = candidates[0],
+                before =
+                  after &&
+                  candidates.find(
+                    (b) =>
+                      Date.parse(b.created_at) < Date.parse(after.created_at),
+                  );
+              if (before && after) {
+                setFrom(before.id);
+                setTo(after.id);
+                void compare(before.id, after.id);
+              }
+            }}
+          >
+            <option value="">Alle Nodes · freie Auswahl</option>
+            {nodes.map(([id, name]) => (
+              <option key={id} value={id}>
+                {displayHostName(name)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="muted comparison-reading-note">
+        Richtung: Ausgangsstand → Vergleichsstand. Die Auswahl einer
+        Wiederherstellungsquelle erfolgt getrennt.
+      </p>
+      {collapseSources ? (
+        <details className="comparison-source-controls">
+          <summary>Andere Stände dieser Node vergleichen</summary>
+          {sourceControls}
+        </details>
+      ) : (
+        sourceControls
+      )}
       {valid && (
         <>
           <div className="comparison-direction">
             <div>
               <small>Ausgangsstand · Vorher</small>
-              <strong>{before.host_name}</strong>
+              <strong>
+                <HostName name={before.host_name} />
+              </strong>
               <span>
                 {preciseDate(before.created_at)} ·{" "}
                 <code>{before.id.slice(0, 10)}</code>
@@ -258,7 +359,9 @@ export default function BackupComparison({
             <span aria-hidden="true">→</span>
             <div>
               <small>Vergleichsstand · Nachher</small>
-              <strong>{after.host_name}</strong>
+              <strong>
+                <HostName name={after.host_name} />
+              </strong>
               <span>
                 {preciseDate(after.created_at)} ·{" "}
                 <code>{after.id.slice(0, 10)}</code>
@@ -272,16 +375,34 @@ export default function BackupComparison({
           {before.host_id !== after.host_id && (
             <p className="warning">Hostübergreifender Vergleich</p>
           )}
-          {user.role !== "reader" && (
-            <div className="comparison-actions comparison-restore-actions">
-              <button className="secondary" onClick={() => onRestore(from)}>
-                Ausgangsstand zur Wiederherstellung wählen
-              </button>
-              <button className="secondary" onClick={() => onRestore(to)}>
-                Vergleichsstand zur Wiederherstellung wählen
-              </button>
-            </div>
-          )}
+          {user.role !== "reader" &&
+            (spacious ? (
+              <details className="comparison-restore-tools">
+                <summary>
+                  Wiederherstellung aus diesen Ständen vorbereiten
+                </summary>{" "}
+                <div className="comparison-actions comparison-restore-actions">
+                  <button className="secondary" onClick={() => onRestore(from)}>
+                    Ausgangsstand zur Wiederherstellung wählen
+                  </button>
+                  <button className="secondary" onClick={() => onRestore(to)}>
+                    Vergleichsstand zur Wiederherstellung wählen
+                  </button>
+                </div>
+              </details>
+            ) : (
+              <>
+                {" "}
+                <div className="comparison-actions comparison-restore-actions">
+                  <button className="secondary" onClick={() => onRestore(from)}>
+                    Ausgangsstand zur Wiederherstellung wählen
+                  </button>
+                  <button className="secondary" onClick={() => onRestore(to)}>
+                    Vergleichsstand zur Wiederherstellung wählen
+                  </button>
+                </div>
+              </>
+            ))}
         </>
       )}
       {busy ? (
@@ -293,11 +414,147 @@ export default function BackupComparison({
       ) : (
         rows !== null && (
           <>
+            {spacious && (
+              <section
+                className="detail-change-brief"
+                aria-label="Was sich geändert hat"
+              >
+                <h3>Was sich geändert hat</h3>
+                <p className="change-brief-intro">
+                  {rows.filter((r) => !r.mtime_only).length}{" "}
+                  {rows.filter((r) => !r.mtime_only).length === 1
+                    ? "geänderte Datei"
+                    : "geänderte Dateien"}
+                  . Wähle eine Änderung, um die Werte vorher und nachher zu
+                  sehen.
+                </p>
+                <div className="change-story-grid">
+                  {rows
+                    .filter((r) => !r.mtime_only)
+                    .slice(0, 6)
+                    .map((r) => (
+                      <button
+                        className={
+                          "change-story-card" +
+                          (selected === r.path ? " selected" : "")
+                        }
+                        key={r.path}
+                        aria-label={`Änderung ansehen: ${r.path}`}
+                        aria-pressed={selected === r.path}
+                        onClick={() => {
+                          void open(r.path);
+                          previewRef.current?.focus();
+                        }}
+                      >
+                        <span className="change-story-top">
+                          <span>{changeArea(r.path)}</span>
+                          <span>
+                            {r.change === "added"
+                              ? "Neu"
+                              : r.change === "removed"
+                                ? "Entfernt"
+                                : r.content_changed
+                                  ? "Inhalt"
+                                  : "Metadaten"}
+                          </span>
+                        </span>
+                        <strong>{changeSubject(r)}</strong>
+                        <span className="change-story-description">
+                          {r.secret
+                            ? "Geschützte Konfiguration · Inhalte bleiben verborgen."
+                            : r.change === "added"
+                              ? "Diese Datei ist im Vergleichsstand hinzugekommen."
+                              : r.change === "removed"
+                                ? "Diese Datei ist im Vergleichsstand nicht mehr vorhanden."
+                                : r.content_changed
+                                  ? "Der Dateiinhalt unterscheidet sich zwischen diesen Ständen."
+                                  : "Dateieigenschaften wurden aktualisiert."}
+                        </span>
+                        <code>{r.path}</code>
+                        <span className="change-story-link">
+                          Änderung ansehen <span aria-hidden="true">↗</span>
+                        </span>
+                      </button>
+                    ))}
+                </div>
+                {rows.filter((r) => !r.mtime_only).length > 6 && (
+                  <p className="muted">
+                    Weitere Änderungen findest du in der Dateiauswahl unten.
+                  </p>
+                )}
+                {!rows.filter((r) => !r.mtime_only).length && (
+                  <p className="muted">
+                    {rows.length
+                      ? "Nur Zeitangaben aktualisiert; Inhalte bleiben unverändert."
+                      : "Die Stände stimmen überein."}
+                  </p>
+                )}
+                <details className="comparison-explanation">
+                  <summary>Wie die Zusammenfassung entsteht</summary>
+                  <p>
+                    Beschreibungen beziehen sich auf erfasste Dateien und
+                    Metadaten. Die genauen Werte stehen im Dateivergleich.
+                  </p>
+                </details>
+              </section>
+            )}
+            <div
+              className="comparison-area-cards"
+              aria-label="Änderungsbereiche"
+            >
+              {[
+                ["Netzwerk", Network],
+                ["Storage", HardDrive],
+                ["System", Settings2],
+                ["Weitere Konfiguration", Files],
+              ].map(([name, Icon]) => {
+                const label = name as string;
+                const AreaIcon = Icon as typeof Network;
+                const count = rows.filter(
+                  (r) => changeArea(r.path) === label && !r.mtime_only,
+                ).length;
+                return (
+                  <button
+                    key={label}
+                    className={
+                      "comparison-area-card" +
+                      (count ? " has-changes" : "") +
+                      (area === label ? " selected" : "")
+                    }
+                    aria-pressed={area === label}
+                    onClick={() => {
+                      setArea(area === label ? "" : label);
+                      setPage(1);
+                    }}
+                  >
+                    <AreaIcon size={18} aria-hidden="true" />
+                    <strong>{label}</strong>
+                    <span>
+                      {count
+                        ? `${count} ${count === 1 ? "Änderung" : "Änderungen"}`
+                        : "Keine Änderung erfasst"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {area && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setArea("");
+                  setPage(1);
+                }}
+              >
+                Bereichsfilter aufheben
+              </button>
+            )}
             <p className="comparison-counts">
               {rows.filter((r) => !r.mtime_only).length} wesentliche Änderung
-              {rows.filter((r) => !r.mtime_only).length === 1 ? "" : "en"} ·{" "}
-              {counts.content} Inhalt · {counts.metadata} Metadaten ·{" "}
-              {counts.mtime} nur Änderungszeit
+              {rows.filter((r) => !r.mtime_only).length === 1
+                ? ""
+                : "en"} · {counts.content} Inhalt · {counts.metadata} Metadaten
+              · {counts.mtime} nur Änderungszeit
             </p>
             {!rows.length ? (
               <Empty title="Keine Unterschiede">
@@ -305,35 +562,50 @@ export default function BackupComparison({
               </Empty>
             ) : (
               <>
-                <div className="toolbar comparison-filters">
-                  <input
-                    aria-label="Änderungen durchsuchen"
-                    placeholder="Dateipfad suchen"
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setPage(1);
-                    }}
-                  />
-                  <select
-                    aria-label="Änderungsart"
-                    value={filter}
-                    onChange={(e) => {
-                      setFilter(e.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Alle Änderungen</option>
-                    <option value="content">Inhalt geändert</option>
-                    <option value="metadata">Metadaten geändert</option>
-                    <option value="mtime">Nur Änderungszeit</option>
-                    <option value="added">Hinzugefügt</option>
-                    <option value="removed">Entfernt</option>
-                    <option value="secret">Geschützte Dateien</option>
-                  </select>
-                </div>
                 <div className="comparison-browser">
                   <div className="comparison-list">
+                    <div className="comparison-pane-heading">
+                      <strong>Dateien im Vergleich</strong>
+                      <span>{filtered.length}</span>
+                    </div>
+                    <div className="toolbar comparison-filters">
+                      <input
+                        aria-label="Änderungen durchsuchen"
+                        placeholder="Dateipfad suchen"
+                        value={query}
+                        onChange={(e) => {
+                          setQuery(e.target.value);
+                          setPage(1);
+                        }}
+                      />
+                      <div
+                        className="change-filter-chips"
+                        role="group"
+                        aria-label="Änderungsart"
+                      >
+                        {[
+                          ["", "Alle"],
+                          ["content", "Inhalt"],
+                          ["metadata", "Eigenschaften"],
+                          ["mtime", "Zeitangaben"],
+                          ["added", "Neu"],
+                          ["removed", "Entfernt"],
+                          ["secret", "Geschützt"],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            className="change-filter-chip"
+                            aria-pressed={filter === value}
+                            onClick={() => {
+                              setFilter(value);
+                              setPage(1);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="comparison-items">
                       {filtered
                         .slice(
@@ -352,7 +624,12 @@ export default function BackupComparison({
                             onClick={() => open(r.path)}
                           >
                             <span className="file-entry-name">
-                              <strong className="mono">{r.path}</strong>
+                              <strong>
+                                {r.path.split("/").filter(Boolean).at(-1)}
+                              </strong>
+                              <span className="file-entry-directory mono">
+                                {r.path}
+                              </span>
                               <small>
                                 {changeLabel[r.change]}
                                 {r.content_changed ? " · Inhalt" : ""}
@@ -369,39 +646,64 @@ export default function BackupComparison({
                         </p>
                       )}
                     </div>
-                    <div className="file-list-footer">
-                      <select
-                        aria-label="Änderungen pro Seite"
-                        value={pageSize}
-                        onChange={(e) => {
-                          setPageSize(Number(e.target.value));
-                          setPage(1);
-                        }}
-                      >
-                        <option value={25}>25 pro Seite</option>
-                        <option value={50}>50 pro Seite</option>
-                      </select>
-                      <Pagination
-                        page={currentPage}
-                        pageSize={pageSize}
-                        total={filtered.length}
-                        onPageChange={setPage}
-                        label="Änderungen"
-                      />
-                    </div>
+                    {filtered.length > 25 && (
+                      <div className="file-list-footer">
+                        <select
+                          aria-label="Änderungen pro Seite"
+                          value={pageSize}
+                          onChange={(e) => {
+                            setPageSize(Number(e.target.value));
+                            setPage(1);
+                          }}
+                        >
+                          <option value={25}>25 pro Seite</option>
+                          <option value={50}>50 pro Seite</option>
+                        </select>
+                        <Pagination
+                          page={currentPage}
+                          pageSize={pageSize}
+                          total={filtered.length}
+                          onPageChange={setPage}
+                          label="Änderungen"
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="comparison-preview" aria-busy={loading}>
+                  <div
+                    ref={previewRef}
+                    tabIndex={-1}
+                    className="comparison-preview"
+                    aria-busy={loading}
+                  >
+                    <div className="comparison-pane-heading">
+                      <strong>Dateidetails</strong>
+                      <span>Vorher → Nachher</span>
+                    </div>
                     {selected && !comparison && (
                       <strong className="mono comparison-path">
                         {selected}
                       </strong>
                     )}
                     <FileComparisonView
+                      collapseContext
                       comparison={comparison}
                       loading={loading}
                       error={error}
                       retry={() => open(selected)}
                     />
+                    {comparison && onTrackSetting && (
+                      <div className="comparison-trace-actions">
+                        {traceableSettings(comparison).map((s) => (
+                          <button
+                            key={s.id}
+                            className="secondary"
+                            onClick={() => onTrackSetting(s.id)}
+                          >
+                            {s.name} verfolgen <span aria-hidden="true">↗</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {comparison &&
                       (comparison.masked || comparison.state === "masked") &&
                       user.secrets && (

@@ -12,6 +12,19 @@ import { createPortal } from "react-dom";
 import { Anchor, X, MoreHorizontal } from "lucide-react";
 import { api, labels } from "../api";
 export type Notify = (message: string, error?: boolean) => void;
+export function PageEmblem({
+  children,
+  tone = "sage",
+}: {
+  children: ReactNode;
+  tone?: "sage" | "sand" | "blue";
+}) {
+  return (
+    <span className="page-emblem" data-tone={tone} aria-hidden="true">
+      {children}
+    </span>
+  );
+}
 export function BrandMark() {
   return (
     <span className="brand-mark" aria-hidden="true">
@@ -93,7 +106,9 @@ export function Heading({
   description,
   action,
   count,
+  accessibleTitle,
 }: {
+  accessibleTitle?: string;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -102,7 +117,7 @@ export function Heading({
   return (
     <header className="page-heading">
       <div>
-        <h1>{title}</h1>
+        <h1 aria-label={accessibleTitle}>{title}</h1>
         {count !== undefined && (
           <span className="collection-count">{count} Ergebnisse</span>
         )}

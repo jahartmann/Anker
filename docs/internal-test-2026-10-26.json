@@ -1,0 +1,150 @@
+{
+  "version": "0.2.0-internal.20261026",
+  "checked_on": "2026-10-26",
+  "scope": "Local demo and isolated internal laboratory; not a production or real Proxmox recovery acceptance",
+  "platform": "macOS arm64; Linux binaries cross-compiled, not executed",
+  "source": {
+    "git_base": "80d4eb079fdf70ec914500f9999b9f696545e9cc",
+    "working_tree": "modified, includes uncommitted development",
+    "source_and_test_file_count": 346,
+    "source_and_test_sha256": "55949944fb6f591f51fa1f1a63b69111b651283486c272f20300a7a27bfad73d",
+    "fingerprint_method": "SHA256 over sorted relative path + NUL + binary SHA256(file), runtime/build/test source only; documentation and generated web assets excluded"
+  },
+  "toolchain": {
+    "go": "1.27.3",
+    "vite": "8.3.5"
+  },
+  "checks": {
+    "go_race": {
+      "status": "passed",
+      "command": "go test -race -json ./...",
+      "cases_including_subtests": 1129,
+      "top_level_tests": 588,
+      "tested_packages": 8,
+      "skipped_tests": [
+        {
+          "package": "anker/internal/updater",
+          "test": "TestSystemdInstallationAndRecovery"
+        }
+      ],
+      "skip_reason": "Systemd integration requires an isolated Linux root/systemd environment"
+    },
+    "go_vet": {
+      "status": "passed",
+      "command": "go vet ./..."
+    },
+    "browser": {
+      "status": "passed",
+      "command": "npx playwright test --reporter=json --max-failures=5",
+      "passed": 313,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "duration_ms": 301594.951,
+      "projects": [
+        "demo",
+        "integration",
+        "draft",
+        "production"
+      ],
+      "test_data": "separate demo roots and auth cookies per project server"
+    },
+    "host_helper": {
+      "status": "passed",
+      "cases": 90,
+      "command": "python3 -m unittest discover -s host -p '*test*.py'"
+    },
+    "installer_scripts": {
+      "status": "passed",
+      "cases": 14,
+      "command": "python3 -m unittest discover -s scripts -p 'test_*.py'",
+      "environment": "OpenSSL 3 in PATH; system LibreSSL lacks required Ed25519 functionality"
+    },
+    "recovery_lab_toolkit": {
+      "status": "passed",
+      "cases": 22,
+      "command": "python3 -m unittest discover -s docs/recovery-lab -p 'test_*.py'",
+      "limit": "Toolkit fixtures, not the nine real recovery scenarios"
+    },
+    "terminal_pty": {
+      "status": "passed",
+      "command": "python3 scripts/test-tui-pty.py --binary ./bin/anker"
+    },
+    "shell_syntax_and_python_compile": {
+      "status": "passed"
+    },
+    "web_build": {
+      "status": "passed",
+      "command": "npm ci && npm run build",
+      "warning": "Vite main JS chunk exceeds the 500 kB advisory threshold; 572.40 kB / gzip 162.56 kB"
+    },
+    "npm_audit": {
+      "status": "passed",
+      "known_vulnerabilities": 0
+    },
+    "go_vulnerability_source_scan": {
+      "status": "passed_with_unused_module_advisory",
+      "tool": "golang.org/x/vuln/cmd/govulncheck@v1.9.0",
+      "database_modified": "2026-10-21",
+      "affected_imported_packages": 0,
+      "reachable_affected_symbols": 0,
+      "module_advisory": {
+        "id": "GO-2026-5932",
+        "package": "golang.org/x/crypto/openpgp",
+        "imported": false,
+        "note": "Deprecated OpenPGP is not in go list -deps ./...; x/crypto is used for other packages"
+      }
+    },
+    "linux_binary_vulnerability_scan": {
+      "status": "limited_precision",
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "advisory": "GO-2026-5932",
+      "finding_events_per_binary": 15,
+      "explanation": "Stripped binaries have no symbol table: govulncheck falls back to all known vulnerable symbols in included modules (internal/vulncheck/binary.go). This is not evidence that OpenPGP is linked. Source scan and import graph contain no OpenPGP. Binary scans alone are not a clean symbol-level verdict."
+    },
+    "linux_build": {
+      "status": "passed",
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "CGO_ENABLED": "0",
+      "runtime_execution": "not performed"
+    }
+  },
+  "fixes": [
+    "Go minimum/compiler 1.27.1 -> 1.27.3",
+    "Vite latest/8.3.2 -> exact 8.3.5",
+    "Isolated mutable integration fixtures from demo history tests",
+    "Comparison regression accepts multiple read views only when every request uses the exact expected snapshot pair"
+  ],
+  "open_acceptance": [
+    "Run this candidate on Linux/systemd, including service restart and updater isolation",
+    "Real Proxmox host permissions, backups, selected file restore, deletion, rollback and outcome verification",
+    "All nine real recovery laboratory scenarios",
+    "Hardware reboot/power-loss, storage, network, cluster, HA/Ceph and guest recovery",
+    "Long-running operation and large real backup sets"
+  ],
+  "distribution": {
+    "kind": "unsigned manual internal-test bundles; no official updater release",
+    "binaries": {
+      "anker-linux-amd64": {
+        "bytes": 17658016,
+        "sha256": "3356f929bd552f95da1dd78d5b7c74759f382f9cda4837c8d3215fa541cd6870"
+      },
+      "anker-linux-arm64": {
+        "bytes": 16580768,
+        "sha256": "67663bc8aa02176484c0a8f739b0ae38d8e51051f67f9c1b1468bf1a2a1c37aa"
+      }
+    }
+  },
+  "sources": [
+    "https://go.dev/doc/devel/release#go1.27.3",
+    "https://pkg.go.dev/vuln/GO-2026-5932",
+    "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+    "https://github.com/advisories/GHSA-rq7h-c2jc-7f22"
+  ]
+}

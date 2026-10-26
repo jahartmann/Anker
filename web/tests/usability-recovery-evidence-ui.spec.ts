@@ -11,6 +11,7 @@ async function backupsPage(page: Page) {
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
 }
 
 test("direct previous comparison uses the strictly older same-host stand and can restore either source", async ({
@@ -69,7 +70,18 @@ test("direct previous comparison uses the strictly older same-host stand and can
   await expect(view.getByLabel("Vergleich bis")).toHaveValue("newest123456");
   await view.getByText("Vollständige ID", { exact: true }).first().click();
   await expect(view.getByText("older1234567", { exact: true })).toBeVisible();
-  expect(pairs).toEqual([{ from: "older1234567", to: "newest123456" }]);
+  expect(pairs.length).toBeGreaterThan(0);
+  // The overview and explicit detail view may each read this pair.
+  expect(
+    pairs.every(
+      (pair) => pair.from === "older1234567" && pair.to === "newest123456",
+    ),
+  ).toBe(true);
+  await view
+    .getByText("Wiederherstellung aus diesen Ständen vorbereiten", {
+      exact: true,
+    })
+    .click();
   await expect(
     view.getByRole("button", {
       name: "Ausgangsstand zur Wiederherstellung wählen",
@@ -107,6 +119,11 @@ test("direct previous comparison uses the strictly older same-host stand and can
     .getByRole("button", { name: "Mit vorherigem Stand vergleichen" })
     .click();
   await view
+    .getByText("Wiederherstellung aus diesen Ständen vorbereiten", {
+      exact: true,
+    })
+    .click();
+  await view
     .getByRole("button", { name: "Ausgangsstand zur Wiederherstellung wählen" })
     .click();
   await expect(page.getByLabel("Sicherung", { exact: true })).toHaveValue(
@@ -119,6 +136,11 @@ test("direct previous comparison uses the strictly older same-host stand and can
     .click();
   await page
     .getByRole("button", { name: "Mit vorherigem Stand vergleichen" })
+    .click();
+  await view
+    .getByText("Wiederherstellung aus diesen Ständen vorbereiten", {
+      exact: true,
+    })
     .click();
   await view
     .getByRole("button", {
@@ -191,8 +213,8 @@ test("focused source readiness keeps missing proof and failed integrity attempt 
   );
   await backupsPage(page);
   await page.getByRole("button", { name: "Dateien" }).click();
-  await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-  const readiness = page.getByRole("region", { name: "Quellnachweise" });
+  await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+  const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
   await expect(readiness).toContainText("Letzter Prüfversuch fehlgeschlagen");
   await expect(readiness).toContainText("Kein Nachweis");
   await expect(readiness).toContainText("etc/network");
@@ -256,8 +278,8 @@ test("same source refresh hides old integrity evidence before a changed attempt 
   });
   await backupsPage(page);
   await page.getByRole("button", { name: "Dateien" }).click();
-  await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-  const readiness = page.getByRole("region", { name: "Quellnachweise" });
+  await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+  const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
   await expect(readiness).toContainText("Letzter Versuch erfolgreich");
   failed = true;
   await expect(readiness).not.toContainText("Letzter Versuch erfolgreich", {
@@ -302,10 +324,10 @@ test("overview and host detail load only their latest source, not historical row
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
   await page
-    .getByText("Quellnachweise des neuesten Stands", { exact: true })
+    .getByText("Prüfergebnisse der letzten Sicherung", { exact: true })
     .click();
   await expect(
-    page.getByRole("region", { name: "Quellnachweise" }),
+    page.getByRole("region", { name: "Prüfergebnisse" }),
   ).toContainText("history-119");
   expect(requested).toEqual(["history-119"]);
   await page
@@ -313,9 +335,11 @@ test("overview and host detail load only their latest source, not historical row
     .getByRole("button", { name: "Hosts", exact: true })
     .click();
   await page.getByRole("button", { name: host.name, exact: true }).click();
-  await page.getByText("Quellnachweise anzeigen", { exact: true }).click();
+  await page
+    .getByText("Details zum Host und zur letzten Sicherung", { exact: true })
+    .click();
   await expect(
-    page.getByRole("region", { name: "Quellnachweise" }),
+    page.getByRole("region", { name: "Prüfergebnisse" }),
   ).toContainText("history-119");
   expect(requested).toEqual(["history-119", "history-119"]);
 });
@@ -491,8 +515,8 @@ for (const changedEvidence of ["receipt", "manifest"]) {
     });
     await backupsPage(page);
     await page.getByRole("button", { name: "Dateien" }).click();
-    await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-    const readiness = page.getByRole("region", { name: "Quellnachweise" });
+    await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+    const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
     await expect(readiness).toContainText(
       "Kopie anhand tatsächlicher Bytes geprüft",
     );
@@ -540,8 +564,8 @@ test("local CLI byte receipt appears with date and distinct unknown physical ind
       .getByRole("button", { name: "Dateien", exact: true })
       .first()
       .click();
-    await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-    const readiness = page.getByRole("region", { name: "Quellnachweise" });
+    await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+    const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
     await expect(readiness).toContainText("tatsächlicher Bytes geprüft");
     await expect(readiness).toContainText("Lokaler Byte-Prüfer");
     await expect(readiness).toContainText(

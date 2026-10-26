@@ -11,6 +11,7 @@ async function openBackups(page: Page) {
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
 }
 
 test("row actions keep files accessible and choose the strictly older same-host source from the menu", async ({

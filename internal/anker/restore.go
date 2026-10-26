@@ -62,7 +62,7 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	}
 	activePaths := []string{}
 	for _, step := range p.Steps {
-		if step.Action == "apply" {
+		if step.Action == "apply" || step.Action == "remove" {
 			activePaths = append(activePaths, step.Path)
 		}
 	}
@@ -81,11 +81,15 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	}
 	if _, real := s.Collector.(SSHCollector); real {
 		var capability struct {
-			Protocol int  `json:"restore_protocol"`
-			Journal  bool `json:"journal"`
+			Protocol    int  `json:"restore_protocol"`
+			Journal     bool `json:"journal"`
+			RemoveFiles bool `json:"remove_files"`
 		}
 		if json.Unmarshal(inv.Details["capabilities"], &capability) != nil || capability.Protocol != 2 || !capability.Journal {
 			return p, errors.New("Hosthelfer unterstützt die abgesicherte Wiederherstellung noch nicht; Verbindung am Host neu einrichten")
+		}
+		if len(p.RemoveFiles) > 0 && !capability.RemoveFiles {
+			return p, errors.New("Hosthelfer für sichere Dateientfernungen aktualisieren")
 		}
 		manifest, readErr := s.Manifest(p.BackupID)
 		if readErr != nil {
@@ -163,5 +167,12 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	if s.Demo {
 		p.State = "demo_applied"
 	}
-	return p, s.savePlan(p)
+	if err = s.savePlan(p); err != nil {
+		return p, err
+	}
+	checked, checkErr := s.verifyRecoveryOutcomeLocked(ctx, p)
+	if checkErr == nil {
+		p = checked
+	}
+	return p, nil
 }

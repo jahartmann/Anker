@@ -1,3 +1,4 @@
+import { HostName } from "../hostNames";
 import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
 import type { Job, Status } from "../api";
@@ -132,7 +133,9 @@ export default function Jobs({
     currentDetail && polled
       ? progress(currentDetail) > progress(polled) ||
         (progress(currentDetail) === progress(polled) &&
-          currentDetail.attempts >= polled.attempts)
+          ((currentDetail.revision || 0) > (polled.revision || 0) ||
+            ((currentDetail.revision || 0) === (polled.revision || 0) &&
+              currentDetail.attempts >= polled.attempts)))
         ? currentDetail
         : polled
       : currentDetail || polled;
@@ -387,7 +390,7 @@ export default function Jobs({
               <div className="jobs-recent-main">
                 <strong>{labels[job.kind] || job.kind}</strong>
                 <span className="secondary-line">
-                  {hostNames.get(job.host_id) || job.host_id}
+                  <HostName name={hostNames.get(job.host_id) || job.host_id} />
                 </span>
               </div>
               <State
@@ -411,7 +414,7 @@ export default function Jobs({
         </ul>
       ) : jobs.length ? (
         <div>
-          <div className="table-scroll">
+          <div className="table-scroll data-surface">
             <table className="jobs-table" aria-label="Auftragsverlauf">
               <thead>
                 <tr>
@@ -431,8 +434,12 @@ export default function Jobs({
                     <td>
                       <strong>{labels[j.kind] || j.kind}</strong>
                       <div className="secondary-line">
-                        {status.hosts.find((h) => h.id === j.host_id)?.name ||
-                          j.host_id}
+                        <HostName
+                          name={
+                            status.hosts.find((h) => h.id === j.host_id)
+                              ?.name || j.host_id
+                          }
+                        />
                         {j.trigger === "scheduled" ? " · Zeitplan" : ""}
                       </div>
                     </td>
@@ -504,8 +511,12 @@ export default function Jobs({
               <>
                 <p className="dialog-intro">
                   {labels[selected.kind] || selected.kind} ·{" "}
-                  {status.hosts.find((h) => h.id === selected.host_id)?.name ||
-                    selected.host_id}
+                  <HostName
+                    name={
+                      status.hosts.find((h) => h.id === selected.host_id)
+                        ?.name || selected.host_id
+                    }
+                  />
                 </p>
                 <dl className="update-facts">
                   <div>
@@ -554,14 +565,47 @@ export default function Jobs({
                   </div>
                   <div>
                     <dt>Versuche</dt>
-                    <dd>{selected.attempts}</dd>
+                    <dd>
+                      {selected.attempts}
+                      {selected.max_attempts
+                        ? ` von höchstens ${selected.max_attempts}`
+                        : ""}
+                    </dd>
                   </div>
                   <div>
                     <dt>Laufzeit</dt>
                     <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
                   </div>
                 </dl>
-                {selected.error && (
+                {selected.message && (
+                  <p
+                    className={
+                      "notice " +
+                      (selected.retry_at || selected.state === "interrupted"
+                        ? "warning"
+                        : "")
+                    }
+                    aria-live="polite"
+                  >
+                    {selected.message}
+                    {selected.retry_at && (
+                      <> Nächster Versuch: {date(selected.retry_at)}.</>
+                    )}
+                  </p>
+                )}
+                {selected.last_error && (
+                  <details className="job-last-error">
+                    <summary>Letzter Verbindungsfehler</summary>
+                    <p>{selected.last_error}</p>
+                  </details>
+                )}
+                {selected.retry_of && (
+                  <p className="muted">
+                    Gezielte Wiederholung von <code>{selected.retry_of}</code>.
+                    Wiederholte Startanfragen öffnen diesen Auftrag.
+                  </p>
+                )}
+                {selected.error && selected.error !== selected.message && (
                   <p className="notice warning">{selected.error}</p>
                 )}
                 {selected.kind === "restore" && (

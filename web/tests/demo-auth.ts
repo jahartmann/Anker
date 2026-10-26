@@ -1,13 +1,17 @@
-import type { APIRequestContext } from "@playwright/test";
+import { test, type APIRequestContext } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 
 // One login per fresh demo server keeps large suites below the real login limit.
 // Reuse only test cookies, in a private temporary file outside the repository.
 export async function demoCookies(request: APIRequestContext) {
   const run = process.env.ANKER_BROWSER_RUN_ID;
+  // Cookies are bound to a server/catalog, even when both servers use 127.0.0.1.
+  const port = new URL(
+    test.info().project.use.baseURL || "http://127.0.0.1:8088",
+  ).port;
   const path =
     run && /^\d+$/.test(run)
-      ? "/tmp/anker-test-cookies-" + run + ".json"
+      ? "/tmp/anker-test-cookies-" + run + "-" + port + ".json"
       : undefined;
   if (path) {
     try {

@@ -295,10 +295,15 @@ func (s *Service) ComparePlanFile(id, path, basis string, reveal bool) (FileComp
 			e.SHA256 = step.PreparedSHA
 			e.Size = int64(len(data))
 		}
+	} else if step.Action == "remove" {
+		prepared = comparisonSide{state: "missing"}
 	} else if step.Decision == DecisionKeep {
 		prepared = target
 	}
 	c := compareRecoveryCandidates(source, target, prepared, path, p.BackupID, basis, reveal, step.Secret)
+	if step.Action == "remove" && basis == "target" {
+		c.AfterLabel = "Nach Entfernung · Datei fehlt"
+	}
 	if step.Decision == DecisionKeep && basis != "source-target" {
 		c.AfterLabel = "Ziel behalten"
 	}
@@ -372,7 +377,7 @@ func (s *Service) recoveryHTTP(u User, w http.ResponseWriter, r *http.Request) (
 		return true, jsonOut(w, v)
 	}
 	parts := strings.Split(path, "/")
-	if len(parts) == 3 && parts[0] == "plans" && parts[2] == "verify" {
+	if len(parts) == 3 && parts[0] == "plans" && (parts[2] == "verify" || parts[2] == "verify-files") {
 		if err := require(u, "restore"); err != nil {
 			return true, err
 		}
@@ -384,11 +389,16 @@ func (s *Service) recoveryHTTP(u User, w http.ResponseWriter, r *http.Request) (
 		if err != nil || len(data) > 256 || json.Unmarshal(data, &in) != nil || in == nil || len(in) != 0 {
 			return true, fail(400, "Prüfanfrage muss ein leeres JSON-Objekt sein")
 		}
-		p, err := s.VerifyRecovery(WithRecoveryActor(r.Context(), u.ID), parts[1])
+		var p Plan
+		if parts[2] == "verify-files" {
+			p, err = s.VerifyRecoveryOutcome(r.Context(), parts[1])
+		} else {
+			p, err = s.VerifyRecovery(WithRecoveryActor(r.Context(), u.ID), parts[1])
+		}
 		if err != nil {
 			return true, err
 		}
-		s.LogAudit(u.ID, "plan.verify", parts[1])
+		s.LogAudit(u.ID, "plan."+parts[2], parts[1])
 		return true, jsonOut(w, publicPlan(p))
 	}
 

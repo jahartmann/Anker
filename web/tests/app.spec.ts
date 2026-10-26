@@ -418,6 +418,7 @@ test("selected file carries into a fresh restore request", async ({ page }) => {
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -465,6 +466,7 @@ test("file list failures can be retried without closing the dialog", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -500,6 +502,7 @@ test("preview failure retains selected file and supports retry", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -524,6 +527,7 @@ test("comparison cannot retain the same source and destination", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   const { backups } = await (await page.request.get("/api/status")).json();
   await page.getByRole("button", { name: "Stände vergleichen" }).click();
   await page.getByLabel("Vergleich von").selectOption(backups[0].id);
@@ -541,6 +545,7 @@ test("last backup actions stay visible and close with Escape", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   const trigger = page
     .locator(".action-menu > summary, .action-menu > button")
     .last();
@@ -574,6 +579,7 @@ test("mobile backup actions require no sideways scrolling", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   const files = page
     .getByRole("button", { name: "Dateien", exact: true })
     .first();
@@ -779,7 +785,7 @@ test("host form validates and creates real record", async ({ page }) => {
   await page.getByLabel("Adresse", { exact: true }).fill("192.0.2.90");
   await page.getByRole("button", { name: "Host speichern" }).click();
   await expect(
-    page.getByText("pve-browser-test", { exact: true }),
+    page.getByRole("button", { name: "pve-browser-test", exact: true }),
   ).toBeVisible();
   const hosts = await (await page.request.get("/api/hosts")).json();
   expect(
@@ -1087,6 +1093,10 @@ test("existing hosts can reinstall their connection without persisting bootstrap
   });
   await page.getByRole("button", { name: hosts[0].name, exact: true }).click();
   await page
+    .locator(".host-tabs")
+    .getByRole("button", { name: "Einstellungen", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: "Verbindung einrichten", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
@@ -1143,6 +1153,7 @@ test("secrets stay masked until explicitly revealed and export downloads", async
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -1291,6 +1302,7 @@ test("backup queue and changed-file comparison use the service", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   const state = await (await page.request.get("/api/status")).json();
   const backups = state.backups
     .filter((b: { host_name: string }) => b.host_name === "pve-berlin-01")
@@ -1348,6 +1360,7 @@ test("backup list downloads a complete recovery archive directly", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   const downloading = page.waitForEvent("download");
   await page
     .getByRole("link", { name: "Herunterladen", exact: true })
@@ -1369,6 +1382,7 @@ test("failed downloads keep the user in the interface and show the reason", asyn
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.route("**/download?check=1", (route) =>
     route.fulfill({
       status: 403,
@@ -1395,6 +1409,7 @@ test("late file responses never overwrite the newly selected file", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -1449,6 +1464,7 @@ test("an expired session returns to login immediately during a download", async 
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: "Dateien", exact: true })
     .first()
@@ -1487,6 +1503,7 @@ test("three months of backups are shown in manageable pages", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await expect(page.getByRole("row")).toHaveCount(26);
   await page
     .getByRole("button", { name: "Nächste Seite", exact: true })
@@ -1569,6 +1586,7 @@ test("resizing with an open action menu closes it without browser errors", async
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page
     .getByRole("button", { name: /^Aktionen für/ })
     .first()

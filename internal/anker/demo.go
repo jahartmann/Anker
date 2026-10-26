@@ -72,7 +72,7 @@ func (c DemoCollector) Probe(_ context.Context, h Host) (Inventory, error) {
 	inv.Details["file_metadata"], _ = json.Marshal(metadata)
 	inv.Details["users"] = json.RawMessage(`{"0":"root"}`)
 	inv.Details["groups"] = json.RawMessage(`{"0":"root"}`)
-	inv.Details["capabilities"] = json.RawMessage(`{"restore_protocol":2,"recovery_read_protocol":1,"journal":true}`)
+	inv.Details["capabilities"] = json.RawMessage(`{"restore_protocol":2,"remove_files":true,"recovery_read_protocol":1,"journal":true}`)
 	results := map[string]any{}
 	for _, name := range []string{"pve_version", "interfaces", "disks", "addresses", "routes", "packages", "storage", "file_inventory", "users", "groups"} {
 		results[name] = map[string]string{"state": "ok"}
@@ -152,6 +152,9 @@ func (c DemoCollector) Collect(ctx context.Context, h Host, dest string) (Collec
 	return Collection{Inventory: inv, Entries: entries, Warnings: []string{}}, nil
 }
 func (c DemoCollector) Apply(ctx context.Context, h Host, p Plan, root string) (ApplyResult, error) {
+	if len(p.RemoveFiles) > 0 {
+		return c.applyRemovalPlan(ctx, h, p, root)
+	}
 	target, err := c.root(h)
 	if err != nil {
 		return ApplyResult{}, err

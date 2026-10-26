@@ -18,7 +18,7 @@ func validateHostResult(p Plan, result ApplyResult) error {
 	}
 	allowed := map[string]bool{}
 	for _, step := range p.Steps {
-		if step.Action == "apply" {
+		if step.Action == "apply" || step.Action == "remove" {
 			allowed[step.Path] = true
 		}
 	}
@@ -79,7 +79,7 @@ func (s *Service) ReconcilePlan(ctx context.Context, id string) (Plan, error) {
 		return p, err
 	}
 	ready := p.State == "ready"
-	if (ready && (p.SchemaVersion != 2 || len(p.Blockers) > 0 || s.Demo)) || p.State == "manual" || p.State == "blocked" || p.State == "demo_applied" {
+	if (ready && (p.SchemaVersion != 2 || len(p.Blockers) > 0 || s.Demo)) || p.State == "manual" || p.State == "blocked" || (p.State == "demo_applied" && len(p.RemoveFiles) == 0) {
 		return p, errors.New("Für diesen Plan ist keine ungeklärte Hostausführung gespeichert")
 	}
 	if ready {
@@ -190,7 +190,7 @@ func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Pl
 	if confirmation != id {
 		return p, errors.New("Plan-ID als ausdrückliche Bestätigung der Rücksetzung erforderlich")
 	}
-	if p.State == "ready" || p.State == "manual" || p.State == "blocked" || p.State == "rolled_back" || p.State == "demo_applied" {
+	if p.State == "ready" || p.State == "manual" || p.State == "blocked" || p.State == "rolled_back" || (p.State == "demo_applied" && len(p.RemoveFiles) == 0) {
 		return p, errors.New("Dieser Plan hat keine rücksetzbare reale Übernahme")
 	}
 	if err = s.acquire(p.TargetID); err != nil {
@@ -250,6 +250,11 @@ func (s *Service) RollbackPlan(ctx context.Context, id, confirmation string) (Pl
 	if saveErr := s.savePlan(p); saveErr != nil {
 		return p, errors.Join(err, saveErr)
 	}
+	if err == nil {
+		if checked, e := s.verifyRecoveryOutcomeLocked(ctx, p); e == nil {
+			p = checked
+		}
+	}
 	return p, err
 }
 
@@ -261,7 +266,7 @@ func (s *Service) QueueRollback(id, confirmation string) (Job, error) {
 	if confirmation != id {
 		return Job{}, errors.New("Plan-ID zur Rücksetzung bestätigen")
 	}
-	if p.State == "ready" || p.State == "manual" || p.State == "blocked" || p.State == "rolled_back" || p.State == "demo_applied" {
+	if p.State == "ready" || p.State == "manual" || p.State == "blocked" || p.State == "rolled_back" || (p.State == "demo_applied" && len(p.RemoveFiles) == 0) {
 		return Job{}, errors.New("Dieser Plan hat keine rücksetzbare reale Übernahme")
 	}
 	return s.queue(p.TargetID, "rollback", func(ctx context.Context) (string, error) {

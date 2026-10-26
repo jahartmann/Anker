@@ -52,7 +52,7 @@ export default function BackupReadiness({
         if (active && result.backup_id === backup.id && result.version === 1)
           setReadiness({ key: sourceKey, value: result });
         else if (active)
-          setError("Quellnachweis passt nicht zu dieser Sicherung.");
+          setError("Die Prüfergebnisse gehören nicht zu dieser Sicherung.");
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -66,19 +66,19 @@ export default function BackupReadiness({
   }, [sourceKey, retry]);
   if (!backup)
     return (
-      <section className="readiness" aria-label="Quellnachweise">
-        <h3>Quellnachweise</h3>
+      <section className="readiness" aria-label="Prüfergebnisse">
+        <h3>Prüfergebnisse</h3>
         <p className="muted">Noch keine Sicherung für diese Ansicht.</p>
       </section>
     );
   return (
-    <section className="readiness detail-section" aria-label="Quellnachweise">
-      <h3>Quellnachweise</h3>
+    <section className="readiness detail-section" aria-label="Prüfergebnisse">
+      <h3>Prüfergebnisse</h3>
       <p className="field-hint">
         Quelle: {backup.host_name} · {date(backup.created_at)} ·{" "}
-        <code>{backup.id}</code>. Jeder Nachweis gilt nur für diesen Stand.
+        <code>{backup.id}</code>. Die Ergebnisse gelten nur für diese Sicherung.
       </p>
-      {loading && <p role="status">Nachweise werden geladen …</p>}
+      {loading && <p role="status">Prüfergebnisse werden geladen …</p>}
       {error && (
         <LoadError message={error} retry={() => setRetry((n) => n + 1)} />
       )}

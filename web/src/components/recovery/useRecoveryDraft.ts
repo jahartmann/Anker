@@ -1,3 +1,4 @@
+import type { ChangeRecoveryIntent } from "./ChangeRecoveryIntent";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import type {
@@ -9,14 +10,22 @@ import type {
 } from "../../api";
 
 // In-memory only: navigation retains intent without persisting private contents.
-export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
+export function useRecoveryDraft(
+  initialBackup = "",
+  initialFile?: string,
+  initialChange?: ChangeRecoveryIntent,
+) {
   const [backup, setBackup] = useState(initialBackup);
-  const [target, setTarget] = useState("");
+  const [target, setTarget] = useState(initialChange?.targetID || "");
   const [scenario, setScenario] = useState("files");
   const [step, setStep] = useState(1);
   const [files, setFiles] = useState<string[]>(
-    initialFile ? [initialFile] : [],
+    initialChange ? [...initialChange.files] : initialFile ? [initialFile] : [],
   );
+  const [removeFiles, setRemoveFiles] = useState<string[]>(
+    initialChange?.removeFiles || [],
+  );
+  const [removalsConfirmed, setRemovalsConfirmed] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [decisions, setDecisions] = useState<Record<string, FileDecision>>({});
   const [interfaces, setInterfaces] = useState<Record<string, string>>({});
@@ -63,6 +72,18 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     api<Entry[]>("backups/" + backup + "/files")
       .then((items) => {
         if (!live) return;
+        if (
+          initialChange &&
+          backup === initialChange.backupID &&
+          initialChange.files.some(
+            (p) => !items.some((e) => e.path === p && e.type !== "directory"),
+          )
+        ) {
+          setLoadError(
+            "Eine übergebene Datei fehlt in der Quelle. Änderung erneut öffnen und prüfen.",
+          );
+          return;
+        }
         setEntries(items);
         setFiles((old) =>
           old.filter((p) =>
@@ -94,6 +115,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setHostname("");
     setAddress("");
     setDecisions({});
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
   }
@@ -105,6 +127,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setInspecting(false);
     setInspection(null);
     setError("");
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
   }
@@ -112,6 +135,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     previousInspection.current = null;
     invalidate();
     setBackup(value);
+    setRemoveFiles([]);
     setEntries([]);
     setLoading(!!value);
     setLoadError("");
@@ -137,6 +161,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
   function changeScenario(value: string) {
     invalidate();
     setScenario(value);
+    if (value !== "files") setRemoveFiles([]);
     setDecisions((old) =>
       Object.fromEntries(
         Object.entries(old).filter(([, v]) => v !== "prepared"),
@@ -154,14 +179,17 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
   }
   const selectedFiles = new Set(files);
   const preserved = new Set(inspection?.preserved?.map((p) => p.path) || []);
-  const selectedPaths = entries
-    .filter(
-      (e) =>
-        e.type !== "directory" &&
-        !preserved.has(e.path) &&
-        (scenario !== "files" || selectedFiles.has(e.path)),
-    )
-    .map((e) => e.path);
+  const selectedPaths = [
+    ...removeFiles,
+    ...entries
+      .filter(
+        (e) =>
+          e.type !== "directory" &&
+          !preserved.has(e.path) &&
+          (scenario !== "files" || selectedFiles.has(e.path)),
+      )
+      .map((e) => e.path),
+  ];
   const required = (paths?: string[]) =>
     !paths?.length ||
     paths.some((p) => selectedPaths.includes(p) && decisions[p] !== "keep");
@@ -191,12 +219,14 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
           Object.entries(old).filter(([, decision]) => decision !== "prepared"),
         ),
       );
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
   }
   function changeStorage(value: Record<string, string>) {
     changed(true);
     setStorage(value);
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
   }
@@ -207,6 +237,9 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       target_id: target,
       scenario,
       files: scenario === "files" ? files : [],
+      ...(scenario === "files" && removeFiles.length
+        ? { remove_files: removeFiles, removals_confirmed: removalsConfirmed }
+        : {}),
       snapshot_id: needsInspection ? undefined : inspection?.snapshot_id,
       decisions: preview
         ? {}
@@ -258,6 +291,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     // Revalidate private evidence on every application; a displayed result is not authority.
     const body = requestBody();
     clearRecipeChoices();
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
     try {
@@ -290,6 +324,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
         setHostname(result.suggestions.hostname || "");
         setAddress(result.suggestions.address || "");
         setDecisions({});
+        setRemovalsConfirmed(false);
         setConsoleOK(false);
         setOffline(false);
         appliedRecipe.current = true;
@@ -312,7 +347,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       !target ||
       loading ||
       loadError ||
-      (scenario === "files" && !files.length)
+      (scenario === "files" && !files.length && !removeFiles.length)
     )
       return;
     const wasRecipe = appliedRecipe.current;
@@ -327,6 +362,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     setInspecting(true);
     setInspection(null);
     setError("");
+    setRemovalsConfirmed(false);
     setConsoleOK(false);
     setOffline(false);
     try {
@@ -428,11 +464,20 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
     (mappingInspection?.storage || []).filter((s) => !storage[s.id]).length;
   return {
     backup,
+    fromChange: !!initialChange && backup === initialChange.backupID,
     target,
     scenario,
     step,
     setStep,
     files,
+    removeFiles,
+    removalsConfirmed,
+    setRemovalsConfirmed,
+    changeRemovals: (paths: string[]) => {
+      invalidate();
+      setRemoveFiles(paths);
+      setDecisions({});
+    },
     entries,
     decisions,
     setDecisions: (value: Parameters<typeof setDecisions>[0]) => {
@@ -488,6 +533,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       manifest_sha: inspection?.manifest_sha,
       console_confirmed: undefined,
       source_offline: undefined,
+      removals_confirmed: undefined,
     }),
     inspect,
     recipePreview,
@@ -504,7 +550,7 @@ export function useRecoveryDraft(initialBackup = "", initialFile?: string) {
       !!backup &&
       !loading &&
       !loadError &&
-      (scenario !== "files" || files.length > 0),
+      (scenario !== "files" || files.length > 0 || removeFiles.length > 0),
   };
 }
 export type RecoveryDraft = ReturnType<typeof useRecoveryDraft>;

@@ -1,3 +1,4 @@
+import { HostName } from "../hostNames";
 import { useEffect, useId, useState } from "react";
 import { date, labels } from "../api";
 import type { Job, Status } from "../api";
@@ -83,8 +84,12 @@ export default function ActiveJobs({
           <li className="active-job" key={job.id}>
             <div className="active-job-summary">
               <strong>
-                {status.hosts.find((host) => host.id === job.host_id)?.name ||
-                  job.host_id}
+                <HostName
+                  name={
+                    status.hosts.find((host) => host.id === job.host_id)
+                      ?.name || job.host_id
+                  }
+                />
               </strong>
               <span className="muted">{labels[job.kind] || job.kind}</span>
               {job.kind === "restore" && (
@@ -105,7 +110,10 @@ export default function ActiveJobs({
                       ? "Laufzeit " + jobDuration(job, now)
                       : "Laufzeit nicht erfasst"}
                   </span>
-                  <span>Versuch {job.attempts}</span>
+                  <span>
+                    Versuch {job.attempts}
+                    {job.max_attempts ? ` / ${job.max_attempts}` : ""}
+                  </span>
                   <span>
                     {job.started_at
                       ? "Gestartet " + date(job.started_at)
@@ -119,6 +127,19 @@ export default function ActiveJobs({
                 </>
               )}
             </div>
+            {job.message && (
+              <p
+                className={
+                  "active-job-message" + (job.retry_at ? " retry-wait" : "")
+                }
+                aria-live={job.retry_at ? "polite" : "off"}
+              >
+                {job.message}
+                {job.retry_at && (
+                  <span> Nächster Versuch: {date(job.retry_at)}</span>
+                )}
+              </p>
+            )}
             {openJob && (
               <button
                 className="text-button"

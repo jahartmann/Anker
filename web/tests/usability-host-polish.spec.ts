@@ -129,19 +129,20 @@ test("host source evidence starts collapsed and restore stays reachable", async 
   await page.getByRole("button", { name: "Polish Saved", exact: true }).click();
   const evidence = page
     .locator("details")
-    .filter({ has: page.locator("summary", { hasText: "Quellnachweise" }) });
+    .filter({ has: page.locator("summary", { hasText: "Details zum Host und zur letzten Sicherung" }) });
   await expect(evidence).not.toHaveAttribute("open", "");
   await expect(
-    evidence.getByRole("region", { name: "Quellnachweise" }),
+    evidence.getByRole("region", { name: "Prüfergebnisse" }),
   ).not.toBeVisible();
   const restore = page.getByRole("button", {
     name: "Wiederherstellung planen",
     exact: true,
   });
   await expect(restore).toBeEnabled();
+  await restore.scrollIntoViewIfNeeded();
   await expect(restore).toBeInViewport();
   await evidence.locator("summary").click();
   await expect(
-    evidence.getByRole("region", { name: "Quellnachweise" }),
+    evidence.getByRole("region", { name: "Prüfergebnisse" }),
   ).toBeVisible();
 });

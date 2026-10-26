@@ -49,7 +49,7 @@ def probe(root=root,test_mode=False):
   if not p.is_file():continue
   rel=p.relative_to(root).as_posix();e=h.entry_meta(p,rel)
   hashes[rel]=h.digest(p.read_bytes());metadata[rel]={k:e[k] for k in ('type','mode','uid','gid','xattrs')}
- return {'hostname':'local-proof','pve_version':'8.4','interfaces':[],'disks':[],'details':{'file_hashes':hashes,'file_metadata':metadata,'users':{str(os.getuid()):'tester'},'groups':{str(os.getgid()):'testers'},'capabilities':{'restore_protocol':2,'journal':True,'recovery_read_protocol':1},'command_results':{k:{'state':'ok'} for k in ('pve_version','file_inventory','users','groups')}}}
+ return {'hostname':'local-proof','pve_version':'8.4','interfaces':[],'disks':[],'details':{'file_hashes':hashes,'file_metadata':metadata,'users':{str(os.getuid()):'tester'},'groups':{str(os.getgid()):'testers'},'capabilities':{'restore_protocol':2,'remove_files':True,'journal':True,'recovery_read_protocol':1},'command_results':{k:{'state':'ok'} for k in ('pve_version','file_inventory','users','groups')}}}
 h.probe=probe
 try:
  if op=='probe':

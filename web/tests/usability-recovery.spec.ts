@@ -378,10 +378,25 @@ test("large host lists page and filter by actionable state without losing hosts"
     r.fulfill({ json: { ...base, hosts, backups: [], jobs: [] } }),
   );
   await page.goto("/");
-  await expect(page.locator(".host-table tbody tr")).toHaveCount(25);
-  await page
-    .getByRole("button", { name: "Nächste Seite", exact: true })
-    .click();
+  await expect(page.locator(".host-table tbody tr")).toHaveCount(8);
+  const seen: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    await expect(
+      page.locator(".host-table .name-link").first(),
+    ).toHaveAttribute("aria-label", `node-${String(i * 8).padStart(2, "0")}`);
+    seen.push(
+      ...(await page
+        .locator(".host-table .name-link")
+        .evaluateAll((elements) =>
+          elements.map((el) => el.getAttribute("aria-label")!),
+        )),
+    );
+    if (i < 4)
+      await page
+        .getByRole("button", { name: "Nächste Seite", exact: true })
+        .click();
+  }
+  expect(new Set(seen).size).toBe(40);
   await expect(
     page.getByRole("button", { name: "node-39", exact: true }),
   ).toBeVisible();
@@ -391,7 +406,7 @@ test("large host lists page and filter by actionable state without losing hosts"
     page.getByRole("button", { name: "node-39", exact: true }),
   ).toBeVisible();
   await page.getByLabel("Hoststatus filtern").selectOption("attention");
-  await expect(page.locator(".host-table tbody tr")).toHaveCount(25);
+  await expect(page.locator(".host-table tbody tr")).toHaveCount(8);
   await page.getByLabel("Hosts durchsuchen").fill("node-38");
   await expect(page.locator(".host-table tbody tr")).toHaveCount(1);
   await expect(

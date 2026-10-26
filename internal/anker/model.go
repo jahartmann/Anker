@@ -147,6 +147,12 @@ type Backup struct {
 	Warnings            []string                 `json:"warnings"`
 }
 type Job struct {
+	Revision     int    `json:"revision,omitempty"`
+	MaxAttempts  int    `json:"max_attempts,omitempty"`
+	RetryAt      string `json:"retry_at,omitempty"`
+	Message      string `json:"message,omitempty"`
+	LastError    string `json:"last_error,omitempty"`
+	RetryOf      string `json:"retry_of,omitempty"`
 	SourceSetID  string `json:"source_set_id,omitempty"`
 	ID           string `json:"id"`
 	HostID       string `json:"host_id"`
@@ -204,8 +210,9 @@ type RecoveryPreservation struct {
 	Reason string `json:"reason"`
 }
 type RecoverySelection struct {
-	Paths     []string               `json:"paths"`
-	Preserved []RecoveryPreservation `json:"preserved"`
+	RemoveFiles []string               `json:"remove_files,omitempty"`
+	Paths       []string               `json:"paths"`
+	Preserved   []RecoveryPreservation `json:"preserved"`
 }
 type FileDecision string
 
@@ -214,18 +221,21 @@ const (
 	DecisionPrepared FileDecision = "prepared"
 	DecisionKeep     FileDecision = "keep"
 	DecisionManual   FileDecision = "manual"
+	DecisionRemove   FileDecision = "remove"
 )
 
 type PlanRequest struct {
-	Decisions        map[string]FileDecision `json:"decisions,omitempty"`
-	SnapshotID       string                  `json:"snapshot_id,omitempty"`
-	BackupID         string                  `json:"backup_id"`
-	TargetID         string                  `json:"target_id"`
-	Scenario         string                  `json:"scenario"`
-	Files            []string                `json:"files"`
-	Mapping          Mapping                 `json:"mapping"`
-	ConsoleConfirmed bool                    `json:"console_confirmed"`
-	SourceOffline    bool                    `json:"source_offline"`
+	RemoveFiles       []string                `json:"remove_files,omitempty"`
+	RemovalsConfirmed bool                    `json:"removals_confirmed,omitempty"`
+	Decisions         map[string]FileDecision `json:"decisions,omitempty"`
+	SnapshotID        string                  `json:"snapshot_id,omitempty"`
+	BackupID          string                  `json:"backup_id"`
+	TargetID          string                  `json:"target_id"`
+	Scenario          string                  `json:"scenario"`
+	Files             []string                `json:"files"`
+	Mapping           Mapping                 `json:"mapping"`
+	ConsoleConfirmed  bool                    `json:"console_confirmed"`
+	SourceOffline     bool                    `json:"source_offline"`
 }
 type Step struct {
 	Decision        FileDecision     `json:"decision,omitempty"`
@@ -241,6 +251,9 @@ type Step struct {
 	Diff            string           `json:"diff,omitempty"`
 }
 type Plan struct {
+	OutcomeChecks        []RecoveryOutcome             `json:"outcome_checks,omitempty"`
+	RemoveFiles          []string                      `json:"remove_files,omitempty"`
+	RemovalsConfirmed    bool                          `json:"removals_confirmed,omitempty"`
 	VerificationAttempts []RecoveryVerificationAttempt `json:"verification_attempts,omitempty"`
 	SchemaVersion        int                           `json:"schema_version,omitempty"`
 	TargetSnapshotSHA    string                        `json:"target_snapshot_sha,omitempty"`
@@ -324,6 +337,7 @@ type Service struct {
 	Collector        Collector
 	mu               sync.Mutex
 	locks            map[string]bool
+	stopReasons      map[string]string
 	cancels          map[string]context.CancelFunc
 	Demo             bool
 	schedulerBusy    bool

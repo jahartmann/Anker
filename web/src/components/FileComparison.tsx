@@ -34,11 +34,13 @@ export default function FileComparisonView({
   loading,
   error,
   retry,
+  collapseContext = false,
 }: {
   comparison: FileComparison | null;
   loading: boolean;
   error: string;
   retry: () => void;
+  collapseContext?: boolean;
 }) {
   if (loading)
     return (
@@ -51,8 +53,7 @@ export default function FileComparisonView({
   if (!comparison)
     return (
       <Empty title="Datei auswählen">
-        Die Übersicht lädt keine Dateiinhalte. Eine Datei öffnen, um ihren
-        Vergleich zu lesen.
+        Wähle eine Datei aus. Dann siehst du hier ihre Änderungen.
       </Empty>
     );
   const c = comparison;
@@ -65,14 +66,38 @@ export default function FileComparisonView({
         ? "Nur Änderungszeit geändert · kein Schreibbedarf"
         : "Nur Metadaten geändert"
       : states[c.state];
+  const edits =
+    restricted || unavailable
+      ? []
+      : c.hunks.flatMap((h) => {
+          const groups: { before: string[]; after: string[] }[] = [];
+          let group: { before: string[]; after: string[] } | null = null;
+          for (const line of h.lines) {
+            if (line.kind === "context") {
+              group = null;
+              continue;
+            }
+            if (!group) {
+              group = { before: [], after: [] };
+              groups.push(group);
+            }
+            group[line.kind === "remove" ? "before" : "after"].push(line.text);
+          }
+          return groups;
+        });
   return (
     <div className="file-comparison">
       <div className="preview-heading">
-        <strong className="mono">{c.path}</strong>
+        <span className="eyebrow">Ausgewählte Änderung</span>
+        <strong>{c.path.split("/").filter(Boolean).at(-1)}</strong>
+        <code>{c.path}</code>
       </div>
-      <p className="comparison-labels">
-        {c.before_label} → {c.after_label}
-      </p>
+      <details className="comparison-source-reference">
+        <summary>Verglichene Quellen</summary>
+        <p className="comparison-labels">
+          {c.before_label} → {c.after_label}
+        </p>
+      </details>
       <p className="comparison-state">{status}</p>
       {restricted ? (
         <p className="muted">
@@ -89,6 +114,39 @@ export default function FileComparisonView({
         />
       ) : (
         <>
+          {edits.length > 0 && (
+            <section
+              className="value-change-summary"
+              aria-label="Was im Inhalt geändert wurde"
+            >
+              <h4>Was im Inhalt geändert wurde</h4>
+              <p className="muted">
+                Geänderte Textstellen direkt gegenübergestellt.
+              </p>
+              {edits.slice(0, 4).map((edit, i) => (
+                <div className="value-change-pair" key={i}>
+                  <div className="value-before">
+                    <small>
+                      <span aria-hidden="true">−</span> Vorher
+                    </small>
+                    <pre>{edit.before.join("") || "Nicht vorhanden"}</pre>
+                  </div>
+                  <div className="value-after">
+                    <small>
+                      <span aria-hidden="true">+</span> Nachher
+                    </small>
+                    <pre>{edit.after.join("") || "Nicht vorhanden"}</pre>
+                  </div>
+                </div>
+              ))}
+              {edits.length > 4 && (
+                <p className="muted">
+                  {edits.length - 4} weitere Textstellen im vollständigen
+                  Zeilenvergleich.
+                </p>
+              )}
+            </section>
+          )}
           {c.state === "too_large" && (
             <p className="muted">
               Vollständige Dateien herunterladen und lokal prüfen.
@@ -125,58 +183,64 @@ export default function FileComparisonView({
           {c.state !== "binary" &&
             c.state !== "too_large" &&
             !!c.hunks.length && (
-              <div
-                className="diff-hunks"
-                role="region"
-                aria-label="Zeilenvergleich"
-              >
-                <p className="diff-legend">
-                  − Entfernt · + Hinzugefügt · unveränderte Zeilen als Kontext
-                </p>
-                {c.hunks.map((h, index) => (
-                  <div className="diff-hunk" key={index}>
-                    <div className="diff-hunk-heading">
-                      Vorher ab Zeile {h.before_start || "—"} · Nachher ab Zeile{" "}
-                      {h.after_start || "—"}
-                    </div>
-                    {h.lines.map((line, i) => (
-                      <div
-                        className={"diff-line diff-" + line.kind}
-                        key={i}
-                        aria-label={
-                          line.kind === "add"
-                            ? "Hinzugefügt"
-                            : line.kind === "remove"
-                              ? "Entfernt"
-                              : "Kontext"
-                        }
-                      >
-                        <span className="diff-number" title="Zeile vorher">
-                          {line.before_line ?? ""}
-                        </span>
-                        <span className="diff-number" title="Zeile nachher">
-                          {line.after_line ?? ""}
-                        </span>
-                        <span className="diff-symbol" aria-hidden="true">
-                          {line.kind === "add"
-                            ? "+"
-                            : line.kind === "remove"
-                              ? "−"
-                              : " "}
-                        </span>
-                        <span className="diff-text">
-                          {line.text}
-                          {!line.text.endsWith("\n") && (
-                            <small className="diff-no-newline">
-                              Kein Zeilenumbruch am Dateiende
-                            </small>
-                          )}
-                        </span>
+              <details className="full-line-diff" open={!collapseContext}>
+                <summary>
+                  Vollständiger Zeilenvergleich{" "}
+                  <span>mit unverändertem Kontext</span>
+                </summary>
+                <div
+                  className="diff-hunks"
+                  role="region"
+                  aria-label="Zeilenvergleich"
+                >
+                  <p className="diff-legend">
+                    − Entfernt · + Hinzugefügt · unveränderte Zeilen als Kontext
+                  </p>
+                  {c.hunks.map((h, index) => (
+                    <div className="diff-hunk" key={index}>
+                      <div className="diff-hunk-heading">
+                        Vorher ab Zeile {h.before_start || "—"} · Nachher ab
+                        Zeile {h.after_start || "—"}
                       </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                      {h.lines.map((line, i) => (
+                        <div
+                          className={"diff-line diff-" + line.kind}
+                          key={i}
+                          aria-label={
+                            line.kind === "add"
+                              ? "Hinzugefügt"
+                              : line.kind === "remove"
+                                ? "Entfernt"
+                                : "Kontext"
+                          }
+                        >
+                          <span className="diff-number" title="Zeile vorher">
+                            {line.before_line ?? ""}
+                          </span>
+                          <span className="diff-number" title="Zeile nachher">
+                            {line.after_line ?? ""}
+                          </span>
+                          <span className="diff-symbol" aria-hidden="true">
+                            {line.kind === "add"
+                              ? "+"
+                              : line.kind === "remove"
+                                ? "−"
+                                : " "}
+                          </span>
+                          <span className="diff-text">
+                            {line.text}
+                            {!line.text.endsWith("\n") && (
+                              <small className="diff-no-newline">
+                                Kein Zeilenumbruch am Dateiende
+                              </small>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
         </>
       )}

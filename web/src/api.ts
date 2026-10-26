@@ -1,3 +1,4 @@
+import { assessHost } from "./hostHealth";
 export interface User {
   disabled: boolean;
   id: string;
@@ -198,6 +199,12 @@ export interface FileComparison {
   masked: boolean;
 }
 export interface Job {
+  revision?: number;
+  max_attempts?: number;
+  retry_at?: string;
+  message?: string;
+  last_error?: string;
+  retry_of?: string;
   started_at?: string;
   trigger?: string;
   scheduled_day?: string;
@@ -271,6 +278,9 @@ export interface RecoveryVerificationAttempt {
   };
 }
 export interface Plan {
+  outcome_checks?: import("./components/recovery/RecoveryOutcomeCards").RecoveryOutcome[];
+  remove_files?: string[];
+  removals_confirmed?: boolean;
   verification_attempts?: RecoveryVerificationAttempt[];
   schema_version?: number;
   target_snapshot_id?: string;
@@ -320,7 +330,7 @@ export interface RecoveryStorage {
   reason?: string;
   suggested?: string;
 }
-export type FileDecision = "backup" | "prepared" | "keep" | "manual";
+export type FileDecision = "backup" | "prepared" | "keep" | "manual" | "remove";
 export interface RecoveryNetworkMapping {
   address_cidr?: string;
   gateway?: string;
@@ -417,16 +427,19 @@ export async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetch("/api/" + path, {
       method,
+      signal,
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-Anker-Request": "1" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e;
     throw new ApiError(
       "Anker ist nicht erreichbar. Verbindung und Dienst prüfen.",
     );
@@ -458,21 +471,74 @@ export function configureTimezone(v: string) {
     displayTimezone = "Europe/Berlin";
   }
 }
+const calendarFormats = new Map<
+  string,
+  {
+    parts: Intl.DateTimeFormat;
+    month: Intl.DateTimeFormat;
+    day: Intl.DateTimeFormat;
+  }
+>();
+export function calendarDate(value: string) {
+  if (!Number.isFinite(Date.parse(value)))
+    return {
+      monthKey: "unknown",
+      dayKey: "unknown",
+      monthLabel: "Zeitstempel ungeklärt",
+      dayLabel: "Datum nicht lesbar",
+    };
+  let formats = calendarFormats.get(displayTimezone);
+  if (!formats) {
+    formats = {
+      parts: new Intl.DateTimeFormat("en-CA", {
+        timeZone: displayTimezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }),
+      month: new Intl.DateTimeFormat("de-DE", {
+        timeZone: displayTimezone,
+        month: "long",
+        year: "numeric",
+      }),
+      day: new Intl.DateTimeFormat("de-DE", {
+        timeZone: displayTimezone,
+        weekday: "short",
+        day: "numeric",
+        month: "long",
+      }),
+    };
+    calendarFormats.set(displayTimezone, formats);
+  }
+  const timestamp = new Date(value);
+  const parts = formats.parts.formatToParts(timestamp);
+  const part = (type: string) => parts.find((p) => p.type === type)!.value;
+  return {
+    monthKey: `${part("year")}-${part("month")}`,
+    dayKey: `${part("year")}-${part("month")}-${part("day")}`,
+    monthLabel: formats.month.format(timestamp),
+    dayLabel: formats.day.format(timestamp),
+  };
+}
 export const date = (v?: string) =>
   v
-    ? new Intl.DateTimeFormat("de-DE", {
-        dateStyle: "short",
-        timeStyle: "short",
-        timeZone: displayTimezone,
-      }).format(new Date(v))
+    ? !Number.isFinite(Date.parse(v))
+      ? "Ungültiger Zeitstempel"
+      : new Intl.DateTimeFormat("de-DE", {
+          dateStyle: "short",
+          timeStyle: "short",
+          timeZone: displayTimezone,
+        }).format(new Date(v))
     : "—";
 export const preciseDate = (v?: string) =>
   v
-    ? new Intl.DateTimeFormat("de-DE", {
-        dateStyle: "short",
-        timeStyle: "medium",
-        timeZone: displayTimezone,
-      }).format(new Date(v))
+    ? !Number.isFinite(Date.parse(v))
+      ? "Ungültiger Zeitstempel"
+      : new Intl.DateTimeFormat("de-DE", {
+          dateStyle: "short",
+          timeStyle: "medium",
+          timeZone: displayTimezone,
+        }).format(new Date(v))
     : "—";
 export function bytes(v: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -518,49 +584,7 @@ export const labels: Record<string, string> = {
   restore: "Wiederherstellung",
   rollback: "Rücksetzung",
 };
-export function hostState(h: Host, s: Status) {
-  const hostBackups = s.backups
-    .filter((b) => b.host_id === h.id)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const b = hostBackups.find(
-    (b) => b.host_id === h.id && b.status === "successful",
-  );
-  if (!h.enabled) return { text: "Pausiert", tone: "muted", backup: b };
-  if (hostBackups[0]?.status === "damaged")
-    return {
-      text: "Beschädigter Stand",
-      tone: "danger",
-      backup: hostBackups[0],
-    };
-  if (hostBackups[0]?.status === "partial")
-    return {
-      text: "Letzte Sicherung unvollständig",
-      tone: "warning",
-      backup: hostBackups[0],
-    };
-  const latestJob = s.jobs
-    .filter(
-      (j) =>
-        j.host_id === h.id &&
-        j.kind === "backup" &&
-        ["failed", "interrupted", "cancelled"].includes(j.state),
-    )
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-  if (
-    latestJob &&
-    (!b || latestJob.created_at > b.created_at) &&
-    latestJob.result_id !== b?.id
-  )
-    return {
-      text: "Letzter Versuch fehlgeschlagen",
-      tone: latestJob.state === "failed" ? "danger" : "warning",
-      backup: b,
-    };
-  if (!b) return { text: "Ohne Sicherung", tone: "warning", backup: undefined };
-  if (Date.now() - new Date(b.created_at).getTime() > s.stale_hours * 3600000)
-    return { text: "Überfällig", tone: "warning", backup: b };
-  return { text: "Gesichert", tone: "success", backup: b };
-}
+export const hostState = assessHost;
 
 export interface RecoveryRecipe {
   id: string;

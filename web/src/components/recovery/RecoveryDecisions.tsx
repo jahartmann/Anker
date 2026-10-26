@@ -129,12 +129,23 @@ export default function RecoveryDecisions({
                 }
               >
                 <option value="">Entscheidung auswählen</option>
-                <option value="backup">
-                  Original aus Sicherung übernehmen
-                </option>
-                <option value="prepared">Vorbereitete Fassung verwenden</option>
-                <option value="keep">Ziel behalten</option>
-                <option value="manual">Manuell bearbeiten</option>
+                {d.removeFiles.includes(path) ? (
+                  <>
+                    <option value="remove">Datei ausdrücklich entfernen</option>
+                    <option value="keep">Ziel behalten · nicht löschen</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="backup">
+                      Original aus Sicherung übernehmen
+                    </option>
+                    <option value="prepared">
+                      Vorbereitete Fassung verwenden
+                    </option>
+                    <option value="keep">Ziel behalten</option>
+                    <option value="manual">Manuell bearbeiten</option>
+                  </>
+                )}
               </select>
             </Field>
           </div>
@@ -155,7 +166,9 @@ export default function RecoveryDecisions({
             d.setDecisions((old) => ({
               ...old,
               ...Object.fromEntries(
-                d.selectedPaths.map((p) => [p, old[p] || ("manual" as const)]),
+                d.selectedPaths
+                  .filter((p) => !d.removeFiles.includes(p))
+                  .map((p) => [p, old[p] || ("manual" as const)]),
               ),
             }))
           }
@@ -235,6 +248,7 @@ function DraftFileComparison({
   const actionLabel: Record<string, string> = {
     keep: "Ziel behalten · kein Schreibbedarf",
     apply: "Übernahme nach Planprüfung",
+    remove: "Datei entfernen · vorher für Rücksetzung sichern",
     manual: "Manuell bearbeiten",
     unknown: "Noch nicht beurteilbar",
   };
@@ -263,16 +277,19 @@ function DraftFileComparison({
       )}
       {open && (
         <section aria-label={"Dateivergleich für " + path}>
-          <Field label="Vergleichsbasis">
-            <select value={basis} onChange={(e) => void load(e.target.value)}>
-              <option value="source-target">Original ↔ Zielaufnahme</option>
-              <option value="source">Original ↔ Vorbereitet</option>
-              <option value="target">Zielaufnahme ↔ Vorbereitet</option>
-            </select>
-          </Field>
+          {!d.removeFiles.includes(path) && (
+            <Field label="Vergleichsbasis">
+              <select value={basis} onChange={(e) => void load(e.target.value)}>
+                <option value="source-target">Original ↔ Zielaufnahme</option>
+                <option value="source">Original ↔ Vorbereitet</option>
+                <option value="target">Zielaufnahme ↔ Vorbereitet</option>
+              </select>
+            </Field>
+          )}
           <p className="field-hint">
-            Vorbereitete Fassung mit den aktuellen Zuordnungen. Zielstand aus
-            der Prüfung; vor der Ausführung erneut prüfen.
+            {d.removeFiles.includes(path)
+              ? "Aktuell gelesener Zielinhalt → nach Entfernung. Das Original wird vor dem Löschen für die Rücksetzung gesichert."
+              : "Vorbereitete Fassung mit den aktuellen Zuordnungen. Zielstand aus der Prüfung; vor der Ausführung erneut prüfen."}
           </p>
           <FileComparison
             comparison={result?.comparison || null}
@@ -284,17 +301,19 @@ function DraftFileComparison({
             <div className="notice">
               <strong>Voraussichtliche Aktion</strong>
               <p>
-                Original:{" "}
+                {d.removeFiles.includes(path) ? "Entfernung: " : "Original: "}
                 {actionLabel[result.original_action.action] ||
                   "Noch nicht beurteilbar"}
                 . {result.original_action.reason}
               </p>
-              <p>
-                Vorbereitet:{" "}
-                {actionLabel[result.prepared_action.action] ||
-                  "Noch nicht beurteilbar"}
-                . {result.prepared_action.reason}
-              </p>
+              {!d.removeFiles.includes(path) && (
+                <p>
+                  Vorbereitet:{" "}
+                  {actionLabel[result.prepared_action.action] ||
+                    "Noch nicht beurteilbar"}
+                  . {result.prepared_action.reason}
+                </p>
+              )}
             </div>
           )}
           {canReveal && result?.comparison.masked && (

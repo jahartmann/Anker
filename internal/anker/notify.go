@@ -72,17 +72,22 @@ func (s *Service) CheckStaleBackups(at time.Time) error {
 		}
 		stale := true
 		for _, b := range backups {
-			if b.Status != "successful" {
+			if b.Status != "successful" || b.VerificationError != "" {
 				continue
 			}
 			created, err := time.Parse(time.RFC3339Nano, b.CreatedAt)
-			if err == nil {
-				stale = at.Sub(created) > time.Duration(settings.StaleHours)*time.Hour
+			// A future or unreadable clock value must not suppress an overdue alert.
+			// Allow small clock differences between the collector and the service.
+			if err != nil || created.After(at.Add(5*time.Minute)) {
+				continue
 			}
+			stale = settings.StaleHours <= 0 || at.Sub(created) > time.Duration(settings.StaleHours)*time.Hour
 			break
 		}
 		var notice staleNotice
-		s.Store.Get("stale_notifications", h.ID, &notice)
+		if err := s.Store.Get("stale_notifications", h.ID, &notice); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("Benachrichtigungsstand für Host %s nicht lesbar: %w", h.ID, err)
+		}
 		if notice.Alerted == stale {
 			continue
 		}

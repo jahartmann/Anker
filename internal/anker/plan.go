@@ -24,8 +24,13 @@ func (s *Service) Plan(id string) (Plan, error) {
 	}
 	err := s.Store.Get("plans", id, &p)
 	if err == nil {
+		p.OutcomeChecks = nil
 		p.VerificationAttempts = nil
 		e := s.Store.Get("recovery-verifications", id, &p.VerificationAttempts)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return p, e
+		}
+		e = s.Store.Get("recovery-outcomes", id, &p.OutcomeChecks)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return p, e
 		}
@@ -186,7 +191,9 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	analysisRequest.Files = []string{}
 	for _, path := range selection.Paths {
 		if r.Decisions[path] != DecisionKeep {
-			analysisRequest.Files = append(analysisRequest.Files, path)
+			if !containsPath(r.RemoveFiles, path) {
+				analysisRequest.Files = append(analysisRequest.Files, path)
+			}
 		}
 	}
 	inspection := RecoveryInspection{Source: m.Inventory, Target: target}
@@ -199,7 +206,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		analysisRequest.Mapping = Mapping{}
 	}
 	resolvedPorts, mappingBlockers, mappingManual := validateRecoveryMapping(inspection, analysisRequest)
-	p := Plan{SchemaVersion: 2, TargetSnapshotID: snapshot.ID, Decisions: map[string]FileDecision{}, Tasks: []RecoveryTask{}, ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	p := Plan{RemoveFiles: selection.RemoveFiles, RemovalsConfirmed: r.RemovalsConfirmed, SchemaVersion: 2, TargetSnapshotID: snapshot.ID, Decisions: map[string]FileDecision{}, Tasks: []RecoveryTask{}, ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
 	if snapshot.ID != "" {
 		p.Target = snapshot.Target
 	}
@@ -245,11 +252,17 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		if !selected[path] {
 			return p, errors.New("Entscheidung für nicht ausgewählte oder zu erhaltende Datei")
 		}
+		if decision == DecisionRemove && !containsPath(r.RemoveFiles, path) {
+			return p, errors.New("Entfernung für Quelldatei nicht erlaubt")
+		}
 		switch decision {
-		case DecisionBackup, DecisionPrepared, DecisionKeep, DecisionManual:
+		case DecisionBackup, DecisionPrepared, DecisionKeep, DecisionManual, DecisionRemove:
 		default:
 			return p, errors.New("unbekannte Dateientscheidung")
 		}
+	}
+	if hasRemovalDecision(r) && !r.RemovalsConfirmed {
+		return p, errors.New("Dateientfernungen ausdrücklich bestätigen")
 	}
 	root := filepath.Join(s.Root, "plans", p.ID)
 	if err = os.MkdirAll(filepath.Join(root, "prepared-files"), 0700); err != nil {
@@ -357,6 +370,32 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		p.Decisions[e.Path] = step.Decision
 		p.Steps = append(p.Steps, step)
 	}
+	for _, path := range selection.RemoveFiles {
+		delete(selected, path)
+		before := beforeFiles[path]
+		decision := r.Decisions[path]
+		step := Step{Path: path, Destination: path, Decision: decision, Action: "keep", ComparisonState: "missing_after", Reason: "Ziel behalten; keine Entfernung"}
+		if decision != DecisionKeep && decision != DecisionRemove {
+			return p, errors.New("Für jede Entfernung ausdrücklich Entfernen oder Ziel behalten wählen")
+		}
+		if decision == DecisionRemove && before.State != "missing" {
+			if reason := removalReason(path, before, target); reason != "" {
+				return p, errors.New(reason)
+			}
+			if snapshot.ID == "" {
+				return p, errors.New("Aktuelle Zielaufnahme für Entfernung erforderlich")
+			}
+			step.Action = "remove"
+			step.BeforeSHA = before.SHA256
+			step.Reason = "Datei ausdrücklich entfernen; vorheriger Zielinhalt im Rücksetzjournal sichern"
+			count++
+		} else {
+			step.Decision = DecisionKeep
+			step.Reason = "Ziel behalten oder Datei bereits nicht vorhanden"
+		}
+		p.Decisions[path] = step.Decision
+		p.Steps = append(p.Steps, step)
+	}
 	if len(selected) > 0 {
 		return p, errors.New("Dateiauswahl enthält nicht gesicherte Dateien")
 	}
@@ -409,6 +448,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	return p, nil
 }
 func (s *Service) savePlan(p Plan) error {
+	p.OutcomeChecks = nil
 	p.VerificationAttempts = nil
 	if p.SchemaVersion == 2 {
 		root := filepath.Join(s.Root, "plans", p.ID)
@@ -519,6 +559,7 @@ func (s *Service) ExportPlan(id string, w io.Writer) error {
 	return tw.Close()
 }
 func (s *Service) verifyPlanFiles(p Plan) error {
+	p.OutcomeChecks = nil
 	p.VerificationAttempts = nil
 	root := filepath.Join(s.Root, "plans", p.ID)
 	for name, expected := range map[string]any{"plan.json": p, "mapping.json": p.Mapping} {

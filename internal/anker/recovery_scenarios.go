@@ -32,6 +32,20 @@ func scenarioSelection(m Manifest, r PlanRequest) (RecoverySelection, error) {
 			available[e.Path] = true
 		}
 	}
+	removing := map[string]bool{}
+	for _, path := range r.RemoveFiles {
+		if ValidPath(path) != nil || protectedPath(path) || isSecret(path) || situation != "files" || available[path] || removing[path] || len(r.RemoveFiles) > 12 {
+			return selection, errors.New("Entfernung nur für ausdrücklich ausgewählte, gewöhnliche und im Quellstand fehlende Dateien erlaubt")
+		}
+		for _, entry := range m.Entries {
+			if entry.Path == path {
+				return selection, errors.New("Entfernungspfad ist in Quelle vorhanden")
+			}
+		}
+		removing[path] = true
+		selection.RemoveFiles = append(selection.RemoveFiles, path)
+	}
+	sort.Strings(selection.RemoveFiles)
 	requested := map[string]bool{}
 	for _, p := range r.Files {
 		if err := ValidPath(p); err != nil {
@@ -42,7 +56,7 @@ func scenarioSelection(m Manifest, r PlanRequest) (RecoverySelection, error) {
 		}
 		requested[p] = true
 	}
-	if situation == "files" && len(requested) == 0 {
+	if situation == "files" && len(requested) == 0 && len(removing) == 0 {
 		return selection, errors.New("mindestens eine Datei auswählen")
 	}
 	for p := range available {
@@ -50,7 +64,7 @@ func scenarioSelection(m Manifest, r PlanRequest) (RecoverySelection, error) {
 		if situation != "files" {
 			reason = scenarioPreservation(p, m.Inventory.Hostname, r.Scenario, situation)
 		}
-		if reason == "" && len(requested) > 0 && !requested[p] {
+		if reason == "" && (len(requested) > 0 || len(removing) > 0) && !requested[p] {
 			reason = "Nicht ausgewählte Datei; Zielstand erhalten"
 		}
 		if reason != "" {
@@ -59,6 +73,7 @@ func scenarioSelection(m Manifest, r PlanRequest) (RecoverySelection, error) {
 			selection.Paths = append(selection.Paths, p)
 		}
 	}
+	selection.Paths = append(selection.Paths, selection.RemoveFiles...)
 	sort.Strings(selection.Paths)
 	sort.Slice(selection.Preserved, func(i, j int) bool { return selection.Preserved[i].Path < selection.Preserved[j].Path })
 	return selection, nil

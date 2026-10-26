@@ -61,7 +61,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
   'storage':run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
   'guests':run('guests',['qm','list']), 'containers':run('containers',['pct','list']), 'cluster':cluster,
   'pci':run('pci',['lspci','-nn']), 'boot':run('boot',['proxmox-boot-tool','status']),
-  'capabilities':{'restore_protocol':2,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1}}
+  'capabilities':{'restore_protocol':2,'remove_files':True,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1}}
  if (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
  else:details['ceph']='';results['ceph']={'state':'not_applicable'}
  hashes={};metas={};walk_errors=[]
@@ -522,7 +522,7 @@ def load_journal(folder):
    relative(e['path'])
    if protected_restore(e['path']) or e['phase'] not in ('prepared','writing','applied','rolling_back','rolled_back','rollback_conflict'):raise ValueError('invalid journal file')
    for key in ('before_sha','after_sha'):
-    if not re.fullmatch(r'[0-9a-f]{64}',e[key]) and not (key=='before_sha' and e[key]=='missing'):raise ValueError('invalid journal hash')
+    if not re.fullmatch(r'[0-9a-f]{64}',e[key]) and not (e[key]=='missing' and (key=='before_sha' or (e.get('action')=='remove' and e.get('after_metadata') is None and e.get('before_sha')!='missing'))):raise ValueError('invalid journal hash')
    if e['before_sha']=='missing' and e['before_metadata'] is not None:raise ValueError('invalid journal metadata')
   allowed={'applied':('applied',),'failed':('prepared',),'rolled_back':('prepared','rolled_back')}
   if j['state'] in allowed and any(e['phase'] not in allowed[j['state']] for e in j['files']):raise ValueError('inconsistent journal terminal state')
@@ -641,12 +641,18 @@ def apply_files(root,items,test_mode=False,plan_id=None):
    if rel in seen:raise ValueError('duplicate restore path')
    seen.add(rel)
    if item.get('type','file')!='file' or item.get('xattrs'):raise ValueError('file metadata requires manual procedure')
+   action=item.get('action','replace')
+   if action not in ('replace','remove'):raise ValueError('unknown restore action')
+   if action=='remove' and (item.get('remove_confirmed') is not True or not rel.startswith('etc/') or any(k in item for k in ('content','mode','uid','gid','user','group'))):raise ValueError('explicit removal confirmation and deletion-only fields required')
    before,meta=file_state(root,rel,test_mode)
    if item.get('before_sha')!=before:raise ValueError('target file changed: '+rel)
    if not test_mode and 'expected_metadata' not in item:raise ValueError('expected target metadata required')
    expected=item.get('expected_metadata',meta)
    if expected!=meta:raise ValueError('target metadata changed: '+rel)
    if meta and meta['xattrs']:raise ValueError('target ACL/xattrs require manual procedure')
+   if action=='remove':
+    if before=='missing' or meta is None:raise ValueError('removal target must exist')
+    prepared.append((p,item,None,meta,before));continue
    if not test_mode:
     for key in ('type','mode','uid','gid','user','group'):
      if key not in item:raise ValueError('restore field required: '+key)
@@ -673,6 +679,9 @@ def apply_files(root,items,test_mode=False,plan_id=None):
      backup=confined(folder,'before/'+rel);backup.parent.mkdir(parents=True,exist_ok=True)
      with open(backup,'xb') as f:f.write(old);f.flush();os.fsync(f.fileno())
      sync_directory(backup.parent)
+    if item.get('action')=='remove':
+     j['files'].append({'path':rel,'action':'remove','before_sha':before,'before_metadata':meta,'after_sha':'missing','after_metadata':None,'stage':None,'phase':'prepared','applied':False})
+     continue
     stage=write_file(p,data,item.get('mode',0o600),item.get('uid',0),item.get('gid',0),test_mode);stages.append(stage)
     after_meta=metadata(pathlib.Path(stage),test_mode)
     j['files'].append({'path':rel,'before_sha':before,'before_metadata':meta,'after_sha':digest(data),'after_metadata':after_meta,'stage':str(stage),'phase':'prepared','applied':False})
@@ -683,6 +692,12 @@ def apply_files(root,items,test_mode=False,plan_id=None):
     p=confined(root,e['path'])
     e['phase']='writing';save_journal(folder,j)
     if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before replace: '+e['path'])
+    if e.get('action')=='remove':
+     # The original bytes and metadata are durable before the journal authorizes unlink.
+     if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before removal: '+e['path'])
+     p.unlink();e['applied']=True;sync_directory(p.parent)
+     if file_state(root,e['path'],test_mode)!=('missing',None):raise ValueError('removal verification failed: '+e['path'])
+     e['phase']='applied';save_journal(folder,j);continue
     if digest(pathlib.Path(e['stage']).read_bytes())!=e['after_sha'] or metadata(pathlib.Path(e['stage']),test_mode)!=e['after_metadata']:raise ValueError('staged file integrity failure')
     # Revalidate after reading the staged bytes and immediately before rename.
     if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before replace: '+e['path'])

@@ -102,6 +102,24 @@ func (s *Service) PreviewRecoveryFile(in RecoveryPreviewRequest) (RecoveryPrevie
 	}
 	mapping := in.Mapping
 	mapping.Interfaces = resolved
+	if containsPath(in.RemoveFiles, in.Path) {
+		before := RecoveryReadFile{Path: in.Path, State: "unavailable"}
+		for _, f := range snapshot.Files {
+			if f.Path == in.Path {
+				before = f
+			}
+		}
+		action := RecoveryCandidateAction{Action: "remove", Reason: "Datei nach ausdrücklicher Bestätigung entfernen; Original vorher für Rücksetzung sichern"}
+		if before.State == "missing" {
+			action = RecoveryCandidateAction{Action: "keep", Reason: "Datei bereits nicht vorhanden"}
+		} else if reason := removalReason(in.Path, before, snapshot.Target); reason != "" {
+			action = RecoveryCandidateAction{Action: "manual", Reason: reason}
+		}
+		out.SnapshotID, out.ManifestSHA = snapshot.ID, b.ManifestSHA
+		out.OriginalAction, out.PreparedAction = action, action
+		out.Comparison = compareSides(comparisonSide{data: before.Content, entry: before.Metadata, state: before.State}, comparisonSide{state: "missing"}, "Aktuelles Ziel vor Entfernung", "Nach Entfernung · Datei fehlt", in.Path, false)
+		return out, nil
+	}
 	source, err := s.backupComparisonSide(b.ID, in.Path)
 	if err != nil {
 		return out, err

@@ -83,7 +83,7 @@ class InventoryHardeningTests(unittest.TestCase):
   import subprocess
   with tempfile.TemporaryDirectory() as d,patch.object(h.subprocess,'run',side_effect=OSError('cannot execute')):
    r=h.probe(pathlib.Path(d));details=r['details']
-  self.assertEqual(details['capabilities'],{'restore_protocol':2,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1})
+  self.assertEqual(details['capabilities'],{'restore_protocol':2,'remove_files':True,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1})
   for key in ('pve_version','interfaces','disks','addresses','routes','packages','storage'):
    self.assertEqual(details['command_results'][key]['state'],'failed')
    self.assertIn('error',details['command_results'][key])

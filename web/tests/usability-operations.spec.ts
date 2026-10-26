@@ -13,23 +13,23 @@ test("overview prioritizes affected hosts and expands source evidence on demand"
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
-  const attention = page.getByRole("table", {
-    name: "Hosts mit Handlungsbedarf",
+  const attention = page.getByRole("region", {
+    name: "Jetzt wichtig",
   });
   await expect(attention).toBeVisible();
-  const evidence = page.getByText("Quellnachweise des neuesten Stands", {
+  const evidence = page.getByText("Prüfergebnisse der letzten Sicherung", {
     exact: true,
   });
   await expect(evidence).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Quellnachweise" }),
+    page.getByRole("region", { name: "Prüfergebnisse" }),
   ).not.toBeVisible();
   const attentionBox = await attention.boundingBox();
   const evidenceBox = await evidence.boundingBox();
   expect(attentionBox!.y).toBeLessThan(evidenceBox!.y);
   await evidence.click();
   await expect(
-    page.getByRole("region", { name: "Quellnachweise" }),
+    page.getByRole("region", { name: "Prüfergebnisse" }),
   ).toBeVisible();
 });
 

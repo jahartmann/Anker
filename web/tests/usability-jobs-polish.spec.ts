@@ -142,6 +142,11 @@ test("overview recent activity is compact and keeps job details reachable", asyn
   await expect(
     page.getByRole("table", { name: "Auftragsverlauf" }),
   ).toHaveCount(0);
+  await expect(page.locator(".overview-history")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await page.locator(".overview-history > summary").click();
   const recent = page.getByRole("list", { name: "Letzte Aufträge" });
   await expect(recent.getByRole("listitem")).toHaveCount(1);
   await expect(recent).toContainText("Erfolgreich");
@@ -199,6 +204,7 @@ test("failed restore keeps its error visible beside the plan action on narrow sc
     .getByRole("navigation")
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
+  await page.locator(".overview-history > summary").click();
   const recent = page.getByRole("list", { name: "Letzte Aufträge" });
   await expect(recent).toContainText("Zielverbindung unterbrochen");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(

@@ -67,6 +67,7 @@ async function setup(page: Page, rows: ReturnType<typeof row>[]) {
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.getByRole("button", { name: "Stände vergleichen" }).click();
   await page.getByLabel("Vergleich von").selectOption("older");
   await page.getByLabel("Vergleich bis").selectOption("newer");
@@ -160,13 +161,22 @@ test("large summaries are filtered and paged with lazy content", async ({
   ).toContainText("0025");
   await view.getByLabel("Änderungen pro Seite").selectOption("50");
   await expect(view.locator(".comparison-items > button")).toHaveCount(50);
-  await view.getByLabel("Änderungsart").selectOption("metadata");
+  await view
+    .getByRole("group", { name: "Änderungsart" })
+    .getByRole("button", { name: "Eigenschaften", exact: true })
+    .click();
   await expect(view.locator(".comparison-items > button")).toHaveCount(1);
   await expect(view.locator(".comparison-items")).toContainText("1599");
-  await view.getByLabel("Änderungsart").selectOption("mtime");
+  await view
+    .getByRole("group", { name: "Änderungsart" })
+    .getByRole("button", { name: "Zeitangaben", exact: true })
+    .click();
   await expect(view.locator(".comparison-items")).toContainText("1598");
   expect(requests).toEqual([]);
-  await view.getByLabel("Änderungsart").selectOption("");
+  await view
+    .getByRole("group", { name: "Änderungsart" })
+    .getByRole("button", { name: "Alle", exact: true })
+    .click();
   await view.getByLabel("Änderungen durchsuchen").fill("1599");
   await view.getByRole("button", { name: /^etc\/config-1599/ }).click();
   await expect(view.locator(".comparison-preview")).toContainText("context");
@@ -412,7 +422,18 @@ test("compact filters distinguish content added removed and protected files", as
     ["removed", ["etc/removed"]],
     ["secret", ["etc/secret"]],
   ] as const) {
-    await view.getByLabel("Änderungsart").selectOption(filter);
+    await view
+      .getByRole("group", { name: "Änderungsart" })
+      .getByRole("button", {
+        name: {
+          content: "Inhalt",
+          added: "Neu",
+          removed: "Entfernt",
+          secret: "Geschützt",
+        }[filter],
+        exact: true,
+      })
+      .click();
     await expect(view.locator(".comparison-items > button")).toHaveCount(
       paths.length,
     );
@@ -518,3 +539,71 @@ for (const state of ["binary", "too_large"])
       ).toBeVisible();
     }
   });
+
+test("change reading pairs separate edits, folds context and never summarizes masked content", async ({
+  page,
+}) => {
+  await page.route("**/api/backups/compare/file", (r) => {
+    const path = r.request().postDataJSON().path;
+    return r.fulfill({
+      json: comparison(path, {
+        masked: path === "etc/secret",
+        state: path === "etc/secret" ? "masked" : "different",
+        hunks: [
+          {
+            before_start: 1,
+            after_start: 1,
+            lines: [
+              { kind: "remove", text: "address=old\n", before_line: 1 },
+              { kind: "add", text: "address=new\n", after_line: 1 },
+              {
+                kind: "context",
+                text: "unchanged=yes\n",
+                before_line: 2,
+                after_line: 2,
+              },
+              { kind: "remove", text: "port=22\n", before_line: 3 },
+              { kind: "add", text: "port=2222\n", after_line: 3 },
+            ],
+          },
+        ],
+      }),
+    });
+  });
+  const view = await setup(page, [
+    row("etc/config"),
+    row("etc/secret", { secret: true }),
+  ]);
+  await view
+    .getByRole("button", { name: "etc/config · Geändert", exact: true })
+    .click();
+  const reading = view.getByRole("region", {
+    name: "Was im Inhalt geändert wurde",
+  });
+  await expect(reading.locator(".value-change-pair")).toHaveCount(2);
+  await expect(reading.locator(".value-before pre").first()).toHaveText(
+    "address=old",
+  );
+  await expect(reading.locator(".value-after pre").first()).toHaveText(
+    "address=new",
+  );
+  await expect(reading).not.toContainText("unchanged=yes");
+  await expect(
+    view.getByRole("region", { name: "Zeilenvergleich" }),
+  ).not.toBeVisible();
+  await view.locator(".full-line-diff > summary").click();
+  await expect(
+    view.getByRole("region", { name: "Zeilenvergleich" }),
+  ).toContainText("unchanged=yes");
+  await expect(view.locator(".file-list-footer")).toHaveCount(0);
+  await view
+    .getByRole("button", { name: "etc/secret · Geändert", exact: true })
+    .click();
+  await expect(view.locator(".comparison-preview")).toContainText(
+    "Geschützter Inhalt",
+  );
+  await expect(reading).toHaveCount(0);
+  await expect(view.locator(".comparison-preview")).not.toContainText(
+    "address=old",
+  );
+});

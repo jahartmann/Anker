@@ -235,6 +235,12 @@ func redactPlan(p Plan, reveal bool) Plan {
 	return publicPlan(p)
 }
 func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Request) error {
+	if handled, err := s.changeRestorePreviewHTTP(u, w, r); handled {
+		return err
+	}
+	if handled, err := s.settingHistoryHTTP(u, w, r); handled {
+		return err
+	}
 	if handled, err := s.clusterSetsHTTP(u, w, r); handled {
 		return err
 	}

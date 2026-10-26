@@ -65,6 +65,7 @@ test("named reference can be edited and compared directly with its host stand", 
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await expect(page.getByText("Referenz: Vor Umbau")).toBeVisible();
   await page.getByRole("button", { name: "Referenz bearbeiten" }).click();
   await page.getByLabel("Referenzname").fill("Vor Migration");
@@ -123,6 +124,7 @@ test("unresolved reference is visible and cannot start direct comparison", async
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await expect(
     page.getByText("Referenz: Verlorene Basis · nicht auflösbar"),
   ).toBeVisible();
@@ -186,9 +188,10 @@ test("changed human testimony refreshes only focused readiness and hides stale r
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.getByRole("button", { name: "Dateien" }).first().click();
-  await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-  const readiness = page.getByRole("region", { name: "Quellnachweise" });
+  await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+  const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
   await expect(readiness).toContainText("Menschlicher Bericht vorhanden");
   changed = true;
   await expect(readiness).not.toContainText("Menschlicher Bericht vorhanden", {
@@ -265,9 +268,10 @@ test("manifest loss hides successful human testimony before fresh readiness reso
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.getByRole("button", { name: "Dateien" }).first().click();
-  await page.getByText("Quellnachweise und Abdeckung ansehen").click();
-  const readiness = page.getByRole("region", { name: "Quellnachweise" });
+  await page.getByText("Sicherung und Prüfergebnisse ansehen").click();
+  const readiness = page.getByRole("region", { name: "Prüfergebnisse" });
   await expect(readiness).toContainText("Menschlicher Bericht erfolgreich");
   unresolved = true;
   await expect(readiness).not.toContainText(
@@ -335,6 +339,7 @@ test("changing reference comparison target drops an older summary response", asy
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.getByRole("button", { name: "Mit Referenz vergleichen" }).click();
   await page.getByLabel("Vergleichsstand für Node A").selectOption("first");
   const response = page.waitForResponse((r) =>
@@ -411,6 +416,7 @@ test("unresolved reference drops a pending direct comparison", async ({
     .getByRole("navigation")
     .getByRole("button", { name: "Sicherungen", exact: true })
     .click();
+  await page.getByRole("button", { name: "Alle Stände", exact: true }).click();
   await page.getByRole("button", { name: "Mit Referenz vergleichen" }).click();
   unresolved = true;
   await expect(page.getByText("Referenz: Basis · nicht auflösbar")).toBeVisible(

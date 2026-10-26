@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -55,9 +56,9 @@ func (s *Service) RetryJob(id string) (Job, error) {
 	}
 	switch j.Kind {
 	case "backup":
-		return s.QueueBackup(j.HostID)
+		return s.queueAtForSetRetry(j.HostID, "backup", nil, "", j.ID, s.backupRunner(j.HostID))
 	case "probe":
-		return s.QueueProbe(j.HostID)
+		return s.queueAtForSetRetry(j.HostID, "probe", nil, "", j.ID, s.probeRunner(j.HostID))
 	default:
 		return Job{}, fail(409, "Wiederherstellung über einen frisch geprüften Plan mit neuer Bestätigung starten")
 	}
@@ -69,8 +70,20 @@ func (s *Service) RecoverJobs() error {
 	}
 	for _, j := range jobs {
 		if j.State == "running" || j.State == "queued" {
+			previousState := j.State
 			j.State = "interrupted"
-			j.Error = "Dienst wurde unterbrochen; tatsächlichen Hostzustand prüfen"
+			if j.Kind == "backup" || j.Kind == "probe" {
+				if previousState == "queued" {
+					j.Message = "Nach Dienstneustart beendet: Auftrag war noch in der Warteschlange. Bei Bedarf gezielt erneut starten."
+				} else {
+					j.Message = "Durch Dienstneustart unterbrochen. Abschluss nicht bestätigt; Sicherungsverlauf prüfen und bei Bedarf erneut starten."
+				}
+			} else {
+				j.Message = "Dienstneustart: tatsächlichen Hostzustand und Hostjournal vor weiteren Schritten prüfen."
+			}
+			j.Error = j.Message
+			j.RetryAt = ""
+			j.Revision++
 			j.FinishedAt = now()
 			if err = s.Store.saveJob(j); err != nil {
 				return err
@@ -95,19 +108,32 @@ func (s *Service) QueueBackup(hostID string) (Job, error) {
 	return s.queueBackup(hostID, nil)
 }
 func (s *Service) queueBackup(hostID string, at *time.Time) (Job, error) {
-	return s.queueAt(hostID, "backup", at, func(ctx context.Context) (string, error) {
+	return s.queueAt(hostID, "backup", at, s.backupRunner(hostID))
+}
+func (s *Service) backupRunner(hostID string) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
 		b, err := s.CreateBackup(ctx, hostID)
 		if err != nil {
+			// A late failure after publishing a capture must retain its result and
+			// must never start another capture in the same retry loop.
+			if b.ID != "" {
+				if stored, e := s.Backup(b.ID); e == nil && stored.HostID == hostID {
+					return b.ID, err
+				}
+			}
 			return "", err
 		}
-		if err == nil && b.Status == "partial" {
+		if b.Status == "partial" {
 			return b.ID, errors.New("Sicherung hat Pflichtlücken; Warnungen im Sicherungsstand prüfen")
 		}
 		return b.ID, err
-	})
+	}
 }
 func (s *Service) QueueProbe(hostID string) (Job, error) {
-	return s.queue(hostID, "probe", func(ctx context.Context) (string, error) {
+	return s.queue(hostID, "probe", s.probeRunner(hostID))
+}
+func (s *Service) probeRunner(hostID string) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
 		h, err := s.Host(hostID)
 		if err != nil {
 			return "", err
@@ -131,7 +157,7 @@ func (s *Service) QueueProbe(hostID string) (Job, error) {
 			return "", err
 		}
 		return h.ID, nil
-	})
+	}
 }
 func (s *Service) QueueApply(id, confirmation string) (Job, error) {
 	p, err := s.Plan(id)
@@ -158,8 +184,22 @@ func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.C
 }
 
 func (s *Service) queueAtForSet(hostID, kind string, at *time.Time, setID string, run func(context.Context) (string, error)) (Job, error) {
+	return s.queueAtForSetRetry(hostID, kind, at, setID, "", run)
+}
+func (s *Service) queueAtForSetRetry(hostID, kind string, at *time.Time, setID, retryOf string, run func(context.Context) (string, error)) (Job, error) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
+	jobs, err := s.Jobs()
+	if err != nil {
+		return Job{}, err
+	}
+	if retryOf != "" {
+		for _, previous := range jobs {
+			if previous.RetryOf == retryOf {
+				return previous, nil
+			}
+		}
+	}
 	if _, err := s.Host(hostID); err != nil {
 		return Job{}, err
 	}
@@ -196,16 +236,12 @@ func (s *Service) queueAtForSet(hostID, kind string, at *time.Time, setID string
 		}
 		day = local.Format("2006-01-02")
 	}
-	jobs, err := s.Jobs()
-	if err != nil {
-		return Job{}, err
-	}
 	for _, j := range jobs {
 		if j.HostID == hostID && (j.State == "queued" || j.State == "running") {
 			return Job{}, errHostJobActive
 		}
 	}
-	j := Job{ID: ID(), SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
+	j := Job{ID: ID(), Revision: 1, RetryOf: retryOf, Message: "Wartet auf einen freien Ausführungsplatz.", SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
 	if day != "" {
 		j.Trigger = "scheduled"
 	}
@@ -226,6 +262,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 			cancel()
 		}
 		delete(s.cancels, j.ID)
+		delete(s.stopReasons, j.ID)
 		s.mu.Unlock()
 	}()
 	var settings Settings
@@ -263,7 +300,12 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 				continue
 			}
 			j.State, j.StartedAt, j.Attempts = "running", now(), 1
-			err = s.Store.Put("jobs", j.ID, j)
+			j.MaxAttempts = 1
+			if j.Kind == "backup" || j.Kind == "probe" {
+				j.MaxAttempts += settings.Retries
+			}
+			j.Message = "Hostoperation läuft."
+			err = s.saveJobProgress(&j)
 			s.jobMu.Unlock()
 			if err != nil {
 				log.Printf("Anker Auftrag %s: Startzustand konnte nicht gespeichert werden: %v", j.ID, err)
@@ -293,35 +335,75 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 			break
 		}
 		j.Attempts = attempt + 1
-		if err = s.Store.Put("jobs", j.ID, j); err != nil {
+		j.RetryAt = ""
+		j.Message = fmt.Sprintf("Versuch %d von höchstens %d läuft.", j.Attempts, j.MaxAttempts)
+		if err = s.saveJobProgress(&j); err != nil {
 			break
 		}
 		j.ResultID, err = run(ctx)
-		if err == nil || ctx.Err() != nil || j.ResultID != "" {
+		if err == nil || ctx.Err() != nil || j.ResultID != "" || !transientConnection(err) {
 			break
 		}
 		if attempt < retries {
+			delay := time.Duration(1<<attempt) * time.Second
+			j.LastError = err.Error()
+			j.RetryAt = time.Now().UTC().Add(delay).Format(time.RFC3339Nano)
+			j.Message = fmt.Sprintf("Verbindung vorübergehend gestört. Versuch %d von höchstens %d folgt automatisch; gleicher Auftrag.", j.Attempts+1, j.MaxAttempts)
+			if saveErr := s.saveJobProgress(&j); saveErr != nil {
+				err = saveErr
+				break
+			}
 			select {
 			case <-ctx.Done():
-			case <-time.After(time.Duration(attempt+1) * time.Second):
+			case <-time.After(delay):
 			}
 		}
 	}
 	j.State = "successful"
+	j.RetryAt = ""
+	j.Message = fmt.Sprintf("Erfolgreich nach %d Versuch(en) abgeschlossen.", j.Attempts)
 	if err != nil {
 		j.State = "failed"
 		j.Error = err.Error()
+		j.Message = "Beendet: Fehler benötigt eine Prüfung; keine automatische Wiederholung."
+		if j.ResultID != "" {
+			j.Message = "Ergebnis bereits vorhanden; Abschluss nicht vollständig bestätigt. Vor weiteren Sicherungen das Ergebnis prüfen."
+		} else if (j.Kind == "backup" || j.Kind == "probe") && transientConnection(err) {
+			j.Message = fmt.Sprintf("Verbindung nach %d Versuchen weiterhin gestört. Wiederholungslimit erreicht.", j.Attempts)
+		}
 	}
 	if ctx.Err() != nil {
 		j.State = "cancelled"
 		j.Error = "Auftrag abgebrochen; tatsächlichen Zustand prüfen"
+		j.Message = "Abgebrochen. Ausstehende Wiederholungen wurden beendet."
 	}
 	j.FinishedAt = now()
 	if s.persistJob(j) {
 		s.notifyJob(j)
 	}
 }
+func (s *Service) saveJobProgress(j *Job) error {
+	j.Revision++
+	return s.Store.Put("jobs", j.ID, j)
+}
 func (s *Service) persistJob(j Job) bool {
+	s.mu.Lock()
+	stopReason := s.stopReasons[j.ID]
+	s.mu.Unlock()
+	if j.State == "cancelled" && stopReason != "" {
+		j.Message = stopReason
+		j.Error = stopReason
+	}
+	j.Revision++
+	if finishedJob(j) {
+		j.RetryAt = ""
+		if j.State == "cancelled" && j.Message == "Wartet auf einen freien Ausführungsplatz." {
+			j.Message = "Vor der Ausführung abgebrochen. Es wird kein Wiederholungsversuch gestartet."
+		}
+		if j.Error != "" && (j.Message == "Wartet auf einen freien Ausführungsplatz." || j.Message == "Hostoperation läuft.") {
+			j.Message = j.Error
+		}
+	}
 	if err := s.Store.saveJob(j); err != nil {
 		log.Printf("Anker Auftrag %s: Status %s konnte nicht gespeichert werden: %v", j.ID, j.State, err)
 		return false
@@ -393,7 +475,11 @@ func (s *Service) SaveSettings(v Settings) error {
 // StopJobs cancels queued work and waits for workers to persist their final state.
 func (s *Service) StopJobs(ctx context.Context) error {
 	s.mu.Lock()
-	for _, cancel := range s.cancels {
+	if s.stopReasons == nil {
+		s.stopReasons = map[string]string{}
+	}
+	for id, cancel := range s.cancels {
+		s.stopReasons[id] = "Dienst wurde beendet. Auftrag gestoppt; nach Neustart Sicherungsverlauf prüfen. Keine automatische Fortsetzung."
 		cancel()
 	}
 	s.mu.Unlock()
@@ -412,4 +498,22 @@ func (s *Service) StopJobs(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// Classification is structural: disk, authorization, host identity and invalid
+// content errors must not turn into retries merely because their text matches.
+var errTemporaryConnection = errors.New("Vorübergehender SSH-Verbindungsfehler")
+
+func transientConnection(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, errTemporaryConnection) {
+		return true
+	}
+	var op *net.OpError
+	if !errors.As(err, &op) {
+		return false
+	}
+	return op.Timeout() || errors.Is(op, syscall.ECONNRESET) || errors.Is(op, syscall.ECONNREFUSED) || errors.Is(op, syscall.EPIPE) || errors.Is(op, syscall.ENETUNREACH) || errors.Is(op, syscall.EHOSTUNREACH)
 }

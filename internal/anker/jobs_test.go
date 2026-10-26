@@ -2,7 +2,6 @@ package anker
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -86,7 +85,7 @@ type transientCollector struct {
 func (c *transientCollector) Collect(ctx context.Context, h Host, d string) (Collection, error) {
 	c.calls++
 	if c.calls == 1 {
-		return Collection{}, fmt.Errorf("temporary SSH failure")
+		return Collection{}, errTemporaryConnection
 	}
 	return c.fixtureCollector.Collect(ctx, h, d)
 }

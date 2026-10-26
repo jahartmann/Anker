@@ -1,6 +1,6 @@
 module anker
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect

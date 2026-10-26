@@ -1,3 +1,4 @@
+import RemovalFiles from "./RemovalFiles";
 import { useEffect, useMemo, useState } from "react";
 import { preciseDate, labels } from "../../api";
 import type { Entry, Status } from "../../api";
@@ -10,15 +11,17 @@ function RestoreFiles({
   files,
   onChange,
   source,
+  selectedFirst = false,
 }: {
   entries: Entry[];
   files: string[];
   onChange: (files: string[]) => void;
   source: string;
+  selectedFirst?: boolean;
 }) {
   const { query, setQuery, directory, navigate, up } =
     useFileNavigation(source);
-  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [selectedOnly, setSelectedOnly] = useState(selectedFirst);
   const [page, setPage] = useState(1);
   const selected = useMemo(() => new Set(files), [files]);
   const indexed = useMemo(() => indexManifest(entries), [entries]);
@@ -240,7 +243,27 @@ export default function RecoverySource({
           files={d.files}
           onChange={d.changeFiles}
           source={d.backup}
+          selectedFirst={d.fromChange}
         />
+      )}
+      {d.removeFiles.length > 0 && (
+        <section
+          className="removal-cards"
+          aria-label="Vorgemerkte Dateientfernungen"
+        >
+          <h3>Zum Entfernen vorgemerkt</h3>
+          <p>
+            Diese Dateien fehlen im früheren Quellstand. Erst die aktuelle
+            Zielprüfung ermittelt, was tatsächlich entfernt würde. Danach jede
+            Datei ausdrücklich entscheiden.
+          </p>
+          <RemovalFiles
+            paths={d.removeFiles}
+            onDeselect={(path) =>
+              d.changeRemovals(d.removeFiles.filter((p) => p !== path))
+            }
+          />
+        </section>
       )}
       {d.scenario !== "files" && (
         <p className="notice">

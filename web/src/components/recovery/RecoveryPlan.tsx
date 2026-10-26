@@ -1,3 +1,5 @@
+import RecoveryOutcomeCards from "./RecoveryOutcomeCards";
+import RemovalFiles from "./RemovalFiles";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, labels } from "../../api";
 import type {
@@ -97,7 +99,14 @@ export default function RecoveryPlan({
   );
   const [rollbackConfirmation, setRollbackConfirmation] = useState("");
   const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [deletionsConfirmed, setDeletionsConfirmed] = useState(false);
+  const hasDeletions = plan.steps.some((s) => s.action === "remove");
   const [confirmation, setConfirmation] = useState("");
+  useEffect(() => {
+    setDeletionsConfirmed(false);
+  }, [latestSignature]);
+  const [outcomeError, setOutcomeError] = useState("");
+  const [outcomeChecking, setOutcomeChecking] = useState(false);
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
   const [checksDirty, setChecksDirty] = useState(false);
@@ -165,6 +174,7 @@ export default function RecoveryPlan({
         setRefreshError("");
         if (finishedJob) {
           onOperationChange({ ...operation, pendingJob: "" });
+          setDeletionsConfirmed(false);
           setConfirmation("");
         }
       })
@@ -192,6 +202,7 @@ export default function RecoveryPlan({
         (legacy ||
           !!plan.blockers?.length ||
           confirmation !== plan.id ||
+          (hasDeletions && !deletionsConfirmed) ||
           plan.state !== "ready")) ||
       (action === "rollback" && rollbackConfirmation !== plan.id) ||
       pendingJob ||
@@ -227,6 +238,7 @@ export default function RecoveryPlan({
         if (
           [
             "applied",
+            "demo_applied",
             "checks_pending",
             "rolled_back",
             "failed",
@@ -295,7 +307,9 @@ export default function RecoveryPlan({
   }
   const currentPlanID = useRef(plan.id);
   currentPlanID.current = plan.id;
-  async function verifyRecovery() {
+  async function verifyRecovery(
+    endpoint: "verify" | "verify-files" = "verify",
+  ) {
     if (activeRequest.current || uncertain || pendingJob || targetBusy) return;
     const id = plan.id;
     refreshGeneration.current++;
@@ -303,20 +317,31 @@ export default function RecoveryPlan({
     onBusyChange(true);
     setBusy(true);
     setFormError("");
+    if (endpoint === "verify-files") {
+      setOutcomeError("");
+      setOutcomeChecking(true);
+    }
     try {
-      const updated = await api<Plan>(`plans/${id}/verify`, "POST", {});
+      const updated = await api<Plan>(`plans/${id}/${endpoint}`, "POST", {});
+      if (updated.id !== id)
+        throw new Error("Prüfantwort gehört zu einem anderen Plan.");
       if (mounted.current && currentPlanID.current === id) {
         setPlan(updated);
         refresh();
       }
     } catch (e) {
       if (mounted.current && currentPlanID.current === id) {
+        if (endpoint === "verify-files")
+          setOutcomeError(
+            "Erneute Zielprüfung nicht abgeschlossen: " + (e as Error).message,
+          );
         setFormError((e as Error).message);
         refresh();
       }
     } finally {
       activeRequest.current = false;
       if (mounted.current && currentPlanID.current === id) {
+        setOutcomeChecking(false);
         setBusy(false);
         onBusyChange(false);
       }
@@ -420,6 +445,8 @@ export default function RecoveryPlan({
             <dd>
               {plan.steps.filter((step) => step.action === "apply").length}{" "}
               Dateien übernehmen ·{" "}
+              {plan.steps.filter((step) => step.action === "remove").length}{" "}
+              Entfernungen ·{" "}
               {plan.steps.filter((step) => step.action === "keep").length} Ziel
               behalten ·{" "}
               {plan.steps.filter((step) => step.action === "manual").length}{" "}
@@ -466,6 +493,17 @@ export default function RecoveryPlan({
         Vergleiche verwenden die gespeicherte Zielaufnahme. Vor der Übernahme
         prüft Anker erneut auf Änderungen am Ziel.
       </p>
+      <RecoveryOutcomeCards
+        plan={plan}
+        checking={outcomeChecking}
+        refreshError={outcomeError}
+        disabled={busy || !!pendingJob || uncertain || targetBusy}
+        onVerify={
+          user.role !== "reader"
+            ? () => verifyRecovery("verify-files")
+            : undefined
+        }
+      />
       <section id="plan-evidence" aria-label="Plannachweise">
         <h3>Nachweise und Hinweise</h3>
         {!!plan.preserved?.length && (
@@ -564,6 +602,34 @@ export default function RecoveryPlan({
           erneuter Abgleich wird verfügbar, sobald sich der Serverzustand
           ändert.
         </p>
+      )}
+      {hasDeletions && plan.state === "ready" && (
+        <section
+          className="removal-cards"
+          aria-label="Löschumfang vor Ausführung"
+        >
+          <h3>Diese Dateien werden gelöscht</h3>
+          <p>
+            Vorherige Inhalte und Eigenschaften werden für die kontrollierte
+            Rücksetzung gesichert. Nachträglich neu angelegte Dateien bleiben
+            bei einer Rücksetzung erhalten.
+          </p>
+          <RemovalFiles
+            paths={plan.steps
+              .filter((s) => s.action === "remove")
+              .map((s) => s.path)}
+          />
+          {user.role !== "reader" && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={deletionsConfirmed}
+                onChange={(e) => setDeletionsConfirmed(e.target.checked)}
+              />
+              Diese Dateien nach vorheriger Sicherung ausdrücklich löschen
+            </label>
+          )}
+        </section>
       )}
       {!legacy &&
         plan.state === "ready" &&
@@ -667,12 +733,13 @@ export default function RecoveryPlan({
               Hostzustand abgleichen
             </button>
           )}
-        {!status.demo &&
+        {(!status.demo || !!plan.remove_files?.length) &&
           user.role !== "reader" &&
           !rollbackOpen &&
           !!plan.result?.rollback_path &&
           [
             "applied",
+            "demo_applied",
             "checks_pending",
             "interrupted",
             "failed",
@@ -694,6 +761,7 @@ export default function RecoveryPlan({
           <button
             disabled={
               confirmation !== plan.id ||
+              (hasDeletions && !deletionsConfirmed) ||
               !!plan.blockers?.length ||
               busy ||
               !!pendingJob ||
@@ -778,20 +846,24 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
             <span>
               {step.action === "keep"
                 ? "Ziel behalten · kein Schreiben"
-                : step.action === "apply"
-                  ? "Datei übernehmen"
-                  : "Manuell · keine automatische Übernahme"}
+                : step.action === "remove"
+                  ? "Datei löschen · rücksetzbar"
+                  : step.action === "apply"
+                    ? "Datei übernehmen"
+                    : "Manuell · keine automatische Übernahme"}
             </span>
           </div>
           <p className="field-hint">
             Entscheidung:{" "}
             {step.decision === "backup"
               ? "Originalsicherung"
-              : step.decision === "prepared"
-                ? "Vorbereitete Datei"
-                : step.decision === "keep"
-                  ? "Ziel behalten"
-                  : "Manuelle Referenz"}{" "}
+              : step.decision === "remove"
+                ? "Ausdrücklich entfernen"
+                : step.decision === "prepared"
+                  ? "Vorbereitete Datei"
+                  : step.decision === "keep"
+                    ? "Ziel behalten"
+                    : "Manuelle Referenz"}{" "}
             · Zielpfad: {step.destination || step.path}
           </p>
           {step.reason && <p>{step.reason}</p>}
