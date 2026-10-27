@@ -2,7 +2,7 @@
 """Anker host envelope v1, hardened restore protocol v2. Install root-owned; stdin JSON, stdout JSON or tar.
 No daemon, no user-supplied commands, no shell interpolation.
 """
-import contextlib, fcntl, pwd, grp, re, errno, base64, hashlib, json, os, pathlib, shutil, socket, selectors, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
+import ipaddress, contextlib, fcntl, pwd, grp, re, errno, base64, hashlib, json, os, pathlib, shutil, socket, selectors, sqlite3, stat, subprocess, sys, tarfile, tempfile, time
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_REQUEST = 32 * 1024 * 1024
@@ -967,8 +967,49 @@ def verify_recovery(root,services,storage_ids):
  if len(json.dumps(result).encode())>256*1024:raise ValueError('verification output limit exceeded')
  return result
 
+def discovery_hints(root):
+ """Read configured peers only. No network contact to peers, passwords or file inventory."""
+ root=pathlib.Path(root);hints=[];seen=set();partial=False
+ def add(value,name,source):
+  nonlocal partial
+  try:
+   address=ipaddress.ip_address(value)
+   if address.is_loopback or address.is_link_local or address.is_multicast or address.is_unspecified:raise ValueError('non-unicast')
+  except ValueError:partial=True;return
+  key=str(address)
+  if key not in seen and len(hints)<512:
+   hints.append({'address':key,'name':str(name)[:256],'source':source});seen.add(key)
+ if host_type(root)=='pbs':
+  for item in pbs_sections(root,'remote.cfg','remote',{'host'}):
+   if item.get('host'):add(item['host'],item['name'],'pbs-config')
+  return {'version':1,'state':'partial' if partial else 'ok','hints':hints}
+ config=confined(root,'etc/pve/corosync.conf')
+ if not config.exists():return {'version':1,'state':'not_applicable','hints':[]}
+ if config.stat().st_size>1024*1024:raise ValueError('cluster configuration exceeds limit')
+ raw=command(['pvesh','get','/cluster/status','--output-format','json'])
+ rows=asjson(raw,None)
+ if isinstance(rows,list):
+  for row in rows[:512]:
+   if isinstance(row,dict) and row.get('type')=='node' and isinstance(row.get('ip'),str):add(row['ip'],row.get('name',''),'cluster')
+ else:partial=True
+ # Corosync contains explicitly configured ring addresses, not necessarily
+ # management addresses. The central scanner checks scope and service identity.
+ node=None;depth=0;node_depth=None
+ for line in config.read_text().splitlines():
+  line=line.split('#',1)[0].strip()
+  if re.match(r'^node\s*\{',line):node={};node_depth=depth+1
+  if node is not None:
+   match=re.fullmatch(r'(name|ring[01]_addr):\s*(\S+)',line)
+   if match:node[match.group(1)]=match.group(2)
+  depth+=line.count('{')-line.count('}')
+  if node is not None and depth<node_depth:
+   for field in ('ring0_addr','ring1_addr'):
+    if field in node:add(node[field],node.get('name',''),'cluster')
+   node=None;node_depth=None
+ return {'version':1,'state':'partial' if partial else 'ok','hints':hints}
+
 def authorize(operation,read_only=False):
- if operation not in ("probe","collect","read-recovery","verify-recovery","apply","restore-status","rollback"):raise ValueError("unknown operation")
+ if operation not in ("probe","discover","collect","read-recovery","verify-recovery","apply","restore-status","rollback"):raise ValueError("unknown operation")
  if read_only and operation in ("apply","restore-status","rollback"):raise ValueError("read-only backup authority cannot restore")
 
 def main(root=None):
@@ -981,7 +1022,10 @@ def main(root=None):
  request=json.loads(data);op=request.get('operation');authorize(op,read_only)
  if request.get('version')!=1:raise ValueError('unsupported protocol version')
  root=pathlib.Path('/') if root is None else pathlib.Path(root)
- if op=='probe':print(json.dumps(probe()))
+ if op=='discover':
+  if set(request)!={'version','operation'}:raise ValueError('invalid discovery request')
+  print(json.dumps(discovery_hints(root)))
+ elif op=='probe':print(json.dumps(probe()))
  elif op=='collect':
   paths=load_host_profile(root)
   with tempfile.TemporaryDirectory(prefix='anker-host-') as d:

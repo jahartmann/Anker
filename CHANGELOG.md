@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+## v0.2.17 – 27. Oktober 2026
+
+- Fortsetzbare PVE-/PBS-Netzsuche: kurze parallele TCP-Prüfung beider Webports, HTTPS-Erkennung nur offener Ports und langsamere Nachprüfung unklarer Verbindungen. Gespeicherte Einzelprüfungen und Treffer bleiben nach Abbruch, Zeitlimit und Neustart erhalten; Updates halten die Suche vor dem Katalogsnapshot an. Die Oberfläche zeigt Phase, Schnellrundenfortschritt und Fortsetzung mit ursprünglichem Suchumfang.
+- Lernende Suchreihenfolge über Standortnetze: bekannte Adressen und konfigurierte Peers zuerst, bevorzugte Adressendungen anhand bestätigter Treffer priorisieren. Alle ausgewählten Adressen werden weiterhin geprüft, auch bei einzelnen PVE-/PBS-Hosts je Standort. Optionale lesende Hinweise aus PVE-Clustern und PBS-Remote-Konfigurationen bleiben strikt auf die ausgewählten Netze begrenzt. Keine Registrierungscode-Anmeldung und kein Zugriff auf Datastore-Inhalte.
+- Zusammengeführte Oberfläche mit klareren Themenbereichen für Einstellungen, Aufträge und Hostinventar, passenden Infrastruktursymbolen und überarbeitetem Konsolendesign. Inventarquellen sind nach System, Netzwerk, Speicher, Gästen/Clustern und PBS-Aufträgen gruppiert.
+
 ## v0.2.16 – 27. Oktober 2026
 
 - Geführte PBS-Konfigurationswiederherstellung mit Dateiauswahl, privater Zielaufnahme, geschützter Vorschau, expliziten Entscheidungen, Plan-ID-Bestätigung, Zieljournal und Rücksetzung. PBS-Dienste müssen gestoppt sein; Mount-/Datastore-Identitäten und Zielanbindungen bleiben gebunden. Vorbereitete Jobdateien deaktivieren automatische Auslöser. Datastore-Inhalte, Systemdateien, Datastore-Anlage und Dateientfernungen bleiben ausgeschlossen; Anker startet keine Dienste oder Jobs. Lokaler Test über den echten Python-Helfer bestätigt Übernahme/Rücksetzung ohne geänderte Chunk-/Indexdateien; reale PBS-Abnahme bleibt offen.

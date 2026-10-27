@@ -357,32 +357,33 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
-	clusterSetMu     sync.Mutex
-	snapshotMu       sync.Mutex
-	maintenanceMu    sync.Mutex
-	integrityBusy    int
-	backupLocks      map[string]*sync.RWMutex
-	planLocks        map[string]*sync.RWMutex
-	hostMu           sync.Mutex
-	diskUsage        func() (DiskUsage, error)
-	Root             string
-	Store            *Store
-	Collector        Collector
-	mu               sync.Mutex
-	locks            map[string]bool
-	stopReasons      map[string]string
-	cancels          map[string]context.CancelFunc
-	Demo             bool
-	schedulerBusy    bool
-	maintenance      bool
-	jobMu            sync.Mutex
-	reconciling      map[string]bool // Ready-plan journal reservations; protected by jobMu.
-	connectingHostID string
-	discoveryMu      sync.Mutex
-	discovery        discovery.Scanner
-	hostConnector    hostConnector
-	notifyMu         sync.Mutex
-	storageMu        sync.Mutex
+	clusterSetMu          sync.Mutex
+	snapshotMu            sync.Mutex
+	maintenanceMu         sync.Mutex
+	integrityBusy         int
+	backupLocks           map[string]*sync.RWMutex
+	planLocks             map[string]*sync.RWMutex
+	hostMu                sync.Mutex
+	diskUsage             func() (DiskUsage, error)
+	Root                  string
+	Store                 *Store
+	Collector             Collector
+	mu                    sync.Mutex
+	locks                 map[string]bool
+	stopReasons           map[string]string
+	cancels               map[string]context.CancelFunc
+	Demo                  bool
+	schedulerBusy         bool
+	maintenance           bool
+	jobMu                 sync.Mutex
+	reconciling           map[string]bool // Ready-plan journal reservations; protected by jobMu.
+	connectingHostID      string
+	discoveryRestoreError string
+	discoveryMu           sync.Mutex
+	discovery             discovery.Scanner
+	hostConnector         hostConnector
+	notifyMu              sync.Mutex
+	storageMu             sync.Mutex
 }
 
 func ID() string {

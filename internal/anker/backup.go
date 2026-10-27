@@ -46,6 +46,7 @@ func NewService(root string, store *Store, collector Collector) (*Service, error
 			return nil, err
 		}
 	}
+	s.initDiscovery()
 	return s, nil
 }
 func (s *Service) Settings() (Settings, error) {

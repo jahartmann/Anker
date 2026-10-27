@@ -11,6 +11,8 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Anchor, X, MoreHorizontal } from "lucide-react";
 import { api, labels } from "../api";
+import { TopicSymbol } from "./InfrastructureDetails";
+import type { InfrastructureTopic } from "./InfrastructureDetails";
 export type Notify = (message: string, error?: boolean) => void;
 export function PageEmblem({
   children,
@@ -143,13 +145,24 @@ export function ActionBar({
 export function DetailSection({
   title,
   children,
+  topic,
 }: {
   title: string;
   children: ReactNode;
+  topic?: InfrastructureTopic;
 }) {
   return (
     <details className="detail-disclosure">
-      <summary>{title}</summary>
+      <summary>
+        {topic ? (
+          <span className="topic-heading">
+            <TopicSymbol topic={topic} />
+            {title}
+          </span>
+        ) : (
+          title
+        )}
+      </summary>
       {children}
     </details>
   );

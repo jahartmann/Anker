@@ -355,3 +355,65 @@ test("unknown and omitted inventory evidence stay distinct from failed and succe
     });
   }
 });
+
+test("inventory topics preserve unfamiliar details and keep missing evidence with its subject", async ({
+  page,
+}) => {
+  await page.context().addCookies(cookies);
+  const base = await (await page.request.get("/api/status")).json();
+  const host = {
+    ...base.hosts[0],
+    inventory: {
+      ...base.hosts[0].inventory,
+      details: {
+        routes: [{ destination: "default", gateway: "192.0.2.1" }],
+        packages: ["pve-manager"],
+        guests: [{ name: "test-vm" }],
+        future_inventory_field: { evidence: "retained" },
+        file_hashes: { private: "hidden-internal-data" },
+      },
+      query_states: {
+        ...base.hosts[0].inventory.query_states,
+        routes: { state: "ok" },
+        packages: { state: "ok" },
+        guests: { state: "ok" },
+        zfs: { state: "failed", error: "Poolabfrage fehlgeschlagen" },
+        lvm: { state: "not_applicable" },
+      },
+    },
+  };
+  await page.route("**/api/status", (r) =>
+    r.fulfill({ json: { ...base, hosts: [host] } }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await page.getByRole("button", { name: "Inventar", exact: true }).click();
+  await page.getByText("Erfasste Details", { exact: true }).click();
+  const network = page.getByRole("region", { name: "Netzwerk", exact: true });
+  await network.getByText("Netzwerkrouten", { exact: true }).click();
+  await expect(network).toContainText("192.0.2.1");
+  await expect(
+    page.getByRole("region", { name: "System und Software", exact: true }),
+  ).toContainText("Pakete");
+  await expect(
+    page.getByRole("region", { name: "Gäste und Cluster", exact: true }),
+  ).toContainText("Virtuelle Maschinen");
+  const storage = page.getByRole("region", { name: "Speicher", exact: true });
+  await expect(storage.getByRole("alert")).toContainText(
+    "Poolabfrage fehlgeschlagen",
+  );
+  await expect(storage).toContainText("LVM · Nicht anwendbar");
+  const other = page.getByRole("region", {
+    name: "Weitere Angaben",
+    exact: true,
+  });
+  await other.getByText("future_inventory_field", { exact: true }).click();
+  await expect(other).toContainText("retained");
+  await expect(page.locator(".inventory-source")).not.toContainText(
+    "hidden-internal-data",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+});

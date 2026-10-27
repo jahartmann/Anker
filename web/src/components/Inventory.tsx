@@ -3,6 +3,8 @@ import { ChevronDown, Search } from "lucide-react";
 import { bytes, date } from "../api";
 import type { Inventory as HostInventory } from "../api";
 import { Empty, Pagination } from "./shared";
+import { TopicSymbol } from "./InfrastructureDetails";
+import type { InfrastructureTopic } from "./InfrastructureDetails";
 
 export default function Inventory({
   inventory,
@@ -104,6 +106,57 @@ export default function Inventory({
     file_hashes: "Dateiprüfsummen",
     lsblk: "Blockgeräte",
   };
+  const detailGroups: {
+    title: string;
+    topic: InfrastructureTopic;
+    keys: string[];
+  }[] = [
+    {
+      title: "System und Software",
+      topic: "system",
+      keys: [
+        "pbs_version",
+        "packages",
+        "manual_packages",
+        "boot",
+        "boot_id",
+        "pci",
+      ],
+    },
+    { title: "Netzwerk", topic: "network", keys: ["addresses", "routes"] },
+    {
+      title: "Speicher",
+      topic: "storage",
+      keys: ["storage", "zfs", "lvm", "ceph", "lsblk", "pbs_datastores"],
+    },
+    {
+      title: "Gäste und Cluster",
+      topic: "workloads",
+      keys: ["guests", "containers", "cluster"],
+    },
+    {
+      title: "PBS-Aufträge",
+      topic: "activity",
+      keys: ["pbs_sync_jobs", "pbs_prune_jobs", "pbs_verify_jobs"],
+    },
+    { title: "Weitere Angaben", topic: "catalog", keys: [] },
+  ];
+  const assignedKeys = new Set(detailGroups.flatMap((group) => group.keys));
+  const groupedDetails = detailGroups
+    .map((group) => ({
+      ...group,
+      entries: details.filter(
+        ([name]) =>
+          group.keys.includes(name) ||
+          (!group.keys.length && !assignedKeys.has(name)),
+      ),
+      missing: missingDetails.filter(
+        ([name]) =>
+          group.keys.includes(name) ||
+          (!group.keys.length && !assignedKeys.has(name)),
+      ),
+    }))
+    .filter((group) => group.entries.length || group.missing.length);
   const detailCount = (value: unknown) =>
     Array.isArray(value)
       ? value.length
@@ -114,7 +167,10 @@ export default function Inventory({
           : undefined;
   return (
     <div className="inventory">
-      <h3>Hostinventar</h3>
+      <h3 className="topic-heading">
+        <TopicSymbol topic="server" />
+        Hostinventar
+      </h3>
       {!Object.keys(results).length && (
         <p className="notice">
           Abfragestatus nicht übermittelt. Leere Listen belegen keine
@@ -181,7 +237,10 @@ export default function Inventory({
       </dl>
       {isPBS && (
         <section className="inventory-section" aria-label="PBS-Konfiguration">
-          <h3>PBS-Konfiguration</h3>
+          <h3 className="topic-heading">
+            <TopicSymbol topic="catalog" />
+            PBS-Konfiguration
+          </h3>
           <p className="notice">
             Gesichert wird die Konfiguration. Datastore-Inhalte werden separat
             gesichert. Die geführte Wiederherstellung übernimmt ausschließlich
@@ -247,6 +306,7 @@ export default function Inventory({
       >
         <div className="inventory-toolbar">
           <h3 id="inventory-network-title">
+            <TopicSymbol topic="network" />
             Netzwerk{" "}
             <span className="count-badge">
               {inventory.interfaces?.length || 0}
@@ -332,6 +392,7 @@ export default function Inventory({
       >
         <div className="inventory-toolbar">
           <h3 id="inventory-disks-title">
+            <TopicSymbol topic="storage" />
             Datenträger{" "}
             <span className="count-badge">{inventory.disks?.length || 0}</span>
           </h3>
@@ -459,38 +520,52 @@ export default function Inventory({
             <span className="count-badge">{details.length}</span>
           </summary>
           <p className="muted">Zusätzliche Daten aus der Hostprüfung.</p>
-          {missingDetails.map(([name, result]) => (
-            <p
-              key={name}
-              className={result.state === "failed" ? "notice warning" : "muted"}
-              role={result.state === "failed" ? "alert" : undefined}
+          {groupedDetails.map((group) => (
+            <section
+              className="inventory-detail-group"
+              key={group.title}
+              aria-label={group.title}
             >
-              {detailLabels[name] || name} · {queryLabel(result.state)}
-              {result.error ? ": " + result.error : ""}
-            </p>
-          ))}
-          {details.map(([name, value]) => (
-            <details key={name} className="inventory-source-item">
-              <summary>
-                <span>{detailLabels[name] || name}</span>
-                {results[name]?.state && results[name].state !== "ok" && (
-                  <span className="warning">
-                    {queryLabel(results[name].state)}
-                  </span>
-                )}
-                {detailCount(value) !== undefined && (
-                  <span className="count-badge">
-                    {detailCount(value)} Einträge
-                  </span>
-                )}
-              </summary>
-              {queryNotice(name, detailLabels[name] || name)}
-              <pre className="inventory-raw">
-                {typeof value === "string"
-                  ? value
-                  : JSON.stringify(value, null, 2)}
-              </pre>
-            </details>
+              <h4 className="topic-heading">
+                <TopicSymbol topic={group.topic} />
+                {group.title}
+              </h4>
+              {group.missing.map(([name, result]) => (
+                <p
+                  key={name}
+                  className={
+                    result.state === "failed" ? "notice warning" : "muted"
+                  }
+                  role={result.state === "failed" ? "alert" : undefined}
+                >
+                  {detailLabels[name] || name} · {queryLabel(result.state)}
+                  {result.error ? ": " + result.error : ""}
+                </p>
+              ))}
+              {group.entries.map(([name, value]) => (
+                <details key={name} className="inventory-source-item">
+                  <summary>
+                    <span>{detailLabels[name] || name}</span>
+                    {results[name]?.state && results[name].state !== "ok" && (
+                      <span className="warning">
+                        {queryLabel(results[name].state)}
+                      </span>
+                    )}
+                    {detailCount(value) !== undefined && (
+                      <span className="count-badge">
+                        {detailCount(value)} Einträge
+                      </span>
+                    )}
+                  </summary>
+                  {queryNotice(name, detailLabels[name] || name)}
+                  <pre className="inventory-raw">
+                    {typeof value === "string"
+                      ? value
+                      : JSON.stringify(value, null, 2)}
+                  </pre>
+                </details>
+              ))}
+            </section>
           ))}
         </details>
       )}

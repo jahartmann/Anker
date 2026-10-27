@@ -4,12 +4,23 @@ import type { Host, HostIdentity } from "../api";
 import { Dialog, Field } from "../components/shared";
 import type { Notify } from "../components/shared";
 
-type Config = { ranges: string[]; web_port: number; ssh_port: number };
+type Config = {
+  ranges: string[];
+  web_port: number;
+  pbs_port?: number;
+  ssh_port: number;
+  parallel?: number;
+  use_cluster_hints?: boolean;
+};
 type Found = {
   address: string;
   name: string;
   version: string;
   ssh_reachable: boolean;
+  kind?: "pve" | "pbs";
+  web_port?: number;
+  source?: string;
+  services?: Found[];
 };
 type Scan = {
   status: string;
@@ -18,6 +29,11 @@ type Scan = {
   results: Found[];
   config: Config;
   error?: string;
+  phase?: string;
+  tcp_checked?: number;
+  candidates?: number;
+  resumable?: boolean;
+  warnings?: string[];
 };
 type Snapshot = { config: Config; suggested_ranges?: string[]; scan: Scan };
 type Access = {
@@ -41,7 +57,13 @@ export default function HostDiscovery({
 }) {
   const rangesInput = useRef<HTMLTextAreaElement>(null);
   const [ranges, setRanges] = useState("");
-  const [ports, setPorts] = useState({ web_port: 8006, ssh_port: 22 });
+  const [ports, setPorts] = useState({
+    web_port: 8006,
+    pbs_port: 8007,
+    ssh_port: 22,
+  });
+  const [parallel, setParallel] = useState(256);
+  const [clusterHints, setClusterHints] = useState(true);
   const [suggested, setSuggested] = useState<string[]>([]);
   const [scan, setScan] = useState<Scan | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -67,7 +89,18 @@ export default function HostDiscovery({
           h.address.toLowerCase().replace(/\.$/, "") ===
             found.name.toLowerCase()),
     );
-  const results = scan?.results || [];
+  const results = Array.from(
+    (scan?.results || [])
+      .reduce((grouped, found) => {
+        const old = grouped.get(found.address);
+        if (old) {
+          old.services!.push(found);
+          old.ssh_reachable ||= found.ssh_reachable;
+        } else grouped.set(found.address, { ...found, services: [found] });
+        return grouped;
+      }, new Map<string, Found>())
+      .values(),
+  );
   const eligible = selected.filter(
     (address) =>
       confirmed.includes(address) &&
@@ -78,6 +111,8 @@ export default function HostDiscovery({
   );
   const config = (): Config => ({
     ...ports,
+    parallel,
+    use_cluster_hints: clusterHints,
     ranges: ranges
       .split(/[\n;,]+/)
       .map((s) => s.trim())
@@ -88,9 +123,13 @@ export default function HostDiscovery({
     const controller = new AbortController();
     api<Snapshot>("hosts/discovery", "GET", undefined, controller.signal)
       .then((data) => {
+        if (controller.signal.aborted) return;
+        setParallel(data.config.parallel || 256);
+        setClusterHints(data.config.use_cluster_hints !== false);
         setRanges(data.config.ranges.join("\n"));
         setPorts({
           web_port: data.config.web_port,
+          pbs_port: data.config.pbs_port || 8007,
           ssh_port: data.config.ssh_port,
         });
         setSuggested(data.suggested_ranges || []);
@@ -126,7 +165,7 @@ export default function HostDiscovery({
           undefined,
           controller.signal,
         );
-        setScan(data.scan);
+        if (!controller.signal.aborted) setScan(data.scan);
       } catch (e) {
         if (!controller.signal.aborted) setError((e as Error).message);
       }
@@ -167,6 +206,7 @@ export default function HostDiscovery({
         setRanges(data.config.ranges.join("\n"));
         setPorts({
           web_port: data.config.web_port,
+          pbs_port: data.config.pbs_port || 8007,
           ssh_port: data.config.ssh_port,
         });
         setScan(data.scan);
@@ -316,8 +356,10 @@ export default function HostDiscovery({
     >
       <p className="dialog-intro">
         Finde erreichbare Proxmox-Server vom Anker-Server aus. Für VPN und
-        weitere Standorte die jeweiligen Netze ergänzen. Die Suche benötigt kein
-        Passwort.
+        weitere Standorte die jeweiligen Netze ergänzen. Die Port- und
+        HTTPS-Prüfung benötigt kein Passwort. Optionale Konfigurationshinweise
+        werden ausschließlich über bereits eingerichtete SSH-Zugänge gelesen;
+        nur Adressen innerhalb der ausgewählten Netze werden geprüft.
       </p>
       <Field
         label="Netzbereiche für LAN und VPN"
@@ -384,7 +426,49 @@ export default function HostDiscovery({
             />
           </Field>
         </div>
+        <div className="form-grid">
+          <Field label="PBS-Webport">
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={ports.pbs_port}
+              disabled={!!busy || running}
+              onChange={(e) =>
+                setPorts((old) => ({ ...old, pbs_port: +e.target.value }))
+              }
+            />
+          </Field>
+          <Field
+            label="Gleichzeitige Adressprüfungen"
+            hint="16 bis 256; zusätzliche Begrenzung auf 256 neue Adressen pro Sekunde."
+          >
+            <input
+              type="number"
+              min={16}
+              max={256}
+              value={parallel}
+              disabled={!!busy || running}
+              onChange={(e) => setParallel(+e.target.value)}
+            />
+          </Field>
+        </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={clusterHints}
+            disabled={!!busy || running}
+            onChange={(e) => setClusterHints(e.target.checked)}
+          />{" "}
+          Hinweise aus bekannten PVE-Clustern und PBS-Konfigurationen zusätzlich
+          verwenden
+        </label>
       </details>
+      <p className="field-hint">
+        Die Schnellrunde verteilt bevorzugte Host-Adressen über alle
+        Standortnetze. Danach folgen die übrigen Adressen und eine langsamere
+        Nachprüfung. Ein Treffer beendet die Suche im jeweiligen Netz nicht.
+      </p>
       <div className="discovery-actions">
         <button
           disabled={!loaded || !!busy || running || !ranges.trim()}
@@ -399,6 +483,39 @@ export default function HostDiscovery({
         >
           Netzbereiche speichern
         </button>
+        {scan?.resumable && !running && (
+          <button
+            className="secondary"
+            disabled={!!busy}
+            onClick={() =>
+              action("Suche wird fortgesetzt", async () => {
+                const data = await api<{ scan: Scan }>(
+                  "hosts/discovery",
+                  "PATCH",
+                  {},
+                );
+                setScan(data.scan);
+                setRanges(data.scan.config.ranges.join("\n"));
+                setPorts({
+                  web_port: data.scan.config.web_port,
+                  pbs_port: data.scan.config.pbs_port || 8007,
+                  ssh_port: data.scan.config.ssh_port,
+                });
+                setParallel(data.scan.config.parallel || 256);
+                setClusterHints(data.scan.config.use_cluster_hints !== false);
+                setSelected([]);
+                setIdentities({});
+                setConfirmed([]);
+                setAccess({});
+                setMessage(
+                  "Gespeicherte Suche fortgesetzt. Bereits abgeschlossene Prüfungen bleiben erhalten.",
+                );
+              })
+            }
+          >
+            Suche fortsetzen
+          </button>
+        )}
         {running && (
           <button
             className="secondary"
@@ -418,9 +535,11 @@ export default function HostDiscovery({
           <span>
             {scan.status === "running"
               ? "Suche läuft"
-              : scan.status === "cancelled"
-                ? "Suche abgebrochen – Teilergebnisse"
-                : "Suche abgeschlossen"}
+              : scan.status === "cancelled" || scan.status === "paused"
+                ? "Suche pausiert – fortsetzbare Teilergebnisse"
+                : scan.status === "failed"
+                  ? "Suchfortschritt nicht verfügbar"
+                  : "Suche abgeschlossen"}
             : {scan.checked} / {scan.total} Adressen geprüft · {results.length}{" "}
             Server gefunden
           </span>
@@ -429,14 +548,41 @@ export default function HostDiscovery({
             value={scan.checked}
             max={scan.total || 1}
           />
+          {scan.phase && (
+            <p>
+              {(
+                {
+                  hints: "Bekannte Konfigurationen lesen",
+                  fast: "Schnellrunde: TCP-Ports prüfen",
+                  slow: "Langsamere Nachprüfung für unklare Verbindungen",
+                  confirm: "PVE-/PBS-Erkennung abschließen",
+                  paused: "Gespeichert – Fortsetzen möglich",
+                  completed: "Vollständig geprüft",
+                } as Record<string, string>
+              )[scan.phase] || scan.phase}{" "}
+              · {scan.tcp_checked ?? scan.checked} Adressen in der
+              TCP-Schnellrunde geprüft
+            </p>
+          )}
+          {scan.resumable && !running && (
+            <p>
+              Fortsetzen verwendet die ursprünglich gespeicherten Netzbereiche
+              und Ports. Mit „Server suchen“ beginnt eine neue Suche.
+            </p>
+          )}
           <p className="muted">
-            Ergebnisse gelten für die Suchports {scan.config.web_port} (Web) und{" "}
-            {scan.config.ssh_port} (SSH). Nicht erreichbare oder durch Firewalls
-            gesperrte Server können fehlen. Die Erkennung bestätigt noch keine
-            Hostidentität.
+            Ergebnisse gelten für die Suchports {scan.config.web_port} (PVE),{" "}
+            {scan.config.pbs_port || 8007} (PBS) und {scan.config.ssh_port}{" "}
+            (SSH). Nicht erreichbare oder durch Firewalls gesperrte Server
+            können fehlen. Die Erkennung bestätigt noch keine Hostidentität.
           </p>
         </div>
       )}
+      {scan?.warnings?.map((warning, index) => (
+        <p className="notice" key={index}>
+          {warning}
+        </p>
+      ))}
       {scan?.error && (
         <p className="notice warning" role="alert">
           {scan.error}
@@ -550,7 +696,27 @@ export default function HostDiscovery({
                         )}
                       </td>
                       <td>
-                        Proxmox VE{found.version ? ` ${found.version}` : ""}
+                        {(found.services || [found]).map((service, index) => (
+                          <div key={index}>
+                            {service.kind === "pbs"
+                              ? "Proxmox Backup Server"
+                              : "Proxmox VE"}
+                            {service.version ? ` ${service.version}` : ""}
+                            {service.web_port
+                              ? ` · Port ${service.web_port}`
+                              : ""}
+                          </div>
+                        ))}
+                        {found.source && found.source !== "network" && (
+                          <div className="muted">
+                            Hinweis:{" "}
+                            {found.source === "cluster"
+                              ? "bekannter Cluster"
+                              : found.source === "pbs-config"
+                                ? "PBS-Konfiguration"
+                                : "bekannter Host"}
+                          </div>
+                        )}
                         <div className="muted">
                           SSH{" "}
                           {found.ssh_reachable

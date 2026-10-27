@@ -1,0 +1,641 @@
+/* Visual console skin. Topic identity is decorative; operational states keep
+   their existing colours, labels and behaviour. */
+:root {
+  --ink: #25333e;
+  --line: #dfe5e9;
+  --soft: #f3f6f8;
+  --muted: #626f79;
+  --hardware-line: #bbc8d0;
+  --hardware-ink: #526876;
+  color: #293640;
+  background: #f5f7f8;
+}
+.app-shell {
+  --nav-accent: #91b9cc;
+}
+.app-shell:has(.content[data-workspace="Sicherungen"]) {
+  --nav-accent: #8bc6b6;
+}
+.app-shell:has(.content[data-workspace="Wiederherstellung"]) {
+  --nav-accent: #d9bb87;
+}
+.app-shell:has(.content[data-workspace="Aufträge"]) {
+  --nav-accent: #b6b2d5;
+}
+.sidebar {
+  color: #d4dfe6;
+  background-color: #192832;
+  background-image:
+    linear-gradient(90deg, #0f1b23 0 8px, transparent 8px),
+    linear-gradient(180deg, #21333f, #192832 50%, #15232d);
+  border-right: 1px solid #30434f;
+  box-shadow: 3px 0 16px #172b3710;
+}
+.sidebar::before,
+.sidebar::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  width: 2px;
+  height: 62px;
+  background: repeating-linear-gradient(
+    180deg,
+    #7a909b 0 3px,
+    transparent 3px 14px
+  );
+  opacity: 0.5;
+  pointer-events: none;
+}
+.sidebar::before {
+  top: 21px;
+}
+.sidebar::after {
+  bottom: 24px;
+}
+.sidebar .brand-mark {
+  border-color: #5f7785;
+  background: #233b49;
+  color: #dcecf3;
+  box-shadow:
+    inset 0 1px 0 #ffffff14,
+    2px 2px 0 #0d1d26;
+}
+.sidebar .brand-wordmark strong {
+  color: #edf4f7;
+}
+.sidebar .brand-wordmark small {
+  color: #a0b4c0;
+}
+.sidebar nav button {
+  position: relative;
+  color: #becdd6;
+  border-color: transparent;
+  border-radius: 5px;
+  margin-bottom: 5px;
+}
+.sidebar nav button svg {
+  color: #92a9b7;
+  opacity: 1;
+}
+.sidebar nav button:hover {
+  background: #263c49;
+  color: #f0f6f9;
+  border-color: #3c5361;
+}
+.sidebar nav button.active,
+.sidebar nav button.active:hover {
+  color: #f3f8fb;
+  background: #2c4555;
+  border-color: #496374;
+  box-shadow:
+    inset 3px 0 0 var(--nav-accent),
+    0 2px 4px #0c1c2526;
+}
+.sidebar nav button.active svg {
+  color: var(--nav-accent);
+}
+.sidebar .sidebar-bottom {
+  border-top-color: #354954;
+}
+.sidebar .demo-label {
+  width: fit-content;
+  padding: 5px 8px;
+  border: 1px solid #405766;
+  color: #c4d3db;
+  background: #213540;
+}
+.sidebar .user-row {
+  color: #e0e9ee;
+}
+.sidebar .user-row small {
+  color: #a0b4c0;
+}
+.sidebar .icon-button {
+  color: #c0d0d9;
+}
+.sidebar .icon-button:hover {
+  background: #304a5a;
+  color: #fff;
+}
+.sidebar :is(button, a):focus-visible {
+  outline-color: #b5d7e8;
+}
+.workspace {
+  background: #f8fafb;
+}
+.topbar {
+  color: #637480;
+  background: #fff;
+  border-bottom: 1px solid #dce4e9;
+  box-shadow: 0 2px 0 #eef2f5;
+}
+.topbar > span:last-of-type {
+  color: #334b5a;
+  font-weight: 550;
+}
+.topbar > svg {
+  color: #8397a4;
+}
+.topbar .compass-trigger {
+  border-color: #cbd7df;
+  color: #405866;
+  box-shadow: 0 2px 0 #e4ebef;
+}
+.topbar kbd {
+  color: #617580;
+}
+.content {
+  --console-accent: #456b84;
+  --console-tint: #edf3f7;
+  --console-edge: #c5d5e0;
+}
+.content[data-workspace="Sicherungen"] {
+  --console-accent: #3f7269;
+  --console-tint: #edf5f1;
+  --console-edge: #c5dbd3;
+}
+.content[data-workspace="Wiederherstellung"] {
+  --console-accent: #866a3c;
+  --console-tint: #f8f3e9;
+  --console-edge: #dfd2b9;
+}
+.content[data-workspace="Aufträge"] {
+  --console-accent: #686189;
+  --console-tint: #f1f0f7;
+  --console-edge: #d3cfe3;
+}
+.page-kicker {
+  color: #5a6e7b;
+  font-size: 11px;
+  letter-spacing: 0.025em;
+}
+.page-emblem,
+.content[data-workspace] > .page-kicker .page-emblem {
+  border-color: var(--console-edge, #c5d5e0);
+  color: var(--console-accent, #456b84);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow:
+    0 2px 0 #dce5eb,
+    inset 0 0 0 3px #f5f8fa;
+}
+.page-heading {
+  position: relative;
+  isolation: isolate;
+  padding: 22px 24px;
+  border: 1px solid var(--console-edge);
+  border-left: 3px solid var(--console-accent);
+  border-radius: 7px;
+  background: linear-gradient(105deg, #fff 36%, var(--console-tint));
+  box-shadow: 0 3px 8px #243c4d06;
+}
+.page-heading > div {
+  position: relative;
+  z-index: 1;
+}
+.page-heading::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0 12px 0 auto;
+  width: 230px;
+  background-image: var(--console-motif);
+  background-position: center right;
+  background-repeat: no-repeat;
+  background-size: 215px 100px;
+  opacity: 0.12;
+  pointer-events: none;
+}
+.page-heading h1 {
+  color: #243540;
+  letter-spacing: -0.045em;
+}
+.page-heading p {
+  color: #5f707b;
+}
+.page-heading .collection-count {
+  color: var(--console-accent);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+/* Machined panel edges replace the earlier offset paper shadows. */
+:is(
+  .data-surface,
+  .backup-collection,
+  .host-workspace,
+  .overview-metric,
+  .overview-metric:first-child,
+  .host-settings-card,
+  .settings-nav-group,
+  .settings-context,
+  .storage-volume,
+  .diagnosis-check,
+  .journey-value-card,
+  .journey-time-card,
+  .recovery-draft-context,
+  .plan-next-task
+) {
+  border-color: #d5dfe5;
+  border-radius: 7px;
+  box-shadow:
+    0 1px 2px #203b4d08,
+    inset 0 1px 0 #fff;
+}
+.host-workspace:nth-child(2) {
+  box-shadow: 0 1px 2px #203b4d08;
+}
+:is(.host-workspace, .overview-metric, .journey-value-card)::before {
+  width: 20px;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #bac9d2 0 2px,
+    transparent 2px 5px
+  );
+  opacity: 0.65;
+}
+.data-surface {
+  background: #fff;
+  border-top: 3px solid var(--console-edge);
+}
+:is(.data-surface, .backup-table, .inventory-network, .inventory-disks) thead {
+  background: #f0f4f7;
+}
+:is(.data-surface, .backup-table, .inventory-network, .inventory-disks) th {
+  color: #566b79;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
+.data-surface tbody tr:nth-child(even) {
+  background: #fafcfd;
+}
+.data-surface tbody tr:hover {
+  background: #eff5f8;
+}
+.data-surface tbody tr:focus-within {
+  background: #edf4f8;
+}
+:is(code, .mono, .date, .pagination-range) {
+  font-variant-numeric: tabular-nums;
+}
+:is(.host-table .secondary-line.mono, .host-endpoint code) {
+  color: #526e7e;
+}
+.host-endpoint code {
+  border-color: #cbd9e1;
+  border-radius: 4px;
+  background: #edf4f7;
+  box-shadow: inset 0 1px 2px #2e4c5d08;
+}
+.host-endpoint-label {
+  color: #546e7e;
+}
+.host-tabs {
+  border-bottom-color: #ccd9e2;
+}
+.tabs > button.selected {
+  border-bottom-color: var(--console-accent);
+  color: #345467;
+}
+.host-settings-card {
+  background: #fff;
+  border-top: 2px solid #c2d4e0;
+}
+.host-settings-card .properties dt {
+  color: #60717d;
+}
+.host-settings-card .properties dd {
+  color: #2d4656;
+}
+.inventory-summary {
+  background: #f0f5f8;
+  border-color: #d0dde5;
+  box-shadow: inset 0 1px 3px #324c5d05;
+}
+.inventory-summary dt {
+  color: #5c7382;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.inventory-summary dd {
+  color: #2b4352;
+}
+.inventory-detail-group {
+  border-top-style: dashed;
+  border-top-color: #cbd8e0;
+}
+.inventory-source-item {
+  border: 1px solid #dde5eb;
+  border-radius: 5px;
+  margin-block: 7px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.inventory-source-item[open] {
+  border-color: #b7cbd8;
+}
+:is(.inventory-raw, .system-output) {
+  border: 1px solid #d6e1e8;
+  border-left: 3px solid #91acbf;
+  border-radius: 4px;
+  background: #eff4f7;
+  color: #365269;
+  padding: 16px;
+}
+.settings-nav-group {
+  border-top: 2px solid #c1d2df;
+  background: #f0f5f8;
+}
+.settings-nav-group:nth-child(1) {
+  border-top-color: #a4c4b7;
+  background: #f1f6f3;
+}
+.settings-nav-group:nth-child(2) {
+  border-top-color: #abbcd2;
+  background: #f1f4f9;
+}
+.settings-nav-label {
+  color: #526b7a;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.settings-tabs .settings-nav-items button {
+  color: #526776;
+}
+.settings-tabs .settings-nav-items button:hover {
+  background: #e3ecf2;
+}
+.settings-tabs .settings-nav-items button.selected {
+  color: #304f65;
+  border-color: #a9bdcc;
+  box-shadow: 0 2px 0 #d5e0e8;
+  background: #fff;
+}
+.settings-context {
+  border-left: 3px solid #a2baca;
+  background: linear-gradient(110deg, #fff, #f0f5f8);
+}
+.settings-context-scope {
+  color: #5d7383;
+  font-family: var(--mono);
+}
+.settings-group {
+  border-color: #dbe3e9;
+  border-radius: 6px;
+  background: #fff;
+}
+.settings-group legend {
+  color: #526b7a;
+}
+.settings-form .settings-savebar {
+  border-color: #c8d6df;
+  border-radius: 6px;
+  box-shadow: 0 3px 8px #243d4d0c;
+}
+.topic-symbol {
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 #ffffffb3;
+}
+.topic-symbol[data-topic="server"],
+.topic-symbol[data-topic="network"],
+.topic-symbol[data-topic="system"] {
+  background: #edf4f8;
+  border-color: #c4d6e2;
+  color: #496c85;
+}
+.topic-symbol[data-topic="security"],
+.topic-symbol[data-topic="access"],
+.topic-symbol[data-topic="settings"] {
+  background: #edf0f7;
+  border-color: #cbd4e4;
+  color: #566c90;
+}
+.topic-symbol[data-topic="storage"],
+.topic-symbol[data-topic="catalog"] {
+  background: #edf5f2;
+  border-color: #c6dcd4;
+  color: #4a796a;
+}
+.host-tabs .topic-symbol,
+.settings-nav-items .topic-symbol {
+  background: transparent;
+  box-shadow: none;
+}
+.job-detail-group {
+  border-top-color: #d8dfe9;
+}
+.job-detail-group .update-facts dt {
+  color: #637687;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.dialog {
+  border-color: #bccedb;
+  border-top: 3px solid #7998ae;
+  border-radius: 9px;
+  box-shadow:
+    0 20px 75px #12273538,
+    0 0 0 4px #e6edf240;
+}
+.dialog-title {
+  border-bottom-color: #d4e0e8;
+}
+.dialog-title h2 {
+  color: #2b4353;
+}
+.dialog-footer {
+  border-top-color: #d4e0e8;
+}
+.file-preview {
+  background: #f5f8fa;
+}
+:is(input, select, textarea) {
+  border-color: #cdd8df;
+  border-radius: 4px;
+}
+:is(input, select, textarea):focus-visible {
+  outline-color: #698da6;
+}
+.login-page {
+  grid-template-columns: minmax(0, 1fr);
+  background-color: #f1f5f7;
+  background-image:
+    linear-gradient(#c6d6df30 1px, transparent 1px),
+    linear-gradient(90deg, #c6d6df30 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.login-form {
+  width: min(400px, 100%);
+  min-width: 0;
+  padding: 28px;
+  border: 1px solid #cbd9e2;
+  border-top: 3px solid #7998ae;
+  border-radius: 9px;
+  box-shadow: 0 14px 50px #29485c12;
+  background: #fff;
+}
+.login-form .wordmark {
+  margin-bottom: 32px;
+}
+
+/* The same chassis language also covers operational and recovery panels. */
+:is(
+  .overview-brief,
+  .overview-brief.needs-attention,
+  .host-list-focus,
+  .host-status-strip > div,
+  .host-status-strip > div:nth-child(2),
+  .host-status-strip > div:nth-child(3),
+  .active-jobs,
+  .history-latest,
+  .problem-card,
+  .problem-card.problem-critical,
+  .backup-reference,
+  .host-focus-card,
+  .backup-focus-grid > .host-workspace:nth-child(n),
+  .backup-focus-grid > .needs-review,
+  .host-overview-detail .host-workspaces > :last-child
+) {
+  border-radius: 7px;
+  box-shadow: 0 2px 5px #243c4d09;
+}
+.host-focus-card > .object-icon {
+  box-shadow: 0 1px 2px #243c4d0c;
+}
+.host-settings-card,
+.settings-context {
+  position: relative;
+}
+.host-settings-card::after,
+.settings-context::after {
+  content: "";
+  position: absolute;
+  inset: 9px 9px auto auto;
+  width: 4px;
+  height: 4px;
+  border: 1px solid #b8c9d4;
+  border-radius: 50%;
+  background: #f3f7fa;
+  pointer-events: none;
+}
+:is(.data-surface, .backup-table, .inventory-network, .inventory-disks) th {
+  font-size: 10.5px;
+}
+@media (max-width: 760px) {
+  .page-heading {
+    padding: 18px;
+  }
+  .page-heading::after {
+    width: 130px;
+    background-size: 150px 80px;
+    opacity: 0.09;
+  }
+  .page-heading .heading-action {
+    position: relative;
+  }
+  .sidebar {
+    box-shadow: 10px 0 30px #11263325;
+  }
+}
+@media (max-width: 480px) {
+  .page-heading {
+    padding: 16px;
+  }
+  .page-heading::after {
+    inset-inline-end: 0;
+    width: 100px;
+  }
+  .inventory-source-item {
+    padding: 10px;
+  }
+}
+@media (forced-colors: active) {
+  .sidebar,
+  .workspace,
+  .topbar,
+  .page-heading {
+    background: Canvas;
+    color: CanvasText;
+  }
+  .sidebar nav button,
+  .sidebar .brand-wordmark strong,
+  .sidebar .brand-wordmark small,
+  .sidebar .user-row,
+  .sidebar .user-row small {
+    color: CanvasText;
+  }
+  .sidebar nav button.active {
+    border-color: Highlight;
+    box-shadow: none;
+  }
+  .page-heading::after,
+  .sidebar::before,
+  .sidebar::after {
+    display: none;
+  }
+}
+
+.content[data-workspace="Hosts"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M28%2012v76M192%2012v76%22%2F%3E%3Crect%20x%3D%2236%22%20y%3D%2216%22%20width%3D%22148%22%20height%3D%2228%22%20rx%3D%224%22%2F%3E%3Crect%20x%3D%2236%22%20y%3D%2254%22%20width%3D%22148%22%20height%3D%2228%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M47%2023v14m7-14v14m7-14v14m7-14v14m-21%2024v14m7-14v14m7-14v14m7-14v14M90%2030h52M90%2068h52%22%2F%3E%3Ccircle%20cx%3D%22166%22%20cy%3D%2230%22%20r%3D%223%22%2F%3E%3Ccircle%20cx%3D%22166%22%20cy%3D%2268%22%20r%3D%223%22%2F%3E%3Cpath%20d%3D%22M17%2021h4m-4%2012h4m-4%2032h4m-4%2012h4m178-56h4m-4%2012h4m-4%2032h4m-4%2012h4%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Übersicht"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%2284%22%20y%3D%2232%22%20width%3D%2252%22%20height%3D%2236%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M97%2043h26M97%2050h26M97%2057h14M110%2032V15H38v19m72-2V15h72v19M110%2068v18H38V67m72%201v18h72V67%22%2F%3E%3Crect%20x%3D%2224%22%20y%3D%2234%22%20width%3D%2228%22%20height%3D%2220%22%20rx%3D%223%22%2F%3E%3Crect%20x%3D%22168%22%20y%3D%2234%22%20width%3D%2228%22%20height%3D%2220%22%20rx%3D%223%22%2F%3E%3Cpath%20d%3D%22M31%2061h14v6H31zm144%200h14v6h-14z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Sicherungen"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%2243%22%20y%3D%2216%22%20width%3D%22125%22%20height%3D%2260%22%20rx%3D%225%22%2F%3E%3Cpath%20d%3D%22M43%2033h125M56%2076v9h125V25h-13M69%2085v9h125V34h-13M57%2025h30M154%2025h2%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%2244%22%20width%3D%2232%22%20height%3D%2222%22%20rx%3D%223%22%2F%3E%3Cpath%20d%3D%22M99%2051h14M99%2057h9M23%2028v36m-6-29%206-7%206%207m-12%2022%206%207%206-7%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Wiederherstellung"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M55%2033a43%2043%200%201%201-2%2036M55%2033V12M55%2033H33%22%2F%3E%3Crect%20x%3D%2277%22%20y%3D%2234%22%20width%3D%2261%22%20height%3D%2235%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M90%2045h34M90%2053h23M90%2061h12M161%2028h25v44h-25M171%2039h6M171%2049h6M171%2059h6%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Aufträge"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M17%2072h186M17%2050h28l14-26%2022%2057%2027-66%2022%2046%2014-20h59%22%2F%3E%3Cpath%20d%3D%22M27%2015v70M67%2015v70M107%2015v70M147%2015v70M187%2015v70%22%20stroke-dasharray%3D%222%206%22%2F%3E%3Ccircle%20cx%3D%22144%22%20cy%3D%2241%22%20r%3D%224%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"] {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M68%2014%2039%2026v23c0%2021%2029%2038%2029%2038s29-17%2029-38V26L68%2014Z%22%2F%3E%3Crect%20x%3D%2255%22%20y%3D%2241%22%20width%3D%2226%22%20height%3D%2222%22%20rx%3D%223%22%2F%3E%3Cpath%20d%3D%22M60%2041v-8a8%208%200%200%201%2016%200v8M119%2027h77M119%2050h77M119%2073h77%22%2F%3E%3Crect%20x%3D%22136%22%20y%3D%2221%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3Crect%20x%3D%22172%22%20y%3D%2244%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3Crect%20x%3D%22147%22%20y%3D%2267%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-context > .topic-symbol[data-topic="schedule"]
+  ) {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2273%22%20cy%3D%2250%22%20r%3D%2234%22%2F%3E%3Cpath%20d%3D%22M73%2025v25l19%2012M73%2012v4m38%2034h-4M73%2088v-4M35%2050h4M126%2028h69M126%2050h69M126%2072h69%22%2F%3E%3Crect%20x%3D%22140%22%20y%3D%2222%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3Crect%20x%3D%22168%22%20y%3D%2244%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3Crect%20x%3D%22153%22%20y%3D%2266%22%20width%3D%229%22%20height%3D%2212%22%20rx%3D%222%22%20fill%3D%22white%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-context > .topic-symbol[data-topic="archive"]
+  ) {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%2243%22%20y%3D%2216%22%20width%3D%22125%22%20height%3D%2260%22%20rx%3D%225%22%2F%3E%3Cpath%20d%3D%22M43%2033h125M56%2076v9h125V25h-13M69%2085v9h125V34h-13M57%2025h30M154%2025h2%22%2F%3E%3Crect%20x%3D%2290%22%20y%3D%2244%22%20width%3D%2232%22%20height%3D%2222%22%20rx%3D%223%22%2F%3E%3Cpath%20d%3D%22M99%2051h14M99%2057h9%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-context > .topic-symbol[data-topic="notifications"]
+  ) {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M65%2025a20%2020%200%200%200-20%2020v19l-8%208h56l-8-8V45a20%2020%200%200%200-20-20Zm-7%2054a7%207%200%200%200%2014%200M65%2019v6%22%2F%3E%3Crect%20x%3D%22117%22%20y%3D%2230%22%20width%3D%2276%22%20height%3D%2244%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22m119%2033%2036%2025%2036-25M101%2050h9M101%2058h9%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-context > .topic-symbol[data-topic="updates"]
+  ) {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%2271%22%20y%3D%2226%22%20width%3D%2274%22%20height%3D%2253%22%20rx%3D%225%22%2F%3E%3Cpath%20d%3D%22M71%2042h74M98%2026v16h20V26M108%2050v21m-8-8%208%208%208-8M51%2065a41%2041%200%200%201%2061-50M51%2065H34m17%200V48M165%2036a41%2041%200%200%201-56%2051M165%2036h17m-17%200v17%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-context > .topic-symbol[data-topic="server"]
+  ) {
+  --console-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20220%20100%22%20fill%3D%22none%22%20stroke%3D%22%23395b70%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M28%2012v76M192%2012v76%22%2F%3E%3Crect%20x%3D%2236%22%20y%3D%2216%22%20width%3D%22148%22%20height%3D%2228%22%20rx%3D%224%22%2F%3E%3Crect%20x%3D%2236%22%20y%3D%2254%22%20width%3D%22148%22%20height%3D%2228%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M47%2023v14m7-14v14m7-14v14m7-14v14m-21%2024v14m7-14v14m7-14v14m7-14v14M90%2030h52M90%2068h52%22%2F%3E%3Ccircle%20cx%3D%22166%22%20cy%3D%2230%22%20r%3D%223%22%2F%3E%3Ccircle%20cx%3D%22166%22%20cy%3D%2268%22%20r%3D%223%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.content[data-workspace="Einstellungen"]:has(
+    .settings-nav-group:first-child .selected
+  ) {
+  --console-accent: #3f7269;
+  --console-tint: #edf5f1;
+  --console-edge: #c5dbd3;
+}

@@ -1,3 +1,4 @@
+import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
@@ -103,7 +104,10 @@ export default function Certificates({
     <section className="update-section certificate-section">
       <div className="section-heading">
         <div>
-          <h3>Webzertifikat</h3>
+          <h3 className="topic-heading">
+            <TopicSymbol topic="security" />
+            Webzertifikat
+          </h3>
           <p className="muted">
             HTTPS und Erneuerung für den Webzugriff verwalten.
           </p>
@@ -183,7 +187,7 @@ export default function Certificates({
                   <dd>{date(status.last_renewed_at)}</dd>
                 </div>
               </dl>
-              <DetailSection title="Zertifikatsdetails">
+              <DetailSection title="Zertifikatsdetails" topic="security">
                 <div className="certificate-fingerprint">
                   <span className="muted">Fingerprint · SHA256</span>
                   <code>{status.fingerprint}</code>

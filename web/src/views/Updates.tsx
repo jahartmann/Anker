@@ -1,3 +1,4 @@
+import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useId, useState } from "react";
 import { api, bytes, date } from "../api";
 import { ActionBar, Dialog, LoadError, State } from "../components/shared";
@@ -323,7 +324,10 @@ export default function Updates({
     <section className="update-section">
       <div className="section-heading">
         <div>
-          <h2>Updates</h2>
+          <h2 className="topic-heading">
+            <TopicSymbol topic="updates" />
+            Updates
+          </h2>
           <p className="muted">
             Signierte Releases installieren. Einstellungen und Sicherungen
             bleiben erhalten.

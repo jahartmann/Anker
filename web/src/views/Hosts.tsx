@@ -2,6 +2,7 @@ import HostDiscovery from "./HostDiscovery";
 import {
   ServerRack as Server,
   HostEndpoint,
+  TopicSymbol,
 } from "../components/InfrastructureDetails";
 import type { HostVisit } from "../components/AnkerCompass";
 import ConfigurationJourney from "../components/ConfigurationJourney";
@@ -931,6 +932,19 @@ export default function Hosts({
                   aria-pressed={tab === v}
                   onClick={() => setTab(v)}
                 >
+                  <TopicSymbol
+                    topic={
+                      v === "Übersicht"
+                        ? "server"
+                        : v === "Sicherungen"
+                          ? "archive"
+                          : v === "Änderungen"
+                            ? "activity"
+                            : v === "Inventar"
+                              ? "system"
+                              : "settings"
+                    }
+                  />
                   {v}
                 </button>
               ))}
@@ -1371,35 +1385,57 @@ export default function Hosts({
               ))}
             {tab === "Einstellungen" && (
               <div className="detail-section">
-                <dl className="properties">
-                  <dt>Automatische Sicherung</dt>
-                  <dd>
-                    {host.enabled
-                      ? host.schedule || "Gemeinsamer Zeitplan"
-                      : "Pausiert"}
-                  </dd>
-                  <dt>Aktualitätsgrenze</dt>
-                  <dd>
-                    {Number.isFinite(status.stale_hours) &&
-                    status.stale_hours > 0
-                      ? status.stale_hours + " Stunden"
-                      : "Nicht verfügbar"}
-                    <div className="secondary-line">
-                      Gemeinsame Vorgaben unter Einstellungen → Zeitplan.
-                    </div>
-                  </dd>
-                  <dt>SSH-Benutzer</dt>
-                  <dd>{host.ssh_user}</dd>
-                  <dt>SSH-Port</dt>
-                  <dd>{host.ssh_port}</dd>
-                  <dt>Pflichtpfade</dt>
-                  <dd>
-                    /etc
-                    {host.extra_paths?.map((p) => (
-                      <div key={p}>{p}</div>
-                    ))}
-                  </dd>
-                </dl>
+                <div className="host-settings-grid">
+                  <section
+                    className="host-settings-card"
+                    aria-label="Sicherungsregeln für diesen Host"
+                  >
+                    <h3 className="topic-heading">
+                      <TopicSymbol topic="schedule" />
+                      Sicherungsregeln
+                    </h3>
+                    <dl className="properties">
+                      <dt>Automatische Sicherung</dt>
+                      <dd>
+                        {host.enabled
+                          ? host.schedule || "Gemeinsamer Zeitplan"
+                          : "Pausiert"}
+                      </dd>
+                      <dt>Aktualitätsgrenze</dt>
+                      <dd>
+                        {Number.isFinite(status.stale_hours) &&
+                        status.stale_hours > 0
+                          ? status.stale_hours + " Stunden"
+                          : "Nicht verfügbar"}
+                        <div className="secondary-line">
+                          Gemeinsame Vorgaben unter Einstellungen → Zeitplan.
+                        </div>
+                      </dd>
+                      <dt>Pflichtpfade</dt>
+                      <dd>
+                        /etc
+                        {host.extra_paths?.map((p) => (
+                          <div key={p}>{p}</div>
+                        ))}
+                      </dd>
+                    </dl>
+                  </section>
+                  <section
+                    className="host-settings-card"
+                    aria-label="SSH-Verbindung für diesen Host"
+                  >
+                    <h3 className="topic-heading">
+                      <TopicSymbol topic="network" />
+                      SSH-Verbindung
+                    </h3>
+                    <dl className="properties">
+                      <dt>SSH-Benutzer</dt>
+                      <dd>{host.ssh_user}</dd>
+                      <dt>SSH-Port</dt>
+                      <dd>{host.ssh_port}</dd>
+                    </dl>
+                  </section>
+                </div>
                 {canEdit && (
                   <div className="inline-form">
                     <button

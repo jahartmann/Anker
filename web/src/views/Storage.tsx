@@ -1,3 +1,4 @@
+import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useState } from "react";
 import { api, date } from "../api";
 import { Dialog, Field, LoadError } from "../components/shared";
@@ -780,7 +781,10 @@ export default function Storage({ notify }: { notify: Notify }) {
     <section className="storage-section">
       <div className="section-heading">
         <div>
-          <h3>Speicher auf dem Anker-Server</h3>
+          <h3 className="topic-heading">
+            <TopicSymbol topic="storage" />
+            Speicher auf dem Anker-Server
+          </h3>
           <p className="muted">
             System, Backup-Ablage und eingebundene Laufwerke.
           </p>

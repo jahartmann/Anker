@@ -2,6 +2,12 @@
 
 Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
+## Hinweise zu v0.2.17
+
+v0.2.17 ersetzt die bisherige Netzsuche durch eine fortsetzbare PVE-/PBS-Suche. Kurze TCP-Prüfungen beider Webports filtern die HTTPS-Erkennung; unklare Verbindungen erhalten eine langsamere Nachprüfung. Bekannte Adressen, konfigurierte Peers und aus Treffern gelernte Adressendungen werden bevorzugt. Trotzdem werden alle ausgewählten Adressen geprüft, auch bei einzelnen Hosts pro Standort. Abbruch, Zeitfenster und Neustart behalten den gespeicherten Stand; **Suche fortsetzen** verwendet die ursprünglichen Netze und Ports. Ein abrupt beendeter Prozess kann die Arbeit seit dem letzten Speicherpunkt wiederholen. Vor einem Update hält Anker laufende Suchen an und speichert den Fortschritt.
+
+Das Serverupdate ersetzt vorhandene Hosthelfer nicht automatisch. Für zusätzliche Hinweise aus bekannten PVE-Clustern und PBS-Remote-Konfigurationen die Hosts über **Verbindung einrichten** aktualisieren. Standalone-PVE-Hosts brauchen keine Clusterabfrage; ohne aktualisierten Helfer funktioniert die normale Netzsuche weiterhin. Konfigurierte DNS-Namen ohne IP-Hinweis bleiben für die vollständige Suche offen. Hinweise erweitern die ausgewählten Netze nicht und ersetzen keine SSH-Fingerprintbestätigung. Datastore-Inhalte bleiben ausgeschlossen. Registrierungscode-Anmeldung ist noch nicht enthalten.
+
 ## Hinweise zu v0.2.16
 
 v0.2.16 ergänzt PBS-Konfigurationsbackup und geführte PBS-Konfigurationswiederherstellung sowie die Proxmox-VE-Serversuche mit Sammelanbindung. Das Serverupdate ersetzt vorhandene Hosthelfer weiterhin nicht automatisch. PBS-Ziele vor der ersten geführten Übernahme über **Hosts → Verbindung neu einrichten** aktualisieren. Danach die PBS-Dienste am Ziel stoppen und eine frische Zielaufnahme erstellen. Alte PBS-Helfer bleiben für Schreiboperationen gesperrt.

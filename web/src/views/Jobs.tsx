@@ -1,3 +1,4 @@
+import { TopicSymbol } from "../components/InfrastructureDetails";
 import { HostName } from "../hostNames";
 import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
@@ -518,65 +519,84 @@ export default function Jobs({
                     }
                   />
                 </p>
-                <dl className="update-facts">
-                  <div>
-                    <dt>Auftrag</dt>
-                    <dd className="mono">{selected.id}</dd>
-                  </div>
-                  <div>
-                    <dt>Status</dt>
-                    <dd>
-                      <State
-                        value={selected.state}
-                        label={
-                          selected.state === "successful"
-                            ? "Erfolgreich"
-                            : undefined
-                        }
-                      />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Auslöser</dt>
-                    <dd>
-                      {trigger(selected)}
-                      {selected.scheduled_day
-                        ? " · " + selected.scheduled_day
-                        : ""}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Erstellt</dt>
-                    <dd>{date(selected.created_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>Gestartet</dt>
-                    <dd>
-                      {selected.started_at
-                        ? date(selected.started_at)
-                        : "Nicht erfasst"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Beendet</dt>
-                    <dd>
-                      {selected.finished_at ? date(selected.finished_at) : "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Versuche</dt>
-                    <dd>
-                      {selected.attempts}
-                      {selected.max_attempts
-                        ? ` von höchstens ${selected.max_attempts}`
-                        : ""}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Laufzeit</dt>
-                    <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
-                  </div>
-                </dl>
+                <section
+                  className="job-detail-group"
+                  aria-label="Auftrag und Ausführung"
+                >
+                  <h3 className="topic-heading">
+                    <TopicSymbol topic="activity" />
+                    Auftrag und Ausführung
+                  </h3>
+                  <dl className="update-facts">
+                    <div>
+                      <dt>Auftrag</dt>
+                      <dd className="mono">{selected.id}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>
+                        <State
+                          value={selected.state}
+                          label={
+                            selected.state === "successful"
+                              ? "Erfolgreich"
+                              : undefined
+                          }
+                        />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Auslöser</dt>
+                      <dd>
+                        {trigger(selected)}
+                        {selected.scheduled_day
+                          ? " · " + selected.scheduled_day
+                          : ""}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+                <section className="job-detail-group" aria-label="Zeitverlauf">
+                  <h3 className="topic-heading">
+                    <TopicSymbol topic="schedule" />
+                    Zeitverlauf
+                  </h3>
+                  <dl className="update-facts">
+                    <div>
+                      <dt>Erstellt</dt>
+                      <dd>{date(selected.created_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>Gestartet</dt>
+                      <dd>
+                        {selected.started_at
+                          ? date(selected.started_at)
+                          : "Nicht erfasst"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Beendet</dt>
+                      <dd>
+                        {selected.finished_at
+                          ? date(selected.finished_at)
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Versuche</dt>
+                      <dd>
+                        {selected.attempts}
+                        {selected.max_attempts
+                          ? ` von höchstens ${selected.max_attempts}`
+                          : ""}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Laufzeit</dt>
+                      <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
+                    </div>
+                  </dl>
+                </section>
                 {selected.message && (
                   <p
                     className={

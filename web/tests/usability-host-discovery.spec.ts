@@ -27,10 +27,11 @@ const results = [
   },
   { address: "10.20.0.14", name: "", version: "9.0", ssh_reachable: false },
 ];
-async function setup(page: Page, completed = false) {
+async function setup(page: Page, completed = false, paused = false) {
   await page.context().addCookies(cookies);
   const saved = { ...config };
-  let status = completed ? "completed" : "idle";
+  let status = paused ? "paused" : completed ? "completed" : "idle";
+  const scannedConfig = { ...config, pbs_port: 9007 };
   const writes: any[] = [];
   const checks: any[] = [];
   const enrolls: any[] = [];
@@ -45,6 +46,7 @@ async function setup(page: Page, completed = false) {
       Object.assign(saved, route.request().postDataJSON());
       writes.push({ method, ...saved });
       if (method === "POST") status = "completed";
+      if (method === "PATCH") status = "completed";
     }
     await route.fulfill({
       json: {
@@ -53,9 +55,17 @@ async function setup(page: Page, completed = false) {
         scan: {
           status,
           total: 254,
-          checked: status === "idle" ? 0 : 254,
-          config: saved,
-          results: status === "idle" ? [] : results,
+          checked: status === "idle" ? 0 : status === "paused" ? 100 : 254,
+          tcp_checked: status === "paused" ? 200 : 254,
+          phase: status === "paused" ? "paused" : "completed",
+          resumable: status === "paused",
+          config: paused ? scannedConfig : saved,
+          results:
+            status === "idle"
+              ? []
+              : paused
+                ? [...results, { ...results[0], kind: "pbs", web_port: 9007 }]
+                : results,
         },
       },
     });
@@ -142,6 +152,30 @@ test("35 VPN networks accept masks, persist and find hosts without a password", 
   await expect(page.getByLabel("SSH-Port", { exact: true })).toHaveValue(
     "2222",
   );
+});
+
+test("resume uses saved scope and shows PBS alongside PVE without duplicate enrollment rows", async ({
+  page,
+}) => {
+  const f = await setup(page, true, true);
+  await expect(f.dialog.getByText(/Suche pausiert/)).toBeVisible();
+  await expect(f.dialog.getByText(/4 Server gefunden/)).toBeVisible();
+  await expect(f.dialog.getByLabel("10.20.0.11 auswählen")).toHaveCount(1);
+  await expect(f.dialog.getByText(/PBS.*9007/).first()).toBeVisible();
+  await f.dialog
+    .getByLabel("Netzbereiche für LAN und VPN")
+    .fill("10.99.0.0/24");
+  await f.dialog
+    .getByRole("button", { name: "Suche fortsetzen", exact: true })
+    .click();
+  await expect(f.dialog.getByText(/Suche abgeschlossen/)).toBeVisible();
+  await expect(f.dialog.getByLabel("Netzbereiche für LAN und VPN")).toHaveValue(
+    "10.20.0.0/24",
+  );
+  expect(f.writes).toHaveLength(1);
+  expect(f.writes[0].method).toBe("PATCH");
+  expect(f.checks).toEqual([]);
+  expect(f.enrolls).toEqual([]);
 });
 
 test("optional password rounds require identity approval and skip successful hosts and network errors", async ({

@@ -537,7 +537,7 @@ export default function App() {
             </button>
           </div>
           <main>
-            <div className="content">
+            <div className="content" data-workspace={page}>
               {updating && (
                 <p className="update-progress" role="status">
                   <State value="running" label="Update" />
@@ -590,8 +590,10 @@ export default function App() {
                     })()}
                   </PageEmblem>
                   <span>
-                    Arbeitsbereich <span className="kicker-separator">/</span>{" "}
-                    {page}
+                    {page === "Einstellungen" || page === "Aufträge"
+                      ? "Verwaltung"
+                      : "Konfigurationssicherung"}{" "}
+                    <span className="kicker-separator">/</span> {page}
                   </span>
                 </div>
               )}
@@ -661,7 +663,7 @@ export default function App() {
                       />
                     </PageEmblem>
                     <span>
-                      Arbeitsbereich <span className="kicker-separator">/</span>{" "}
+                      Infrastruktur <span className="kicker-separator">/</span>{" "}
                       Alles im Blick
                     </span>
                   </div>

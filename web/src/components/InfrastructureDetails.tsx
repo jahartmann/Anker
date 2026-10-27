@@ -1,6 +1,51 @@
 import type { SVGProps } from "react";
-import { Network } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  Bell,
+  Clock3,
+  Database,
+  HardDrive,
+  Layers,
+  LockKeyhole,
+  Network,
+  RefreshCw,
+  ShieldCheck,
+  Settings2,
+  Terminal,
+  Users,
+} from "lucide-react";
 import type { Host } from "../api";
+
+const topicIcons = {
+  server: ServerRack,
+  schedule: Clock3,
+  notifications: Bell,
+  settings: Settings2,
+  archive: Archive,
+  network: Network,
+  storage: HardDrive,
+  access: Users,
+  security: LockKeyhole,
+  updates: RefreshCw,
+  system: Terminal,
+  workloads: Layers,
+  catalog: Database,
+  activity: Activity,
+  recovery: ShieldCheck,
+};
+
+export type InfrastructureTopic = keyof typeof topicIcons;
+
+// Topic colours identify content, while State owns operational health colours.
+export function TopicSymbol({ topic }: { topic: InfrastructureTopic }) {
+  const Icon = topicIcons[topic];
+  return (
+    <span className="topic-symbol" data-topic={topic} aria-hidden="true">
+      <Icon size={17} strokeWidth={1.6} />
+    </span>
+  );
+}
 
 // Front-panel details are decorative, never a connection or health indicator.
 export function ServerRack({

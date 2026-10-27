@@ -1,3 +1,4 @@
+import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, date } from "../api";
@@ -52,7 +53,10 @@ export default function Access({
     <section className="detail-section">
       <div className="section-heading">
         <div>
-          <h3>Benutzer</h3>
+          <h3 className="topic-heading">
+            <TopicSymbol topic="access" />
+            Benutzer
+          </h3>
           <p className="muted">
             Jeder Zugang hat eigene Rechte. Änderungen beenden bestehende
             Sitzungen.

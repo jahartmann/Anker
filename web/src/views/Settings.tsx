@@ -9,16 +9,26 @@ import Updates from "./Updates";
 import Certificates from "./Certificates";
 import Storage from "./Storage";
 import SystemDiagnosis from "../components/SystemDiagnosis";
+import { TopicSymbol } from "../components/InfrastructureDetails";
+import type { InfrastructureTopic } from "../components/InfrastructureDetails";
 
-const settingsTabs = [
-  "Zeitplan",
-  "Aufbewahrung",
-  "Benachrichtigungen",
-  "Zugriff",
-  "Zertifikate",
-  "Updates",
-  "Betrieb",
+const settingsGroups = [
+  {
+    title: "Sicherungsregeln",
+    tabs: ["Zeitplan", "Aufbewahrung", "Benachrichtigungen"],
+  },
+  { title: "Zugriffsschutz", tabs: ["Zugriff", "Zertifikate"] },
+  { title: "Anker-Server", tabs: ["Updates", "Betrieb"] },
 ] as const;
+const settingsTopics: Record<string, InfrastructureTopic> = {
+  Zeitplan: "schedule",
+  Aufbewahrung: "archive",
+  Benachrichtigungen: "notifications",
+  Zugriff: "access",
+  Zertifikate: "security",
+  Updates: "updates",
+  Betrieb: "server",
+};
 
 const settingsSections = {
   Zeitplan: ["schedule", "timezone", "parallel", "retries", "stale_hours"],
@@ -56,7 +66,10 @@ const settingsContext: Record<string, [string, string]> = {
     "Software verwalten",
     "Installierte Version, Updatequelle und verfügbare Updates prüfen.",
   ],
-  Betrieb: ["Betrieb", "Speicher prüfen und letzte Aktionen ansehen."],
+  Betrieb: [
+    "Betrieb",
+    "Ablagespeicher und Dienst auf dem Anker-Server prüfen und letzte Aktionen ansehen.",
+  ],
 };
 
 const betriebAreas = [
@@ -215,7 +228,7 @@ export default function Settings({
     <>
       <Heading
         title="Einstellungen"
-        description="Zeitplan, Speicher und Zugriff verwalten."
+        description="Sicherungsregeln, Zugriffsschutz und den Anker-Server verwalten."
         action={
           dirty || certificateDirty ? (
             <span className="save-state" role="status">
@@ -225,29 +238,42 @@ export default function Settings({
         }
       />
       <div className="tabs settings-tabs" aria-label="Einstellungsbereiche">
-        {settingsTabs.map((t) => (
-          <button
-            key={t}
-            type="button"
-            className={t === tab ? "selected" : ""}
-            aria-pressed={t === tab}
-            title={
-              changedSections.includes(t)
-                ? `${t}: ungespeicherte Änderungen`
-                : undefined
-            }
-            onClick={() => {
-              setTab(t);
-              if (t === "Betrieb") inspect();
-            }}
+        {settingsGroups.map((group) => (
+          <div
+            className="settings-nav-group"
+            key={group.title}
+            role="group"
+            aria-label={group.title}
           >
-            {t}
-            {changedSections.includes(t) && (
-              <span className="settings-tab-dirty" aria-hidden="true">
-                •
-              </span>
-            )}
-          </button>
+            <span className="settings-nav-label">{group.title}</span>
+            <div className="settings-nav-items">
+              {group.tabs.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={t === tab ? "selected" : ""}
+                  aria-pressed={t === tab}
+                  title={
+                    changedSections.includes(t)
+                      ? `${t}: ungespeicherte Änderungen`
+                      : undefined
+                  }
+                  onClick={() => {
+                    setTab(t);
+                    if (t === "Betrieb") inspect();
+                  }}
+                >
+                  <TopicSymbol topic={settingsTopics[t]} />
+                  {t}
+                  {changedSections.includes(t) && (
+                    <span className="settings-tab-dirty" aria-hidden="true">
+                      •
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       {changedSections.length > 0 && (
@@ -266,8 +292,18 @@ export default function Settings({
         </div>
       )}
       <div className="settings-context">
-        <h3>{settingsContext[tab][0]}</h3>
-        <p className="muted">{settingsContext[tab][1]}</p>
+        <TopicSymbol topic={settingsTopics[tab]} />
+        <div>
+          <span className="settings-context-scope">
+            {
+              settingsGroups.find((group) =>
+                group.tabs.some((name) => name === tab),
+              )?.title
+            }
+          </span>
+          <h3>{settingsContext[tab][0]}</h3>
+          <p className="muted">{settingsContext[tab][1]}</p>
+        </div>
       </div>
       {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
         <form className="settings-form" onSubmit={save}>
@@ -617,7 +653,7 @@ export default function Settings({
             <Storage notify={notify} />
           </section>
           <section id="betrieb-pruefung" className="betrieb-section">
-            <DetailSection title="Systemprüfung">
+            <DetailSection title="Systemprüfung" topic="system">
               {systemError && (
                 <LoadError message={systemError} retry={inspect} />
               )}
@@ -645,27 +681,36 @@ export default function Settings({
             </DetailSection>
           </section>
           <section id="betrieb-protokoll" className="betrieb-section">
-            <DetailSection title="Aktivitätsprotokoll">
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Zeitpunkt</th>
-                      <th>Aktion</th>
-                      <th>Ziel</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {audit.map((a, i) => (
-                      <tr key={i}>
-                        <td className="date">{date(a.at)}</td>
-                        <td>{a.action}</td>
-                        <td className="mono">{a.object}</td>
+            <DetailSection title="Aktivitätsprotokoll" topic="activity">
+              {!inspecting && !systemError && audit.length === 0 && (
+                <p className="muted">Noch keine Aktionen protokolliert.</p>
+              )}
+              {systemError && (
+                <LoadError message={systemError} retry={inspect} />
+              )}
+              {inspecting && <p role="status">Protokoll wird geladen …</p>}
+              {!systemError && !inspecting && audit.length > 0 && (
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Zeitpunkt</th>
+                        <th>Aktion</th>
+                        <th>Ziel</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {audit.map((a, i) => (
+                        <tr key={i}>
+                          <td className="date">{date(a.at)}</td>
+                          <td>{a.action}</td>
+                          <td className="mono">{a.object}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </DetailSection>
           </section>
         </>

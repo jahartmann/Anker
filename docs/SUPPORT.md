@@ -1,5 +1,11 @@
 # Unterstützungsstand
 
+## Netzsuche in v0.2.17
+
+Die fortsetzbare PVE-/PBS-Suche ist mit einem simulierten vollständigen `/16` (65.534 nutzbare Adressen) einschließlich schneller und langsamer TCP-Runde geprüft. Weitere Go-Prüfungen decken HTTPS nur bei offenen Ports, PVE-/PBS-Erkennung mit selbstsigniertem TLS, Wiederaufnahme offener TCP-/HTTPS-Prüfungen, Prozessneustart, Speicherfehler, Update-Stillstand, ausgewählte Netzgrenzen und die lernende Suchreihenfolge ab. Python-Fixtures prüfen Standalone-PVE ohne Clusterabfrage, Clusterstatus und Corosync-Fallback sowie PBS-Remote-Adressen ohne Passwort- oder Datastore-Zugriff. Browserprüfungen decken Fortsetzen mit ursprünglichem Suchumfang, gemeinsame PVE-/PBS-Anzeige je Adresse und die bestehende Fingerprint-/Anbindungsführung ab.
+
+Dies sind kontrollierte Funktionsprüfungen. Reale `/16`-Laufzeiten über VPN, Firewall-/Paketverlustverhalten und echte Cluster-/PBS-Gegenstellen bleiben vor Ort zu prüfen. Die Suche umfasst weiterhin alle ausgewählten Adressen; die Priorisierung verspricht keine feste Suchdauer. Gesperrte oder nicht erreichbare Dienste können fehlen.
+
 ## Interner Teststand vom 26. Oktober 2026
 
 Version `0.2.0-internal.20261026` ist für die lokale Demo und ein isoliertes internes Labor vorbereitet. Die Gesamtprüfung bestand: 1129 Go-Testfälle einschließlich Untertests mit Race Detector, Go Vet, 313 Browserfälle, 90 Hosthelfer-, 14 Installer-/Skript- und 22 Labkit-Fälle sowie der Terminaltest in einer echten PTY. Ein systemd-Integrationstest wurde unter macOS ausdrücklich übersprungen. Linux amd64 und arm64 wurden gebaut, hier jedoch nicht ausgeführt. Details und Grenzen stehen im [Prüfbericht](internal-test-2026-10-26.json) und unter [Interner Testbetrieb](OPERATIONS.md#interner-testbetrieb).

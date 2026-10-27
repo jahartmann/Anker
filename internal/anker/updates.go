@@ -4,6 +4,7 @@ import (
 	"anker/internal/buildinfo"
 	"anker/internal/updater"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,8 @@ import (
 )
 
 func (s *Service) PrepareUpdate() error {
+	s.discoveryMu.Lock()
+	defer s.discoveryMu.Unlock()
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	if s.connectingHostID != "" {
@@ -29,6 +32,12 @@ func (s *Service) PrepareUpdate() error {
 		if j.State == "queued" || j.State == "running" {
 			return errors.New("Aktive Aufträge zuerst beenden; während einer Sicherung oder Wiederherstellung wird kein Update installiert")
 		}
+	}
+	s.discovery.Cancel()
+	scanCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.discovery.Wait(scanCtx); err != nil {
+		return errors.New("Serversuche wird angehalten; Update anschließend erneut starten")
 	}
 	s.maintenance = true
 	return nil

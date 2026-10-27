@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -105,8 +106,8 @@ func TestScannerProgressCancelAndRestart(t *testing.T) {
 		t.Fatal("snapshot aliases state")
 	}
 }
-func TestProbeSelfSignedPVEWithoutCredentialsAndRejectPBS(t *testing.T) {
-	for _, kind := range []string{"pve", "pve-protected-version", "pbs", "unrelated", "redirect", "oversized"} {
+func TestProbeSelfSignedPVEAndPBSWithoutCredentials(t *testing.T) {
+	for _, kind := range []string{"pve", "pve-protected-version", "pbs", "pbs-current", "unrelated", "redirect", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			var paths []string
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +132,8 @@ func TestProbeSelfSignedPVEWithoutCredentialsAndRejectPBS(t *testing.T) {
 					fmt.Fprint(w, `<title>pve01 - Proxmox Virtual Environment</title><script src="/pve2/ext6/pvemanagerlib.js"></script>`)
 				case "pbs":
 					fmt.Fprint(w, `<title>Proxmox Backup Server</title><script src="/pbs/app.js"></script>`)
+				case "pbs-current":
+					fmt.Fprint(w, `<title>pbs01 - Proxmox Backup Server</title><link href="/pve2/images/logo-128.png"/><script src="/js/proxmox-backup-gui.js"></script>`)
 				case "oversized":
 					fmt.Fprint(w, `<title>Proxmox Virtual Environment</title>/pve2/`)
 					w.Write(make([]byte, 262145))
@@ -144,12 +147,15 @@ func TestProbeSelfSignedPVEWithoutCredentialsAndRejectPBS(t *testing.T) {
 			transport := probeTransport()
 			defer transport.CloseIdleConnections()
 			result := probeHost(context.Background(), host, Config{WebPort: n, SSHPort: n}, transport)
-			want := kind == "pve" || kind == "pve-protected-version"
+			want := kind == "pve" || kind == "pve-protected-version" || kind == "pbs" || kind == "pbs-current"
 			if (result != nil) != want {
 				t.Fatal(kind, result)
 			}
 			if kind == "pve" && (result.Version != "9.0.2" || !result.SSHReachable) {
 				t.Fatal(result)
+			}
+			if strings.HasPrefix(kind, "pbs") && result.Kind != "pbs" {
+				t.Fatal("PBS misclassified", result)
 			}
 			if kind == "redirect" && !reflect.DeepEqual(paths, []string{"/"}) {
 				t.Fatal(paths)
