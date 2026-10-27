@@ -18,7 +18,7 @@ import (
 // Fixed SSH transport fixture runs the repository's real helper functions against
 // temporary files. Only probe commands/OS privilege checks are replaced: the real
 // read, collect, apply, metadata checks, journal and rollback implementations run.
-func localRecoveryHelper(t *testing.T) (*Service, PlanRequest, string) {
+func localRecoveryHelper(t *testing.T, pbs ...bool) (*Service, PlanRequest, string) {
 	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -91,6 +91,11 @@ try:
 except Exception as exc:
  print(json.dumps(getattr(exc,'result',{'state':'failed','operation_id':'','error':str(exc)})));sys.exit(1)
 `
+	if len(pbs) > 0 && pbs[0] {
+		driver = pbsLocalDriver
+		path = pbsConfigRoot + "remote.cfg"
+		pbsLocalFixture(t, root)
+	}
 	if err = os.WriteFile(filepath.Join(dir, "driver.py"), []byte(driver), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +132,14 @@ except Exception as exc:
 	}
 	if err = os.WriteFile(filepath.Join(root, path), []byte("vm.swappiness=60\n"), 0640); err != nil {
 		t.Fatal(err)
+	}
+	if len(pbs) > 0 && pbs[0] {
+		if err := os.WriteFile(filepath.Join(root, path), []byte("target-remote\n"), 0640); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, pbsConfigRoot+"datastore.cfg"), []byte("datastore: main\n path /mnt/target\n gc-schedule hourly\n"), 0640); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return s, PlanRequest{BackupID: b.ID, TargetID: h.ID, Scenario: "files", Files: []string{path}, Decisions: map[string]FileDecision{path: DecisionBackup}}, root
 }

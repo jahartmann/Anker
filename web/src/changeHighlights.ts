@@ -1,6 +1,8 @@
 import type { FileDiff } from "./api";
 
 export function changeSubject(row: FileDiff): string {
+  if (row.path.replace(/^\/+/, "").startsWith("etc/proxmox-backup/"))
+    return "PBS-Konfiguration";
   if (row.secret) return "Geschützte Konfiguration";
   const path = row.path.replace(/^\/+/, "");
   if (/^etc\/network\//.test(path)) return "Netzwerkdefinition";

@@ -17,6 +17,148 @@ def asjson(text,default):
  try: return json.loads(text)
  except (ValueError,TypeError): return default
 
+def host_type(root):
+ # PBS takes precedence on combined installations; client-only packages do not qualify.
+ return 'pbs' if (pathlib.Path(root)/'etc/proxmox-backup').is_dir() else 'pve'
+
+def pbs_sections(root,filename,kind,fields):
+ p=confined(pathlib.Path(root),'etc/proxmox-backup/'+filename)
+ if not p.exists():return []
+ if p.stat().st_size>1024*1024:raise ValueError('PBS configuration exceeds inventory limit')
+ items=[];current=None
+ for line in p.read_text().splitlines():
+  if not line.strip() or line.lstrip().startswith('#'):continue
+  if not line[0].isspace():
+   match=re.fullmatch(re.escape(kind)+r':\s*(\S+)\s*',line)
+   if not match:raise ValueError('invalid PBS configuration section')
+   current={'name':match.group(1)};items.append(current)
+  elif current is not None:
+   pair=line.strip().split(None,1)
+   if len(pair)==2 and pair[0] in fields:
+    if pair[0] in current:raise ValueError('duplicate PBS option')
+    current[pair[0]]=pair[1]
+  else:raise ValueError('PBS option without section')
+ return items
+
+def pbs_data_roots(root):
+ roots=[]
+ for item in pbs_sections(root,'datastore.cfg','datastore',{'path','backing-device'}):
+  value=item.get('path','')
+  if not value:raise ValueError('PBS datastore path missing')
+  if not value.startswith('/'):
+   # Removable datastores live below /mnt/datastore, outside the PBS config roots.
+   if not item.get('backing-device'):raise ValueError('relative PBS datastore path without backing device')
+   continue
+  candidate=pathlib.Path(root)/value.lstrip('/')
+  roots.extend([candidate,candidate.resolve()])
+ return roots
+
+def pbs_excluded(p,data_roots):
+ if any((parent/'.chunks').is_dir() for parent in ([p] if p.is_dir() else [])+list(p.parents)):return True
+ return any(p==base or base in p.parents or p.resolve()==base or base in p.resolve().parents for base in data_roots)
+
+def pbs_capture_paths(paths):
+ # PBS support is deliberately configuration-only, even with an older/custom host profile.
+ for path in paths:
+  relative(path.lstrip('/'))
+  if not any(path==base or path.startswith(base+'/') for base in ('/etc','/usr/local')):
+   raise ValueError('PBS configuration capture only permits /etc and /usr/local')
+ return list(dict.fromkeys(list(paths)+['/etc/proxmox-backup']))
+
+PBS_RESTORE_FILES=frozenset(('acl.cfg','user.cfg','remote.cfg','node.cfg','datastore.cfg','sync.cfg','prune.cfg','verification.cfg','domains.cfg','notifications.cfg','notifications-priv.cfg','s3.cfg','traffic-control.cfg','media-pool.cfg','tape.cfg','authkey.key','authkey.pub','csrf.key','proxy.key','proxy.pem','shadow.json','token.shadow','tfa.json'))
+PBS_SERVICES=('proxmox-backup','proxmox-backup-proxy')
+
+def pbs_restore_path(path):
+ return path.startswith('etc/proxmox-backup/') and path[len('etc/proxmox-backup/'):] in PBS_RESTORE_FILES
+
+def pbs_service_states():
+ states={}
+ for name in PBS_SERVICES:
+  result=subprocess.run(['systemctl','show','--property=ActiveState','--value',name],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False)
+  value=result.stdout.decode().strip()
+  if result.returncode!=0 or value not in ('active','inactive','activating','deactivating','failed','reloading'):raise ValueError('PBS service state unavailable')
+  states[name]=value
+ return states
+
+def pbs_datastore_identity(root):
+ # Stat directory identities only. Never list, open, create or modify backup contents.
+ result={};root=pathlib.Path(root)
+ mountinfo=(root/'proc/self/mountinfo').read_text()
+ config_path=pathlib.PurePosixPath('/etc/proxmox-backup');journal_path=pathlib.PurePosixPath('/var/lib/anker-host')
+ mounts=[]
+ for line in mountinfo.splitlines():
+  fields=line.split()
+  if len(fields)<6:raise ValueError('invalid mount evidence')
+  mount=fields[4]
+  for encoded,decoded in (('\\040',' '),('\\011','\t'),('\\134','\\')):mount=mount.replace(encoded,decoded)
+  mount_path=pathlib.PurePosixPath(mount)
+  if str(mount_path)!='/' and fields[3]!='/' and (mount_path==config_path or mount_path in config_path.parents or config_path in mount_path.parents):raise ValueError('PBS configuration mount requires manual recovery; possible datastore alias')
+  if str(mount_path)!='/' and fields[3]!='/' and (mount_path==journal_path or mount_path in journal_path.parents or journal_path in mount_path.parents):raise ValueError('PBS recovery journal mount requires manual recovery; possible datastore alias')
+  mounts.append((fields[0],mount_path))
+ for item in pbs_sections(root,'datastore.cfg','datastore',{'path','backing-device','backend'}):
+  path=item.get('path','')
+  if not path.startswith('/'):raise ValueError('mount removable PBS datastore before recovery')
+  p=confined(root,path.lstrip('/'));chunks=confined(root,(path.rstrip('/')+'/.chunks').lstrip('/'))
+  st=p.stat();chunk_st=chunks.stat()
+  if not stat.S_ISDIR(st.st_mode) or not stat.S_ISDIR(chunk_st.st_mode):raise ValueError('existing PBS datastore directories required')
+  candidates=[(ident,mount) for ident,mount in mounts if mount==pathlib.PurePosixPath(path) or mount in pathlib.PurePosixPath(path).parents]
+  if not candidates:raise ValueError('PBS datastore mount evidence missing')
+  mount_id,mount=max(candidates,key=lambda x:len(x[1].parts))
+  result[item['name']]={'path':path,'device':st.st_dev,'inode':st.st_ino,'chunks_device':chunk_st.st_dev,'chunks_inode':chunk_st.st_ino,'mount_id':mount_id,'mount':str(mount)}
+ return result
+
+def pbs_quiescent_identity(root):
+ if host_type(root)!='pbs':raise ValueError('PBS recovery requires a PBS target')
+ if pbs_excluded(pathlib.Path(root)/'etc/proxmox-backup',pbs_data_roots(root)):raise ValueError('PBS configuration directory overlaps datastore')
+ if pbs_excluded(pathlib.Path(root)/'var/lib/anker-host',pbs_data_roots(root)):raise ValueError('PBS recovery journal must be outside all datastores')
+ if any(state!='inactive' for state in pbs_service_states().values()):raise ValueError('stop proxmox-backup and proxmox-backup-proxy before PBS recovery or rollback')
+ return pbs_datastore_identity(root)
+
+def pbs_parse_restore_config(data,kind):
+ sections={};current=None
+ for line in data.decode('utf-8').splitlines():
+  if not line.strip() or line.lstrip().startswith('#'):continue
+  if not line[0].isspace():
+   match=re.fullmatch(re.escape(kind)+r':\s*([A-Za-z0-9_][A-Za-z0-9_.-]*)\s*',line)
+   if not match or match.group(1) in sections:raise ValueError('invalid PBS restore configuration section')
+   current={};sections[match.group(1)]=current
+  else:
+   pair=line.strip().split(None,1)
+   if current is None or len(pair)!=2:raise ValueError('invalid PBS restore configuration option')
+   if pair[0] in current:
+    if kind!='sync' or pair[0] not in ('group-filter','associated-key'):raise ValueError('invalid PBS restore configuration option')
+    current[pair[0]]+='\n'+pair[1]
+   else:current[pair[0]]=pair[1]
+ return sections
+
+def validate_pbs_restore_content(root,path,data):
+ name=path.rsplit('/',1)[-1]
+ kinds={'datastore.cfg':'datastore','sync.cfg':'sync','prune.cfg':'prune','verification.cfg':'verification'}
+ if name not in kinds:return
+ sections=pbs_parse_restore_config(data,kinds[name])
+ target_file=confined(pathlib.Path(root),'etc/proxmox-backup/datastore.cfg')
+ target=pbs_parse_restore_config(target_file.read_bytes() if target_file.exists() else b'','datastore')
+ if name=='datastore.cfg':
+  if set(sections)!=set(target):raise ValueError('PBS datastore membership must be preserved; attach existing datastores separately')
+  for ident,options in sections.items():
+   for field in ('path','backing-device','backend','maintenance-mode'):
+    if options.get(field)!=target[ident].get(field):raise ValueError('PBS datastore backing or maintenance mode must be preserved')
+   if any(key in options for key in ('gc-schedule','prune-schedule','verify-new','gc-on-unmount')):raise ValueError('PBS datastore automatic actions must remain disabled')
+ else:
+  for options in sections.values():
+   if name=='sync.cfg' and not options.get('remote-store'):raise ValueError('PBS sync job requires remote-store')
+   if name=='prune.cfg':
+    if not options.get('schedule'):raise ValueError('PBS prune job requires a saved schedule')
+    if options.get('disable') not in ('true','1'):raise ValueError('PBS prune jobs must remain disabled')
+   elif 'schedule' in options or 'run-on-mount' in options or 'unmount-on-done' in options:raise ValueError('PBS job triggers must remain disabled')
+   if options.get('store') not in target:raise ValueError('PBS job references an unavailable target datastore')
+
+def pbs_journal_guard(root,j):
+ if j.get('platform')=='pbs' or any(e['path'].startswith('etc/proxmox-backup/') for e in j['files']):
+  if any(not pbs_restore_path(e['path']) for e in j['files']):raise ValueError('PBS journal contains non-configuration paths')
+  if any(pbs_excluded(pathlib.Path(root)/e['path'],pbs_data_roots(root)) for e in j['files']):raise ValueError('PBS journal path overlaps datastore')
+  if j.get('pbs_datastore_identity')!=pbs_quiescent_identity(root):raise ValueError('PBS datastore identity changed since recovery')
+
 def probe(root=pathlib.Path('/'),test_mode=False):
  root=pathlib.Path(root)
  if test_mode:
@@ -35,7 +177,14 @@ def probe(root=pathlib.Path('/'),test_mode=False):
    results[key]={'state':'not_applicable' if optional else 'failed','error':str(exc)}
   except (OSError,ValueError,subprocess.TimeoutExpired) as exc:results[key]={'state':'failed','error':str(exc)}
   return {} if key=='disks' else [] if parse else ''
- version=run('pve_version',['pveversion']).strip();version=version.split('/')[1] if '/' in version else version
+ platform=host_type(root);data_roots=pbs_data_roots(root) if platform=='pbs' else []
+ if platform=='pbs':
+  version=run('pbs_version',['dpkg-query','-W','-f=${Version}','proxmox-backup-server']).strip()
+ else:
+  version=run('pve_version',['pveversion']).strip();version=version.split('/')[1] if '/' in version else version
+ def pve_run(key,args,**kwargs):
+  if platform=='pbs':results[key]={'state':'not_applicable'};return ''
+  return run(key,args,**kwargs)
  interfaces=run('interfaces',['ip','-j','link','show'],parse=True);net=[]
  for i in interfaces:
   name=i.get('ifname','');device=root/'sys/class/net'/name/'device';physical=device.exists();pci=''
@@ -50,7 +199,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
    flatten(d.get('children',[]),d.get('name',''))
  try:flatten(blk.get('blockdevices',[]))
  except (ValueError,TypeError,AttributeError) as exc:results['disks']={'state':'failed','error':str(exc)}
- if (root/'etc/pve/corosync.conf').exists():cluster=run('cluster',['pvecm','status'])
+ if platform=='pve' and (root/'etc/pve/corosync.conf').exists():cluster=run('cluster',['pvecm','status'])
  else:cluster='';results['cluster']={'state':'not_applicable'}
  cluster_id='';quorate=False
  for line in cluster.splitlines():
@@ -58,18 +207,33 @@ def probe(root=pathlib.Path('/'),test_mode=False):
   if line.startswith('Quorate:'):quorate=line.split(':',1)[1].strip().lower()=='yes'
  details={'addresses':run('addresses',['ip','-j','addr','show'],parse=True),'routes':run('routes',['ip','-j','route','show'],parse=True),
   'packages':run('packages',['dpkg-query','-W','-f=${binary:Package} ${Version}\n']), 'manual_packages':run('manual_packages',['apt-mark','showmanual']),
-  'storage':run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
-  'guests':run('guests',['qm','list']), 'containers':run('containers',['pct','list']), 'cluster':cluster,
-  'pci':run('pci',['lspci','-nn']), 'boot':run('boot',['proxmox-boot-tool','status']),
+  'storage':pve_run('storage',['pvesm','status']), 'zfs':run('zfs',['zpool','list','-Hp'],optional=True), 'lvm':run('lvm',['vgs','--reportformat','json'],optional=True),
+  'guests':pve_run('guests',['qm','list']), 'containers':pve_run('containers',['pct','list']), 'cluster':cluster,
+  'pci':run('pci',['lspci','-nn']), 'boot':pve_run('boot',['proxmox-boot-tool','status']),
   'capabilities':{'restore_protocol':2,'remove_files':True,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1}}
- if (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
+ if platform=='pve' and (root/'etc/pve/ceph.conf').exists():details['ceph']=run('ceph',['ceph','status','--format','json'])
  else:details['ceph']='';results['ceph']={'state':'not_applicable'}
+ if platform=='pbs':
+  details['capabilities']={'config_backup':True,'restore_protocol':2,'journal':True,'recovery_read_protocol':1,'recovery_verify_protocol':1,'pbs_restore_protocol':1}
+  for key,query in (('pbs_services',pbs_service_states),('pbs_datastore_identity',lambda:pbs_datastore_identity(root))):
+   try:details[key]=query();results[key]={'state':'ok'}
+   except (OSError,ValueError,subprocess.TimeoutExpired):details[key]={};results[key]={'state':'failed'}
+  for key,filename,kind,fields in (
+   ('pbs_datastores','datastore.cfg','datastore',{'path','gc-schedule','prune-schedule'}),
+   ('pbs_sync_jobs','sync.cfg','sync',{'store','schedule','sync-direction'}),
+   ('pbs_prune_jobs','prune.cfg','prune',{'store','schedule','disable'}),
+   ('pbs_verify_jobs','verification.cfg','verification',{'store','schedule'})):
+   try:details[key]=pbs_sections(root,filename,kind,fields);results[key]={'state':'ok'}
+   except (OSError,ValueError):details[key]=[];results[key]={'state':'failed'}
  hashes={};metas={};walk_errors=[]
  def walk_error(exc):walk_errors.append(str(exc))
  for base in ('etc','usr/local'):
   start=root/base
-  if not start.exists():continue
+  if not start.exists() or (platform=='pbs' and (start.is_symlink() or pbs_excluded(start,data_roots))):continue
   for folder,dirs,files in os.walk(start,followlinks=False,onerror=walk_error):
+   if platform=='pbs':
+    dirs[:]=[x for x in dirs if not pbs_excluded(pathlib.Path(folder)/x,data_roots) and x!='.chunks']
+    files[:]=[x for x in files if not pbs_excluded(pathlib.Path(folder)/x,data_roots)]
    links=[x for x in dirs if (pathlib.Path(folder)/x).is_symlink()];dirs[:]=[x for x in dirs if x not in links]
    for name in files+links:
     p=pathlib.Path(folder)/name;rel=p.relative_to(root).as_posix()
@@ -95,7 +259,9 @@ def probe(root=pathlib.Path('/'),test_mode=False):
  try:debian=(root/'etc/debian_version').read_text().strip()
  except OSError:debian=''
  details['command_results']=results
- return {'hostname':socket.gethostname(),'pve_version':version,'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+ pbs_datastores=[{'name':x['name'],'path':x.get('path','')} for x in details.get('pbs_datastores',[])]
+ pbs_jobs=[{'kind':kind,'name':x['name'],'store':x.get('store',''),'schedule':x.get('schedule',''),'disabled':x.get('disable') in ('true','1')} for kind,key in (('Sync','pbs_sync_jobs'),('Prune','pbs_prune_jobs'),('Verify','pbs_verify_jobs')) for x in details.get(key,[])]
+ return {'hostname':socket.gethostname(),'pbs_datastores':pbs_datastores,'pbs_jobs':pbs_jobs,'host_type':platform,'pve_version':version if platform=='pve' else '', 'pbs_version':version if platform=='pbs' else '', 'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
 
 def relative(path):
  if not path or path.startswith('/') or '\\' in path or '\x00' in path or any(x in ('','..','.') for x in path.split('/')):raise ValueError('invalid path')
@@ -261,10 +427,15 @@ def recovery_storage_volumes(storage_id,deadline):
 
 def read_recovery_files(root,paths,storage_ids,profile_paths):
  profile_paths=validate_host_profile(profile_paths)
+ pbs=host_type(root)=='pbs'
+ if pbs:
+  profile_paths=pbs_capture_paths(profile_paths);data_roots=pbs_data_roots(root)
+  if storage_ids:raise ValueError('PBS recovery does not list datastore contents')
  if not isinstance(paths,list) or not isinstance(storage_ids,list):raise ValueError('paths and storage IDs must be lists')
  for path in paths:
   if not isinstance(path,str) or len(path.encode())>4096:raise ValueError('invalid recovery path')
   relative(path)
+  if pbs and (not path.startswith('etc/proxmox-backup/') or pbs_excluded(pathlib.Path(root)/path,data_roots)):raise ValueError('PBS recovery reads configuration only')
   # config.db decoding is an implicit part of collection even with a custom profile.
   if not any(path==p[1:] or path.startswith(p[1:]+'/') for p in profile_paths+['/etc/pve']):raise ValueError('recovery path outside host profile')
  for ident in storage_ids:
@@ -325,9 +496,14 @@ def decode_db(db,out):
 
 def collect(root,out,paths,test_mode=False):
  root=pathlib.Path(root);out=pathlib.Path(out);(out/'files').mkdir(exist_ok=True)
+ inventory=probe(root,test_mode) if test_mode or host_type(root)=='pbs' else None
+ platform=(inventory.get('host_type') or ('pbs' if inventory.get('pbs_version') else 'pve')) if inventory is not None else 'pve'
+ data_roots=pbs_data_roots(root) if platform=='pbs' else []
+ if platform=='pbs':paths=pbs_capture_paths(paths)
  entries=[];warnings=[];seen=set()
  def walk(p):
   rel=p.relative_to(root).as_posix()
+  if platform=='pbs' and (pbs_excluded(p,data_roots) or '.chunks' in p.parts):return
   if rel=='etc/pve' or rel.startswith('etc/pve/'):return
   if rel in seen:return
   seen.add(rel)
@@ -351,18 +527,25 @@ def collect(root,out,paths,test_mode=False):
     dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data);os.chmod(dest,0o600);entries.append(e)
   except (OSError,ValueError) as exc:warnings.append('Cannot capture /'+rel+': '+str(exc))
  for source in paths:
-  p=root/source.lstrip('/')
+  p=confined(root,source.lstrip('/')) if platform=='pbs' else root/source.lstrip('/')
   if p.exists() or p.is_symlink():walk(p)
   else:warnings.append('Required path missing: '+source)
- db=root/'var/lib/pve-cluster/config.db'
- try:
-  (out/'recovery').mkdir(exist_ok=True)
-  snapshot_db(db,out/'recovery/config.db')
-  entries.extend(decode_db(out/'recovery/config.db',out))
- except (sqlite3.Error,OSError,ValueError) as exc:warnings.append('config.db capture failed: '+str(exc))
+ if platform=='pve':
+  db=root/'var/lib/pve-cluster/config.db'
+  try:
+   (out/'recovery').mkdir(exist_ok=True)
+   snapshot_db(db,out/'recovery/config.db')
+   entries.extend(decode_db(out/'recovery/config.db',out))
+  except (sqlite3.Error,OSError,ValueError) as exc:warnings.append('config.db capture failed: '+str(exc))
+ if platform=='pbs':
+  results=inventory.get('details',{}).get('command_results',{})
+  for key in ('pbs_version','pbs_datastores','pbs_sync_jobs','pbs_prune_jobs','pbs_verify_jobs'):
+   if results.get(key,{}).get('state')!='ok':warnings.append('PBS inventory query failed: '+key)
+  if not any(e['path']=='etc/proxmox-backup' and e['type']=='directory' for e in entries):warnings.append('Required PBS configuration directory missing')
+ if inventory is None:inventory=probe(root,test_mode)
  dependency_alerts,dependencies,scan_complete=dependency_scan(out,entries,root)
  warnings.extend(dependency_alerts)
- return {'inventory':probe(root,test_mode),'entries':entries,'warnings':warnings,
+ return {'inventory':inventory,'entries':entries,'warnings':warnings,
          'profile':{'version':1,'roots':list(paths),'dependency_entry_limit':10000,'dependency_file_limit':1024*1024,
                     'dependency_reference_limit':4096,'dependency_scan_complete':scan_complete},
          'dependencies':dependencies}
@@ -461,6 +644,7 @@ def file_state(root,rel,test_mode=False):
 def protected_restore(path):
  prefixes=('usr/local/lib/anker/','etc/sudoers.d/','etc/pam.d/','etc/pve/','etc/corosync/','etc/ssh/','etc/apt/','etc/default/grub','etc/kernel/','etc/modprobe.d/','etc/udev/','etc/systemd/system/','etc/network/')
  names=('etc/passwd','etc/shadow','etc/group','etc/gshadow','etc/fstab','etc/machine-id','etc/hostname','etc/hosts','etc/anker-host.json','etc/sudoers','etc/nsswitch.conf')
+ if path.startswith('etc/proxmox-backup/') and not pbs_restore_path(path):return True
  return path in names or path.startswith(prefixes) or not path.startswith(('etc/','usr/local/'))
 
 
@@ -564,6 +748,7 @@ def write_file(path,data,mode,uid,gid,test_mode):
 def rollback_journal(root,folder,j,test_mode=False,retry_conflicts=False):
  # Explicit retry remains conditional: only our after state or original before
  # state is accepted; an unresolved foreign state is preserved again.
+ pbs_journal_guard(root,j)
  j['state']='rolling_back';save_journal(folder,j);conflict=False
  for e in reversed(j['files']):
   if e['phase'] not in ('writing','applied','rolling_back') and not (retry_conflicts and e['phase']=='rollback_conflict'):continue
@@ -572,6 +757,7 @@ def rollback_journal(root,folder,j,test_mode=False,retry_conflicts=False):
    if current==(e['before_sha'],e['before_metadata']):e['phase']='rolled_back';save_journal(folder,j);continue
    if current!=(e['after_sha'],e['after_metadata']):
     e['phase']='rollback_conflict';conflict=True;save_journal(folder,j);continue
+   pbs_journal_guard(root,j)
    e['phase']='rolling_back';save_journal(folder,j)
    if e['before_sha']=='missing':
     # Recheck immediately before unlink, just as for replacement.
@@ -599,6 +785,7 @@ def rollback_journal(root,folder,j,test_mode=False,retry_conflicts=False):
 
 def rollback_files(root,plan_id,confirm,test_mode=False):
  root=pathlib.Path(root);folder=operation_path(root,plan_id)
+ if host_type(root)=='pbs':pbs_quiescent_identity(root)
  if confirm!=plan_id:raise ValueError('explicit plan confirmation required')
  with mutation_lock(root):
   j=inspect_journal(folder)
@@ -624,6 +811,7 @@ def apply_files(root,items,test_mode=False,plan_id=None):
  """
  root=pathlib.Path(root);plan_id=operation_id(('local-'+str(time.time_ns())) if plan_id is None else plan_id)
  folder=operation_path(root,plan_id)
+ if host_type(root)=='pbs':pbs_quiescent_identity(root)
  with mutation_lock(root):
   if folder.exists():
    j=inspect_journal(folder);raise RestoreError('operation already exists; inspect or rollback, never replay',result_of(folder,j))
@@ -634,9 +822,14 @@ def apply_files(root,items,test_mode=False,plan_id=None):
     old_j=inspect_journal(older)
     if old_j['state'] in ('writing','rolling_back','interrupted','rollback_conflict'):
      raise RestoreError('unresolved earlier operation '+older.name+'; inspect and rollback first',result_of(older,old_j))
+  pbs=host_type(root)=='pbs'
+  pbs_identity=pbs_quiescent_identity(root) if pbs else None
   prepared=[];seen=set()
   for item in items:
    rel=item['path'];p=confined(root,rel)
+   if pbs:
+    if not pbs_restore_path(rel) or item.get('action','replace')!='replace' or pbs_excluded(p,pbs_data_roots(root)):raise ValueError('PBS recovery writes configuration files only; no deletions')
+   elif rel.startswith('etc/proxmox-backup/'):raise ValueError('PBS configuration requires a PBS target')
    if protected_restore(rel):raise ValueError('protected restore requires manual procedure: '+rel)
    if rel in seen:raise ValueError('duplicate restore path')
    seen.add(rel)
@@ -663,10 +856,12 @@ def apply_files(root,items,test_mode=False,plan_id=None):
    if any(not isinstance(x,int) or isinstance(x,bool) for x in (mode,uid,gid)) or mode<0 or mode>0o777 or uid<0 or gid<0:raise ValueError('invalid restore permissions')
    data=base64.b64decode(item['content'],validate=True)
    if len(data)>MAX_FILE:raise ValueError('restore file too large')
+   if pbs:validate_pbs_restore_content(root,rel,data)
    prepared.append((p,item,data,meta,before))
   if not prepared:raise ValueError('no restore files')
   folder.mkdir(parents=True,mode=0o700);sync_ancestors(root,folder)
   j={'version':2,'operation_id':plan_id,'state':'writing','files':[],'checks':['helper lock held; external writers require an operator change freeze','service and reboot checks require operator']}
+  if pbs:j.update(platform='pbs',pbs_datastore_identity=pbs_identity)
   stages=[]
   try:
    save_journal(folder,j)
@@ -689,6 +884,7 @@ def apply_files(root,items,test_mode=False,plan_id=None):
    for directory,_,_ in os.walk(folder,topdown=False):sync_directory(pathlib.Path(directory))
    save_journal(folder,j)
    for e in j['files']:
+    pbs_journal_guard(root,j)
     p=confined(root,e['path'])
     e['phase']='writing';save_journal(folder,j)
     if file_state(root,e['path'],test_mode)!=(e['before_sha'],e['before_metadata']):raise ValueError('target changed before replace: '+e['path'])
@@ -735,7 +931,7 @@ def sync_directory(path):
  try:os.fsync(fd)
  finally:os.close(fd)
 
-VERIFY_SERVICES=('pve-cluster','pvedaemon','pveproxy')
+VERIFY_SERVICES=('pve-cluster','pvedaemon','pveproxy')+PBS_SERVICES
 def verification_identity(root):
  try:
   with (root/'etc/machine-id').open('rb') as f:raw=f.read(129).strip()
@@ -757,6 +953,7 @@ def verify_service(name):
  except FileNotFoundError:return {'state':'unknown','value':''}
  except (OSError,subprocess.TimeoutExpired):return {'state':'failed','value':''}
 def verify_recovery(root,services,storage_ids):
+ if host_type(root)=='pbs' and (storage_ids or any(name not in PBS_SERVICES for name in services)):raise ValueError('PBS verification reads service state only; no datastore contents')
  if not isinstance(services,list) or not isinstance(storage_ids,list) or len(services)>3 or len(storage_ids)>32:raise ValueError('invalid verification selection')
  if any(not isinstance(v,str) or v not in VERIFY_SERVICES for v in services) or len(set(services))!=len(services):raise ValueError('invalid service selection')
  if any(not isinstance(v,str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}',v) for v in storage_ids) or len(set(storage_ids))!=len(storage_ids):raise ValueError('invalid storage selection')
@@ -802,13 +999,13 @@ def main(root=None):
   operation_id(request.get('plan_id'))
   if any('expected_metadata' not in e for e in request.get('files',[])):raise ValueError('expected target metadata required')
   expected=dict(request['expected_inventory']);current=probe(root)
-  required=('pve_version','users','groups','file_inventory')
+  required=(('pbs_version','pbs_services','pbs_datastore_identity') if current.get('host_type')=='pbs' else ('pve_version',))+('users','groups','file_inventory')
   for inv in (expected,current):
    details=inv.get('details',{})
    if details.get('capabilities',{}).get('restore_protocol')!=2 or details.get('capabilities',{}).get('journal') is not True:raise ValueError('hardened restore capabilities required')
    if any(details.get('command_results',{}).get(k,{}).get('state')!='ok' for k in required):raise ValueError('required target inventory query failed')
   for x in ('captured_at','fingerprint'):expected.pop(x,None);current.pop(x,None)
-  stable=('file_hashes','file_metadata','users','groups','capabilities','command_results','boot_id','addresses','routes','packages','manual_packages','pci','boot')
+  stable=('file_hashes','file_metadata','users','groups','capabilities','command_results','boot_id','addresses','routes','packages','manual_packages','pci','boot','pbs_services','pbs_datastore_identity')
   for inv in (expected,current):inv['details']={k:v for k,v in inv.get('details',{}).items() if k in stable}
   def normalize(v):
    if isinstance(v,dict):return {k:normalize(x) for k,x in v.items() if k not in ('valid_life_time','preferred_life_time') and x not in ('',None,[],{})}

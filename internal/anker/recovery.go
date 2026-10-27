@@ -6,6 +6,24 @@ import (
 )
 
 func recoveryGuide(m Manifest) string {
+	if m.Inventory.Platform() == "pbs" {
+		return fmt.Sprintf(`# Anker PBS-Konfigurationsbackup
+
+Host: %s · Sicherung: %s · PBS: %s
+Status: %s. Erfassung: %s bis %s.
+
+Dieses Paket enthält Konfigurationen und Systeminventar. Datastore-Inhalte sind ausgeschlossen und müssen separat gesichert und bereitgestellt werden. Clientseitige Verschlüsselungsschlüssel sind separat aufzubewahren.
+
+Vor Verwendung im Exportwurzelverzeichnis sha256sum -c checksums.sha256 ausführen. manifest.json dokumentiert Originalrechte, UID/GID, Links und xattrs. files/ enthält Links als Zieltext; original-files/ im tar-Export enthält echte Links und Originalmodi. Das Archiv nicht pauschal nach / entpacken.
+
+Geführte PBS-Konfigurationswiederherstellung erfolgt als Dateiauswahl mit Zielaufnahme, Vorschau, Plan-ID-Bestätigung und Rücksetzjournal. Beide PBS-Dienste vor Zielprüfung, Übernahme und Rücksetzung stoppen. Datastore-Anbindungen werden aus dem Ziel erhalten und zurückgespielte Jobs in der aufbereiteten Fassung deaktiviert. Anker startet keine Dienste und keine Jobs. Alle bestehenden Jobregeln vor späterem manuellem Dienststart separat prüfen. Eine passende PBS-Version frisch installieren, Datastore-Mounts und vorhandene Daten unabhängig prüfen und nur gezielt Konfigurationen aus /etc/proxmox-backup und dem Systemprofil übernehmen. Zugangsdaten, Zertifikate und Dateieigentümer gesondert prüfen. Vor Änderungen Zielkonfiguration sichern und laufende Jobs anhalten.
+
+Die Live-Erfassung ist kein global atomarer Zustand. Für einen finalen Stand Konfigurationsänderungen pausieren.
+
+Warnungen: %v
+Konsistenz: %s
+`, m.Inventory.Hostname, m.ID, m.Inventory.PBSVersion, m.Status, m.CreatedAt, m.CompletedAt, m.Warnings, m.Consistency)
+	}
 	return fmt.Sprintf(`# Anker Wiederherstellung
 
 Host: %s · Sicherung: %s · Proxmox: %s
@@ -57,6 +75,9 @@ func evidenceLabel(s string) string {
 // The dossier is rebuilt on every export from the current private plan and
 // original manifest. It never promotes human confirmations to machine evidence.
 func planScenarioDossier(p Plan, m Manifest) string {
+	if p.Source.Platform() == "pbs" {
+		return fmt.Sprintf("\n## PBS-Konfiguration: Reihenfolge und Grenzen\n\n1. PBS-Ziel mit passender Hauptversion und aktuellem Hosthelfer anbinden. Bestehende Datastores unabhängig einbinden; keine Dateninitialisierung.\n2. `systemctl stop proxmox-backup-proxy proxmox-backup` am Ziel ausführen. Dienste, Datastore-Verzeichnisse, Chunk-Verzeichnisidentitäten und Mounts frisch prüfen.\n3. Ausgewählte Dateien vergleichen. Für Datastore- und Jobdefinitionen aufbereitete Fassungen mit erhaltenem Ziel-Backing und deaktivierten automatischen Auslösern verwenden.\n4. Übernahme separat mit Plan-ID bestätigen; Zieljournal und Dateiergebnis abgleichen. Anker startet keine Dienste oder Jobs und berührt keine Datastore-Inhalte.\n5. Vor späterem manuellem Dienststart alle bestehenden Jobregeln, Zugänge und Zertifikate separat prüfen; zurückgespielte Jobs bleiben deaktiviert. Für Rücksetzung Dienste erneut stoppen. Bei Fremddrift oder geänderter Datastore-Identität manuell prüfen.\n\nQuelle: Sicherung %s, Manifestbezug im Planpaket; Ziel %s, Aufnahme %s. Quelle und Datastore-Daten bleiben getrennte Sicherungen. Dieser Konfigurationsnachweis bestätigt weder die Datenintegrität eines Datastores noch dessen Betriebsbereitschaft. Reale PBS-Laborabnahme steht aus.\n", p.BackupID, p.TargetID, p.TargetSnapshotID)
+	}
 	var b strings.Builder
 	b.WriteString("\n## Reihenfolge für dieses Szenario\n\n")
 	switch p.Scenario {

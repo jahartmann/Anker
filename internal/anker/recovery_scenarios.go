@@ -21,6 +21,16 @@ func recoverySituation(scenario string) (RecoverySituation, error) {
 // scenarioSelection defines references to prepare, not permission to write them.
 // Protected explicit files and local node references still require manual handling.
 func scenarioSelection(m Manifest, r PlanRequest) (RecoverySelection, error) {
+	if m.Inventory.Platform() == "pbs" {
+		if r.Scenario != "files" || len(r.RemoveFiles) > 0 {
+			return RecoverySelection{}, errors.New("PBS-Konfiguration als Dateiauswahl wiederherstellen; keine Entfernungen oder PVE-Gesamtszenarien")
+		}
+		for _, path := range r.Files {
+			if !strings.HasPrefix(path, pbsConfigRoot) {
+				return RecoverySelection{}, errors.New("PBS-Wiederherstellung übernimmt ausschließlich /etc/proxmox-backup; System- und Datastore-Dateien bleiben erhalten")
+			}
+		}
+	}
 	selection := RecoverySelection{Paths: []string{}, Preserved: []RecoveryPreservation{}}
 	situation, err := recoverySituation(r.Scenario)
 	if err != nil {

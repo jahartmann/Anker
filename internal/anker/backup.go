@@ -262,6 +262,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if err = ctx.Err(); err != nil {
 		return b, err
 	}
+	b.HostType = c.Inventory.Platform()
 	// Collectors place the raw tree under stage/files.
 	seen := map[string]bool{}
 	for i := range c.Entries {
@@ -321,6 +322,10 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	b.Warnings = c.Warnings
 	c.Inventory.Fingerprint = Fingerprint(c.Inventory)
 	m := Manifest{Version: 1, ID: b.ID, HostID: h.ID, CreatedAt: b.CreatedAt, CompletedAt: now(), Status: b.Status, Entries: c.Entries, Warnings: c.Warnings, Inventory: c.Inventory, Profile: c.Profile, RequiredPaths: append([]string(nil), h.ExtraPaths...), Dependencies: c.Dependencies, Consistency: "SQLite snapshot; ordinary files captured over documented interval", Artifacts: map[string]string{}}
+	if c.Inventory.Platform() == "pbs" {
+		m.Consistency = "Live configuration files captured over documented interval; datastore contents excluded"
+		m.RequiredPaths = appendUnique(m.RequiredPaths, "/etc/proxmox-backup")
+	}
 	if err = writeJSON(filepath.Join(stage, "inventory/host.json"), c.Inventory); err != nil {
 		return b, err
 	}

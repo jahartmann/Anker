@@ -36,7 +36,9 @@ function planStatusSignature(plan?: Plan) {
     (_key, value) =>
       value && typeof value === "object" && !Array.isArray(value)
         ? Object.fromEntries(
-            Object.keys(value).sort().map((key) => [key, value[key]]),
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, value[key]]),
           )
         : value,
   );
@@ -441,20 +443,39 @@ export default function RecoveryPlan({
           </div>
         </div>
       )}
+      {plan.source.host_type === "pbs" && (
+        <p className="notice" role="status">
+          PBS-Konfigurationsplan: Datastore-Inhalte und Ziel-Anbindungen bleiben
+          erhalten. PBS-Dienste bleiben während Übernahme und Rücksetzung
+          gestoppt. Zurückgespielte Jobs sind in der aufbereiteten Fassung
+          deaktiviert; alle bestehenden Jobs vor einem späteren Dienststart
+          separat prüfen.
+        </p>
+      )}
       <section className="recovery-plan-summary" aria-label="Planübersicht">
         <dl className="recovery-context">
           <div>
             <dt>Quelle</dt>
             <dd>
               {plan.source.hostname}
-              <small>Proxmox {plan.source.pve_version || "Unbekannt"}</small>
+              <small>
+                Proxmox{" "}
+                {plan.source.pbs_version ||
+                  plan.source.pve_version ||
+                  "Unbekannt"}
+              </small>
             </dd>
           </div>
           <div>
             <dt>Ziel</dt>
             <dd>
               {plan.target.hostname}
-              <small>Proxmox {plan.target.pve_version || "Unbekannt"}</small>
+              <small>
+                Proxmox{" "}
+                {plan.target.pbs_version ||
+                  plan.target.pve_version ||
+                  "Unbekannt"}
+              </small>
             </dd>
           </div>
           <div>

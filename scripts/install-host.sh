@@ -25,9 +25,14 @@ while [ "$#" -gt 0 ]; do
  esac
 done
 [ "$(id -u)" -eq 0 ] || { echo 'Als root auf dem Proxmox-Host ausführen.' >&2; exit 1; }
-for ANKER_DEPENDENCY in pveversion python3 useradd getent install visudo ssh-keygen; do
+for ANKER_DEPENDENCY in python3 useradd getent install visudo ssh-keygen; do
  command -v "$ANKER_DEPENDENCY" >/dev/null || { echo "Fehlendes Programm: $ANKER_DEPENDENCY" >&2; exit 1; }
 done
+if [ -d /etc/proxmox-backup ]; then
+ command -v proxmox-backup-manager >/dev/null && proxmox-backup-manager versions >/dev/null || { echo 'PBS-Version nicht lesbar.' >&2; exit 1; }
+else
+ command -v pveversion >/dev/null && pveversion >/dev/null || { echo 'Kein unterstützter PVE- oder PBS-Server.' >&2; exit 1; }
+fi
 ANKER_SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 set --
 [ -z "$ANKER_BACKUP_KEY" ] || set -- "$@" --backup-key "$ANKER_BACKUP_KEY"

@@ -14,6 +14,8 @@ export default function RecoveryTarget({
   onConnectTarget: () => void;
 }) {
   const host = status.hosts.find((h) => h.id === d.target);
+  const isPBS =
+    status.backups.find((b) => b.id === d.backup)?.host_type === "pbs";
   return (
     <section aria-label="SSH-Zielprüfung">
       <h2>2 · Ziel anbinden und prüfen</h2>
@@ -28,11 +30,17 @@ export default function RecoveryTarget({
           onChange={(e) => d.changeTarget(e.target.value)}
         >
           <option value="">Ziel auswählen</option>
-          {status.hosts.map((h) => (
-            <option value={h.id} key={h.id}>
-              {h.name}
-            </option>
-          ))}
+          {status.hosts
+            .filter((h) =>
+              isPBS
+                ? h.inventory?.host_type === "pbs"
+                : h.inventory?.host_type !== "pbs",
+            )
+            .map((h) => (
+              <option value={h.id} key={h.id}>
+                {h.name}
+              </option>
+            ))}
         </select>
       </Field>
       {user.role === "admin" ? (
@@ -49,6 +57,13 @@ export default function RecoveryTarget({
         Hostschlüsselprüfung und getrennte SSH-Rollen gelten auch für ein
         Wiederherstellungsziel.
       </p>
+      {isPBS && (
+        <p className="notice">
+          PBS-Dienste müssen gestoppt sein. Geprüft werden Konfiguration,
+          bestehende Datastore-Verzeichnisse und Mount-Identitäten. Daten werden
+          weder übernommen noch initialisiert.
+        </p>
+      )}
       <button
         type="button"
         disabled={d.inspecting || !d.target || !d.sourceReady}
@@ -78,8 +93,10 @@ export default function RecoveryTarget({
           </dd>
           <dt>Proxmox / Debian</dt>
           <dd>
-            {d.inspection.target.pve_version || "Unbekannt"} /{" "}
-            {d.inspection.target.debian || "Unbekannt"}
+            {(isPBS
+              ? d.inspection.target.pbs_version
+              : d.inspection.target.pve_version) || "Unbekannt"}{" "}
+            / {d.inspection.target.debian || "Unbekannt"}
           </dd>
           <dt>Bootmodus / Cluster</dt>
           <dd>

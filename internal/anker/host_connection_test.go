@@ -256,3 +256,44 @@ func TestHostConnectionAndReadyReconciliationExcludeBothAdmissionOrders(t *testi
 		})
 	}
 }
+
+type checkingFixture struct{ connectionFixture }
+
+func (f *checkingFixture) Check(_ context.Context, in hostconnect.EnrollRequest) (hostconnect.CheckResult, error) {
+	f.calls++
+	if in.Password == "remote-error-secret" {
+		return hostconnect.CheckResult{}, errors.New("remote-error-secret")
+	}
+	return hostconnect.CheckResult{Authenticated: in.Password == "valid-secret"}, nil
+}
+func TestHostCredentialCheckDoesNotEnrollOrPersistPassword(t *testing.T) {
+	s := testService(t)
+	f := &checkingFixture{}
+	s.hostConnector = f
+	body := `{"address":"192.0.2.1","port":22,"username":"root","password":"valid-secret","fingerprint":"SHA256:test","confirmed":true}`
+	w := connectionRequest(s, "check", body)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"authenticated":true`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, item := range []struct {
+		from, to string
+		code     int
+	}{{`"confirmed":true`, `"confirmed":false`, 400}, {`valid-secret`, `remote-error-secret`, 400}, {`valid-secret`, `wrong-secret`, 200}} {
+		w = connectionRequest(s, "check", strings.Replace(body, item.from, item.to, 1))
+		if w.Code != item.code || strings.Contains(w.Body.String(), "secret") {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	hosts, _ := s.Hosts()
+	if len(hosts) != 1 {
+		t.Fatal("check created host", hosts)
+	}
+	for _, bucket := range []string{"hosts", "audit", "jobs", "discovery"} {
+		rows, _ := records[json.RawMessage](s.Store, bucket)
+		for _, row := range rows {
+			if strings.Contains(string(row), "secret") {
+				t.Fatal("persisted password", bucket)
+			}
+		}
+	}
+}

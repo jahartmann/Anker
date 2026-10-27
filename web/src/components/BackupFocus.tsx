@@ -56,6 +56,7 @@ export default function BackupFocus({
   const history = focusBackups(status, hostID);
   const latest = history[0];
   if (!latest) return null;
+  const isPBS = latest.host_type === "pbs";
   const source = recoverySource(history);
   const reference = status.references?.[latest.host_id];
   const needsReview = problem(latest) || reference?.state === "unresolved";
@@ -163,9 +164,11 @@ export default function BackupFocus({
             {source ? date(source.created_at) : "Keine passende Sicherung"}
           </h3>
           <p>
-            {source
-              ? "Dieser Stand ist vollständig und hat keine bekannten Prüfsummenfehler. Der Assistent prüft Quelle und Ziel vor dem Wiederherstellen erneut."
-              : "Es gibt noch keinen vollständigen Stand ohne bekannte Prüfsummenfehler."}
+            {isPBS
+              ? "Der Assistent stellt ausgewählte PBS-Konfigurationen bei gestoppten PBS-Diensten wieder her. Datastore-Inhalte bleiben erhalten."
+              : source
+                ? "Dieser Stand ist vollständig und hat keine bekannten Prüfsummenfehler. Der Assistent prüft Quelle und Ziel vor dem Wiederherstellen erneut."
+                : "Es gibt noch keinen vollständigen Stand ohne bekannte Prüfsummenfehler."}
           </p>
           {source && source.id !== latest.id && (
             <p className="backup-focus-source-note">

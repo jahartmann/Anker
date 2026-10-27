@@ -64,7 +64,7 @@ func validateVerificationSelection(services, ids []string) error {
 	}
 	seen := map[string]bool{}
 	for _, v := range services {
-		if (v != "pve-cluster" && v != "pvedaemon" && v != "pveproxy") || seen[v] {
+		if (v != "pve-cluster" && v != "pvedaemon" && v != "pveproxy" && v != "proxmox-backup" && v != "proxmox-backup-proxy") || seen[v] {
 			return errors.New("ungültiger Prüfdienst")
 		}
 		seen[v] = true
@@ -321,14 +321,19 @@ func (s *Service) VerifyRecovery(ctx context.Context, id string) (Plan, error) {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		if err = validateVerificationSelection(verificationServices, ids); err != nil {
+		services := verificationServices
+		if p.Source.Platform() == "pbs" {
+			services = []string{"proxmox-backup", "proxmox-backup-proxy"}
+			ids = []string{}
+		}
+		if err = validateVerificationSelection(services, ids); err != nil {
 			return err
 		}
 		h, err := s.Host(p.TargetID)
 		if err != nil {
 			return err
 		}
-		result, readErr := c.VerifyRecovery(ctx, h, append([]string{}, verificationServices...), ids)
+		result, readErr := c.VerifyRecovery(ctx, h, append([]string{}, services...), ids)
 		if _, err = check(); err != nil {
 			return err
 		}
@@ -337,7 +342,7 @@ func (s *Service) VerifyRecovery(ctx context.Context, id string) (Plan, error) {
 			a.Reason = "SSH-Prüfung fehlgeschlagen, unterbrochen oder Antwort ungültig"
 			return nil
 		}
-		if err = validateVerificationResult(result, verificationServices, ids); err != nil {
+		if err = validateVerificationResult(result, services, ids); err != nil {
 			return err
 		}
 		observed, _ := time.Parse(time.RFC3339Nano, result.ObservedAt)

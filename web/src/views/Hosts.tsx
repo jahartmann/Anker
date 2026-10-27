@@ -1,3 +1,4 @@
+import HostDiscovery from "./HostDiscovery";
 import {
   ServerRack as Server,
   HostEndpoint,
@@ -45,12 +46,14 @@ import ActiveJobs from "../components/ActiveJobs";
 export function HostForm({
   host,
   automatic = !host,
+  initialEndpoint,
   onClose,
   onSaved,
   notify,
 }: {
   host?: Host;
   automatic?: boolean;
+  initialEndpoint?: { address: string; port: number };
   onClose: () => void;
   onSaved: () => void;
   notify: Notify;
@@ -58,7 +61,11 @@ export function HostForm({
   const [method, setMethod] = useState(automatic ? "automatic" : "manual");
   const props = { host, onClose, onSaved, notify };
   return method === "automatic" ? (
-    <HostConnection {...props} onManual={() => setMethod("manual")} />
+    <HostConnection
+      {...props}
+      initialEndpoint={initialEndpoint}
+      onManual={() => setMethod("manual")}
+    />
   ) : (
     <ManualHostForm {...props} onAutomatic={() => setMethod("automatic")} />
   );
@@ -66,12 +73,14 @@ export function HostForm({
 
 function HostConnection({
   host,
+  initialEndpoint,
   onClose,
   onSaved,
   notify,
   onManual,
 }: {
   host?: Host;
+  initialEndpoint?: { address: string; port: number };
   onClose: () => void;
   onSaved: () => void;
   notify: Notify;
@@ -80,7 +89,7 @@ function HostConnection({
   const [value, setValue] = useState<Host>(() => ({
     id: "",
     name: "",
-    address: "",
+    address: initialEndpoint?.address || "",
     group: "",
     cluster_id: "",
     enabled: true,
@@ -89,7 +98,7 @@ function HostConnection({
     ...host,
     ssh_user: "anker",
     restore_ssh_user: "anker-restore",
-    ssh_port: host?.ssh_port || 22,
+    ssh_port: host?.ssh_port || initialEndpoint?.port || 22,
     key_path: "/etc/anker/keys/backup",
     restore_key_path: "/etc/anker/keys/restore",
     known_hosts_path: "/etc/anker/known_hosts",
@@ -479,7 +488,7 @@ function ManualHostForm({
               autoComplete="off"
               value={value.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="Hostname des Proxmox-Hosts"
+              placeholder="Hostname des PVE- oder PBS-Hosts"
             />
           </Field>
           <Field label="Adresse">
@@ -685,6 +694,11 @@ export default function Hosts({
   initialStateFilter?: HostStateFilter;
   onInitialStateFilterConsumed?: () => void;
 }) {
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [initialEndpoint, setInitialEndpoint] = useState<{
+    address: string;
+    port: number;
+  }>();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
   const [stateFilter, setStateFilter] =
@@ -1184,7 +1198,9 @@ export default function Hosts({
                     </span>
                     <h3>Älteren Stand wiederherstellen</h3>
                     <p>
-                      {restoreSource ? (
+                      {host.inventory?.host_type === "pbs" ? (
+                        "PBS-Konfigurationen geführt wiederherstellen: Ziel-Datastores erhalten, PBS-Dienste vor der Zielprüfung stoppen und zurückgespielte Jobs deaktiviert prüfen."
+                      ) : restoreSource ? (
                         <>
                           Vorgeschlagene Quelle:{" "}
                           {date(restoreSource.created_at)}. Ziel und Änderungen
@@ -1223,7 +1239,9 @@ export default function Hosts({
                     <div>
                       <dt>Proxmox</dt>
                       <dd>
-                        {host.inventory?.pve_version || "Noch nicht geprüft"}
+                        {host.inventory?.host_type === "pbs"
+                          ? `PBS ${host.inventory.pbs_version || "Unbekannt"}`
+                          : host.inventory?.pve_version || "Noch nicht geprüft"}
                       </dd>
                     </div>
                     <div>
@@ -1434,14 +1452,23 @@ export default function Hosts({
               description="Konfigurationen sichern und wiederherstellen."
               action={
                 canEdit && (
-                  <button
-                    onClick={() => {
-                      setReconnecting(false);
-                      setForm("new");
-                    }}
-                  >
-                    <Plus size={15} aria-hidden="true" /> Host hinzufügen
-                  </button>
+                  <>
+                    <button
+                      className="secondary"
+                      onClick={() => setDiscoveryOpen(true)}
+                    >
+                      <Search size={15} aria-hidden="true" /> Server suchen
+                    </button>
+                    <button
+                      onClick={() => {
+                        setInitialEndpoint(undefined);
+                        setReconnecting(false);
+                        setForm("new");
+                      }}
+                    >
+                      <Plus size={15} aria-hidden="true" /> Host hinzufügen
+                    </button>
+                  </>
                 )
               }
             />
@@ -1743,8 +1770,23 @@ export default function Hosts({
             </footer>
           </Dialog>
         )}
+        {discoveryOpen && (
+          <HostDiscovery
+            hosts={status.hosts}
+            onClose={() => setDiscoveryOpen(false)}
+            onSaved={refresh}
+            notify={notify}
+            onConfigure={(address, port) => {
+              setDiscoveryOpen(false);
+              setInitialEndpoint({ address, port });
+              setReconnecting(false);
+              setForm("new");
+            }}
+          />
+        )}
         {form && (
           <HostForm
+            initialEndpoint={form === "new" ? initialEndpoint : undefined}
             host={form === "new" ? undefined : form}
             automatic={form === "new" || reconnecting}
             onClose={() => setForm(null)}

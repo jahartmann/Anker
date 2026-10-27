@@ -2,6 +2,12 @@
 
 Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
+## Hinweise zu v0.2.16
+
+v0.2.16 ergänzt PBS-Konfigurationsbackup und geführte PBS-Konfigurationswiederherstellung sowie die Proxmox-VE-Serversuche mit Sammelanbindung. Das Serverupdate ersetzt vorhandene Hosthelfer weiterhin nicht automatisch. PBS-Ziele vor der ersten geführten Übernahme über **Hosts → Verbindung neu einrichten** aktualisieren. Danach die PBS-Dienste am Ziel stoppen und eine frische Zielaufnahme erstellen. Alte PBS-Helfer bleiben für Schreiboperationen gesperrt.
+
+Die Wiederherstellung erhält Datastore-Inhalte und vorhandene Ziel-Anbindungen. Zurückgespielte Jobfassungen werden ohne automatische Auslöser vorbereitet; Anker startet keine Dienste oder Jobs. Vor einem späteren manuellen Dienststart alle vorhandenen Job- und Aufbewahrungsregeln prüfen. Ablauf und unterstützter Umfang stehen in der [README](../README.md#pbs-konfiguration-geführt-wiederherstellen).
+
 ## Repository vorbereiten
 
 Ein öffentliches GitHub-Repository ohne zusätzliche Schreibberechtigte reicht aus. Besucher können den Code herunterladen oder einen Fork erstellen. Sie können nicht in das Original pushen. MIT erlaubt ausdrücklich Änderungen und Weitergabe eigener Kopien; die Schreibrechte am Original bleiben davon unberührt.
@@ -147,7 +153,7 @@ Die Wartungssperre wird erst entfernt und das Verzeichnis synchronisiert, wenn d
 
 ## GitHub meldet HTTP 403
 
-HTTP 403 kann ein erreichtes API-Abfragelimit bedeuten. Bei öffentlichen Releases teilen sich anonyme Anfragen hinter derselben öffentlichen IP das GitHub-Limit. Häufiges erneutes Prüfen hilft während der Sperre nicht. Die Fehlererkennung nach v0.2.15 unterscheidet Limit und Zugriffsfehler, zeigt die nächste Prüfzeit ausdrücklich in UTC und wartet vor weiteren Anfragen. Bestehende v0.2.15- und ältere Installationen zeigen noch die allgemeinere Meldung zu Repository, Zugriff und API-Limit.
+HTTP 403 kann ein erreichtes API-Abfragelimit bedeuten. Bei öffentlichen Releases teilen sich anonyme Anfragen hinter derselben öffentlichen IP das GitHub-Limit. Häufiges erneutes Prüfen hilft während der Sperre nicht. Die Fehlererkennung ab v0.2.16 unterscheidet Limit und Zugriffsfehler, zeigt die nächste Prüfzeit ausdrücklich in UTC und wartet vor weiteren Anfragen. Bestehende v0.2.15- und ältere Installationen zeigen noch die allgemeinere Meldung zu Repository, Zugriff und API-Limit.
 
 Ohne Zugangsdaten auf dem Anker-Server die Antwortheader prüfen:
 

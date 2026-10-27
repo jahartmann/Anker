@@ -135,6 +135,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+
 	h, err := s.Host(r.TargetID)
 	if err != nil {
 		return Plan{}, err
@@ -164,6 +165,9 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	}
 	target, err := s.Collector.Probe(ctx, h)
 	if err != nil {
+		return Plan{}, err
+	}
+	if err := pbsPair(m.Inventory, target); err != nil {
 		return Plan{}, err
 	}
 	target.Fingerprint = Fingerprint(target)
@@ -211,6 +215,10 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		p.Target = snapshot.Target
 	}
 	p.Blockers = append(p.Blockers, inspection.Blockers...)
+	if m.Inventory.Platform() == "pbs" {
+		p.Blockers = append(p.Blockers, pbsRecoveryBlockers(target)...)
+		p.Manual = append(p.Manual, "PBS-Dienste bleiben gestoppt. Datastore-Pfade und Datenbestand erhalten; Jobs sind in aufbereiteten Fassungen deaktiviert. Dienste und Zeitpläne erst nach unabhängiger Prüfung manuell aktivieren.")
+	}
 	p.Blockers = append(p.Blockers, mappingBlockers...)
 	p.Manual = append(p.Manual, inspection.Manual...)
 	p.Manual = append(p.Manual, mappingManual...)
@@ -223,7 +231,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if m.Status != "successful" {
 		p.Blockers = append(p.Blockers, "Sicherung hat Pflichtlücken; nur manueller Export ist erlaubt")
 	}
-	if versionMajor(m.Inventory.PVEVersion) != versionMajor(target.PVEVersion) || !(versionMajor(target.PVEVersion) == "8" || versionMajor(target.PVEVersion) == "9") {
+	if !recoveryVersionsSupported(m.Inventory, target) {
 		p.Blockers = append(p.Blockers, "Quell-/Zielversion ist nicht für automatische Übernahme freigegeben")
 		p.Manual = append(p.Manual, "Neue Zielversion frisch installieren; Paketquellen und Configs nach dem offiziellen Versionspfad prüfen.")
 	}
@@ -402,7 +410,11 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if requestBytes > 32<<20 {
 		p.Blockers = append(p.Blockers, "Dateiauswahl überschreitet das 32-MiB-Limit des Hostprotokolls. Kleinere Einzeldateipläne erstellen oder Dateien manuell herunterladen und übernehmen.")
 	}
-	p.Tasks = append(p.Tasks, operationRecoveryTasks(p.Tasks)...)
+	if p.Source.Platform() == "pbs" {
+		p.Tasks = append(p.Tasks, RecoveryTask{ID: "pbs-check-config", Kind: "manual-check", Title: "PBS-Konfiguration und Zugänge prüfen", Instruction: "Zurückgespielte Konfigurationen, Eigentümer, Zertifikate und Zugangsdaten sowie alle vorhandenen Job- und Aufbewahrungsregeln prüfen. Datastore-Inhalte und Ziel-Mounts bleiben unverändert.", State: "pending"}, RecoveryTask{ID: "pbs-activation", Kind: "manual-check", Title: "PBS kontrolliert freigeben", Instruction: "Dienste nur nach unabhängiger Prüfung manuell starten. Alle vorhandenen Jobs vor Dienststart auf automatische Auslöser prüfen; zurückgespielte Jobs bleiben deaktiviert. Anker startet weder Dienste noch Jobs. Für eine Rücksetzung Dienste erneut stoppen.", Requires: []string{"pbs-check-config"}, State: "pending"})
+	} else {
+		p.Tasks = append(p.Tasks, operationRecoveryTasks(p.Tasks)...)
+	}
 	sort.Slice(p.Steps, func(i, j int) bool { return p.Steps[i].Path < p.Steps[j].Path })
 	if count == 0 {
 		p.State = "manual"
@@ -471,7 +483,7 @@ func (s *Service) savePlan(p Plan) error {
 }
 func planGuide(p Plan, m Manifest) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# Zielbezogene Wiederherstellung\n\nPlan %s · Szenario %s · Status %s\n\nQuelle %s (%s) → Ziel %s (%s)\n\n", p.ID, p.Scenario, p.State, p.Source.Hostname, p.Source.PVEVersion, p.Target.Hostname, p.Target.PVEVersion))
+	b.WriteString(fmt.Sprintf("# Zielbezogene Wiederherstellung\n\nPlan %s · Szenario %s · Status %s\n\nQuelle %s (%s) → Ziel %s (%s)\n\n", p.ID, p.Scenario, p.State, p.Source.Hostname, p.Source.ProductVersion(), p.Target.Hostname, p.Target.ProductVersion()))
 	b.WriteString(fmt.Sprintf("Sicherung %s · Ziel-ID %s · erstellt %s\n\n", p.BackupID, p.TargetID, p.CreatedAt))
 	b.WriteString("Paket offline prüfen: `anker plan-package verify --input plan.tar`. package-index.json (Version 1) und package-checksums.sha256 decken Inhalte und Originalmetadaten ab; keine Herkunftsbestätigung und kein Wiederherstellungserfolg. Nicht direkt nach / entpacken.\n\n")
 	b.WriteString("target-before/ enthält ausschließlich private Zielnachweise; target-snapshot.json dokumentiert deren Metadaten und Prüfsummen. Ausgeschlossene Quellconfigs sind ausschließlich Originalreferenzen im original/-Export und keine Übernahmeempfehlung. Originaldateien stehen im original/-Verzeichnis des vollständigen Planexports. prepared-files/ enthält ausschließlich vorbereitete Configs. Vor Nutzung Target neu prüfen; mapping.json und plan.json dokumentieren Entscheidungen und Vorbedingungen.\n\n## Ausführung und Rücksetzung\n\nBetroffene Dienste und fremde Schreiber vor Übernahme anhalten. Der Host speichert journal.json unter /var/lib/anker-host/rollback/" + p.ID + "/. Nach Abbruch Hostzustand abgleichen und nicht blind erneut anwenden. Rücksetzung benötigt eine separate Plan-ID-Bestätigung und erhält Fremdänderungen. Netzwerkdateien nur manuell mit Konsolenzugang und geprüftem Rückweg übernehmen.\n\n## Haltepunkte\n\n")

@@ -1,6 +1,8 @@
 package anker
 
 import (
+	"anker/internal/discovery"
+	"anker/internal/platform"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -60,21 +62,51 @@ type InventoryQueryState struct {
 	State string `json:"state"`
 }
 
-type Inventory struct {
-	QueryStates map[string]InventoryQueryState `json:"query_states,omitempty"`
-	Hostname    string                         `json:"hostname"`
-	PVEVersion  string                         `json:"pve_version"`
-	Debian      string                         `json:"debian"`
-	Kernel      string                         `json:"kernel"`
-	BootMode    string                         `json:"boot_mode"`
-	ClusterID   string                         `json:"cluster_id"`
-	Quorate     bool                           `json:"quorate"`
-	Interfaces  []Interface                    `json:"interfaces"`
-	Disks       []Disk                         `json:"disks"`
-	Details     map[string]json.RawMessage     `json:"details,omitempty"`
-	CapturedAt  string                         `json:"captured_at"`
-	Fingerprint string                         `json:"fingerprint"`
+type PBSDatastore struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
+type PBSJob struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	Store    string `json:"store"`
+	Schedule string `json:"schedule"`
+	Disabled bool   `json:"disabled"`
+}
+type Inventory struct {
+	PBSDatastores []PBSDatastore                 `json:"pbs_datastores,omitempty"`
+	PBSJobs       []PBSJob                       `json:"pbs_jobs,omitempty"`
+	HostType      string                         `json:"host_type,omitempty"`
+	PBSVersion    string                         `json:"pbs_version,omitempty"`
+	QueryStates   map[string]InventoryQueryState `json:"query_states,omitempty"`
+	Hostname      string                         `json:"hostname"`
+	PVEVersion    string                         `json:"pve_version"`
+	Debian        string                         `json:"debian"`
+	Kernel        string                         `json:"kernel"`
+	BootMode      string                         `json:"boot_mode"`
+	ClusterID     string                         `json:"cluster_id"`
+	Quorate       bool                           `json:"quorate"`
+	Interfaces    []Interface                    `json:"interfaces"`
+	Disks         []Disk                         `json:"disks"`
+	Details       map[string]json.RawMessage     `json:"details,omitempty"`
+	CapturedAt    string                         `json:"captured_at"`
+	Fingerprint   string                         `json:"fingerprint"`
+}
+
+func (i Inventory) Platform() string { return platform.Detect(i.HostType, i.PVEVersion, i.PBSVersion) }
+func (i Inventory) ProductVersion() string {
+	if i.Platform() == "pbs" {
+		return i.PBSVersion
+	}
+	return i.PVEVersion
+}
+func (i Inventory) VersionQuery() string {
+	if i.Platform() == "pbs" {
+		return "pbs_version"
+	}
+	return "pve_version"
+}
+
 type Entry struct {
 	Path   string            `json:"path"`
 	Type   string            `json:"type"`
@@ -129,6 +161,7 @@ type Manifest struct {
 	Dependencies  []DependencyEvidence `json:"dependencies,omitempty"`
 }
 type Backup struct {
+	HostType            string                   `json:"host_type,omitempty"`
 	EvidenceRevision    string                   `json:"evidence_revision,omitempty"`
 	VerificationAttempt *integrityAttempt        `json:"verification_attempt,omitempty"`
 	CopyVerification    *CopyVerificationReceipt `json:"copy_verification,omitempty"`
@@ -345,6 +378,8 @@ type Service struct {
 	jobMu            sync.Mutex
 	reconciling      map[string]bool // Ready-plan journal reservations; protected by jobMu.
 	connectingHostID string
+	discoveryMu      sync.Mutex
+	discovery        discovery.Scanner
 	hostConnector    hostConnector
 	notifyMu         sync.Mutex
 	storageMu        sync.Mutex

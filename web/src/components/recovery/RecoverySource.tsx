@@ -160,6 +160,10 @@ export default function RecoverySource({
   const [sourceHost, setSourceHost] = useState("");
   const sources = new Map(status.backups.map((b) => [b.host_id, b.host_name]));
   const selectedSource = status.backups.find((b) => b.id === d.backup);
+  const isPBS = selectedSource?.host_type === "pbs";
+  useEffect(() => {
+    if (isPBS && d.scenario !== "files") d.changeScenario("files");
+  }, [isPBS, d.scenario]);
   function shortId(id: string) {
     let length = Math.min(10, id.length);
     while (
@@ -226,20 +230,73 @@ export default function RecoverySource({
           value={d.scenario}
           onChange={(e) => d.changeScenario(e.target.value)}
         >
-          {["files", "host", "cluster-node", "cluster-disaster"].map((s) => (
+          {(isPBS
+            ? ["files"]
+            : ["files", "host", "cluster-node", "cluster-disaster"]
+          ).map((s) => (
             <option key={s} value={s}>
-              {labels[s]}
+              {isPBS ? "PBS-Konfiguration wiederherstellen" : labels[s]}
             </option>
           ))}
         </select>
       </Field>
+      {isPBS && (
+        <section className="notice" aria-label="PBS-Wiederherstellung">
+          <h3>PBS-Konfiguration wiederherstellen</h3>
+          <p>
+            Der Assistent übernimmt ausgewählte Dateien aus /etc/proxmox-backup.
+            Datastore-Inhalte, Mounts und die Systeminstallation bleiben
+            erhalten. Eine passende PBS-Hauptversion und bereits eingebundene
+            Datastores sind erforderlich.
+          </p>
+          <p>
+            Vor der Zielprüfung am Ziel ausführen:{" "}
+            <code>systemctl stop proxmox-backup-proxy proxmox-backup</code>.
+            Anker prüft den Stillstand über SSH und startet keine Dienste oder
+            Jobs.
+          </p>
+          <p>
+            Für Datastore- und Jobdateien die aufbereitete Fassung prüfen:
+            Ziel-Anbindungen bleiben erhalten und zurückgespielte Jobs bleiben
+            deaktiviert. Vor einer späteren Aktivierung alle bestehenden Jobs
+            und Aufbewahrungsregeln separat prüfen.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={d.loading}
+            onClick={() =>
+              d.changeFiles(
+                d.entries
+                  .filter(
+                    (e) =>
+                      e.type !== "directory" &&
+                      e.path.startsWith("etc/proxmox-backup/"),
+                  )
+                  .map((e) => e.path),
+              )
+            }
+          >
+            Gesamte PBS-Konfiguration auswählen
+          </button>
+        </section>
+      )}
       {d.loading && <p role="status">Sicherung wird gelesen …</p>}
       {d.loadError && (
         <LoadError message={d.loadError} retry={d.reloadEntries} />
       )}
       {d.scenario === "files" && d.backup && !d.loading && !d.loadError && (
         <RestoreFiles
-          entries={d.entries}
+          entries={
+            isPBS
+              ? d.entries.filter(
+                  (e) =>
+                    e.path === "etc" ||
+                    e.path === "etc/proxmox-backup" ||
+                    e.path.startsWith("etc/proxmox-backup/"),
+                )
+              : d.entries
+          }
           files={d.files}
           onChange={d.changeFiles}
           source={d.backup}

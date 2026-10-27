@@ -41,7 +41,7 @@ func scrubRecoveryValue(v any, key string) any {
 			delete(x, "query_states")
 			if results, ok := details["command_results"].(map[string]any); ok {
 				states := map[string]any{}
-				for _, name := range []string{"pve_version", "interfaces", "disks", "addresses", "routes", "packages", "manual_packages", "storage", "zfs", "lvm", "guests", "containers", "cluster", "ceph", "pci", "boot", "boot_id", "file_inventory", "users", "groups"} {
+				for _, name := range []string{"pbs_services", "pbs_datastore_identity", "pbs_version", "pbs_datastores", "pbs_sync_jobs", "pbs_prune_jobs", "pbs_verify_jobs", "pve_version", "interfaces", "disks", "addresses", "routes", "packages", "manual_packages", "storage", "zfs", "lvm", "guests", "containers", "cluster", "ceph", "pci", "boot", "boot_id", "file_inventory", "users", "groups"} {
 					if result, exists := results[name]; exists {
 						state := "unknown"
 						if r, ok := result.(map[string]any); ok {

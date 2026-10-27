@@ -2,6 +2,14 @@
 
 ## Unveröffentlicht
 
+## v0.2.16 – 27. Oktober 2026
+
+- Geführte PBS-Konfigurationswiederherstellung mit Dateiauswahl, privater Zielaufnahme, geschützter Vorschau, expliziten Entscheidungen, Plan-ID-Bestätigung, Zieljournal und Rücksetzung. PBS-Dienste müssen gestoppt sein; Mount-/Datastore-Identitäten und Zielanbindungen bleiben gebunden. Vorbereitete Jobdateien deaktivieren automatische Auslöser. Datastore-Inhalte, Systemdateien, Datastore-Anlage und Dateientfernungen bleiben ausgeschlossen; Anker startet keine Dienste oder Jobs. Lokaler Test über den echten Python-Helfer bestätigt Übernahme/Rücksetzung ohne geänderte Chunk-/Indexdateien; reale PBS-Abnahme bleibt offen.
+
+- Proxmox Backup Server automatisch erkennen, über SSH anbinden und Konfiguration sichern, per Prüfsummen prüfen und vergleichen. PBS-Inventar mit Datastores und Sync-/Prune-/Verify-Jobs; Datastore-Inhalte sind ausgeschlossen. PBS-Dateien bleiben geschützt.
+
+- Proxmox-VE-Serversuche unter Hosts: gespeicherte LAN-/VPN-Suchbereiche in CIDR oder mit IPv4-Subnetzmasken, bis zu 128 Netze, zusammengefasste Überschneidungen, anpassbare Ports, Fortschritt und Abbruch mit Teilergebnissen. Passwortfreie Erkennung und Übergabe an die einzelne Hosteinrichtung. Optional zwei gemeinsame Passwörter nach bestätigter SSH-Identität prüfen und erfolgreich geprüfte Hosts gesammelt einrichten; das zweite Passwort wird nur nach abgelehnter Anmeldung versucht.
+
 - Updateprüfung unterscheidet GitHub-Abfragelimits von fehlenden Repositoryrechten, ungültigen Tokens und fehlenden Releases. Die Meldung nennt bei einem Limit die nächste Prüfzeit in UTC. Wiederholte Prüfungen respektieren `Retry-After` und `X-RateLimit-Reset`, ohne weitere Anfragen vor Ablauf der Wartefrist zu senden; rohe GitHub-Diagnosen werden nicht weitergegeben.
 
 ## v0.2.15 – 26. Oktober 2026

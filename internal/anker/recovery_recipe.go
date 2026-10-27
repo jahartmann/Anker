@@ -48,10 +48,14 @@ func recipeConstraints(snapshot RecoverySnapshot) map[string]string {
 	constraints := map[string]string{
 		"Zielidentität":                  identity,
 		"Zielverbindung":                 snapshot.ConnectionSHA,
-		"Version":                        recipeHash([]string{snapshot.Target.PVEVersion, snapshot.Target.Debian, snapshot.Target.Kernel}),
+		"Version":                        recipeHash([]string{snapshot.Target.ProductVersion(), snapshot.Target.Debian, snapshot.Target.Kernel}),
 		"Netzwerkports (Name, MAC, PCI)": recipeHash(snapshot.Target.Interfaces),
 		"Topologie":                      recipeHash([]any{snapshot.Target.ClusterID, snapshot.Target.BootMode, snapshot.Target.Details["cluster"]}),
 		"Datenträger und Mounts":         recipeHash(snapshot.Target.Disks),
+	}
+	if snapshot.Target.Platform() == "pbs" {
+		constraints["PBS-Datastore-Identität"] = recipeHash(snapshot.Target.Details["pbs_datastore_identity"])
+		constraints["PBS-Dienste"] = recipeHash(snapshot.Target.Details["pbs_services"])
 	}
 	// Bind configuration evidence including metadata. Never use display names or
 	// public provenance as a substitute for private, successfully captured proof.
@@ -77,7 +81,7 @@ func recipeProof(snapshot RecoverySnapshot, mapping Mapping) []string {
 	if results["cluster"].State != "ok" && results["cluster"].State != "not_applicable" {
 		missing = append(missing, "Topologie: privater Clusternachweis fehlt")
 	}
-	if snapshot.Target.PVEVersion == "" || results["pve_version"].State != "ok" {
+	if snapshot.Target.ProductVersion() == "" || results[snapshot.Target.VersionQuery()].State != "ok" {
 		missing = append(missing, "Version: Zielnachweis fehlt")
 	}
 	if len(mapping.Interfaces) > 0 || len(mapping.Network) > 0 {

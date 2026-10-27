@@ -26,7 +26,7 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		json.NewEncoder(w).Encode(map[string]string{"error": message})
 	}
-	if r.Method != "POST" || (r.URL.Path != "/hosts/inspect" && r.URL.Path != "/hosts/enroll") {
+	if r.Method != "POST" || (r.URL.Path != "/hosts/inspect" && r.URL.Path != "/hosts/enroll" && r.URL.Path != "/hosts/check") {
 		reject(405, "Methode nicht unterstützt")
 		return
 	}
@@ -117,7 +117,7 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		connector = hostconnect.Manager{Dir: manager.Dir, OwnerUID: int(manager.ownerUID), GroupGID: gid, KeyOwnerUID: uid}
 	}
 	timeout := 5 * time.Minute
-	if inspect {
+	if inspect || r.URL.Path == "/hosts/check" {
 		timeout = 20 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -125,6 +125,15 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 	var result any
 	if inspect {
 		result, err = connector.Inspect(ctx, inspection)
+	} else if r.URL.Path == "/hosts/check" {
+		checker, ok := connector.(interface {
+			Check(context.Context, hostconnect.EnrollRequest) (hostconnect.CheckResult, error)
+		})
+		if !ok {
+			reject(503, "Zugangsprüfung nicht verfügbar")
+			return
+		}
+		result, err = checker.Check(ctx, enrollment)
 	} else {
 		result, err = connector.Enroll(ctx, enrollment)
 	}

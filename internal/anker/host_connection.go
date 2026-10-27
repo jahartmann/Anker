@@ -56,6 +56,10 @@ func (unixHostConnector) Inspect(ctx context.Context, in hostconnect.InspectRequ
 	err = hostHelperCall(ctx, "inspect", in, &out, 30*time.Second)
 	return
 }
+func (unixHostConnector) Check(ctx context.Context, in hostconnect.EnrollRequest) (out hostconnect.CheckResult, err error) {
+	err = hostHelperCall(ctx, "check", in, &out, 30*time.Second)
+	return
+}
 func (unixHostConnector) Enroll(ctx context.Context, in hostconnect.EnrollRequest) (out hostconnect.Enrollment, err error) {
 	err = hostHelperCall(ctx, "enroll", in, &out, 6*time.Minute)
 	return
@@ -100,6 +104,29 @@ func (s *Service) hostConnection(w http.ResponseWriter, r *http.Request, u User)
 			return err
 		}
 		return jsonOut(w, identity)
+	case "/api/hosts/connection/check":
+		var in hostconnect.EnrollRequest
+		if err := connectionInput(w, r, &in); err != nil {
+			return err
+		}
+		if !in.Confirmed || in.Password == "" || len(in.Password) > 4096 || strings.ContainsAny(in.Password, "\x00\r\n") || !safeHost.MatchString(in.Username) || strings.Contains(in.Username, ":") || in.Fingerprint == "" {
+			return fail(400, "SSH-Zugang und bestätigter Fingerprint erforderlich")
+		}
+		if _, err := prepareHost(Host{Name: "connection", Address: in.Address, SSHPort: in.Port}); err != nil {
+			return fail(400, "Hostadresse oder Port ungültig")
+		}
+		checker, ok := connector.(interface {
+			Check(context.Context, hostconnect.EnrollRequest) (hostconnect.CheckResult, error)
+		})
+		if !ok {
+			return fail(503, "Zugangsprüfung nicht verfügbar")
+		}
+		result, err := checker.Check(r.Context(), in)
+		in.Password = ""
+		if err != nil {
+			return fail(400, "Zugangsprüfung fehlgeschlagen; Verbindung und Hostidentität prüfen")
+		}
+		return jsonOut(w, result)
 	case "/api/hosts/connection/enroll":
 		var in struct {
 			Host        Host   `json:"host"`
@@ -151,7 +178,7 @@ func (s *Service) hostConnection(w http.ResponseWriter, r *http.Request, u User)
 			return fail(502, "Geprüfter Hostzugang unvollständig; Einrichtung erneut versuchen")
 		}
 		var inv Inventory
-		if json.Unmarshal(result.Inventory, &inv) != nil || inv.PVEVersion == "" || !safeHost.MatchString(inv.Hostname) {
+		if json.Unmarshal(result.Inventory, &inv) != nil || inv.Platform() == "" || !safeHost.MatchString(inv.Hostname) {
 			return fail(502, "Proxmox-Inventar unvollständig; Einrichtung erneut versuchen")
 		}
 		inv.Fingerprint = Fingerprint(inv)

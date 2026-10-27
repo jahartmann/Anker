@@ -60,6 +60,14 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	if err != nil {
 		return p, err
 	}
+	if err := pbsPair(p.Source, inv); err != nil {
+		return p, err
+	}
+	if p.Source.Platform() == "pbs" {
+		if blockers := pbsRecoveryBlockers(inv); len(blockers) > 0 {
+			return p, errors.New(blockers[0])
+		}
+	}
 	activePaths := []string{}
 	for _, step := range p.Steps {
 		if step.Action == "apply" || step.Action == "remove" {
@@ -120,6 +128,11 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return p, err
+		}
+		if p.Source.Platform() == "pbs" {
+			if err := validatePBSPrepared(step.Path, data, snapshot); err != nil {
+				return p, err
+			}
 		}
 		if Hash(data) != step.PreparedSHA {
 			return p, errors.New("vorbereitete Datei wurde verändert")

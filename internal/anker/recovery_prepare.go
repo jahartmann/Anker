@@ -16,6 +16,17 @@ func prepareRecoveryFile(e Entry, source []byte, snapshot RecoverySnapshot, mapp
 	if err := ValidPath(e.Path); err != nil {
 		return p, err
 	}
+	if snapshot.Source.Platform() == "pbs" && pbsRestorePath(e.Path) {
+		prepared, err := preparePBSConfig(e.Path, source, snapshot)
+		if err != nil {
+			return p, err
+		}
+		p.Content = prepared
+		if string(source) != string(prepared) {
+			p.effect("PBS-Konfiguration", "Gesicherte Fassung", "Ziel-Datastore-Anbindung erhalten; automatische Jobs deaktiviert", "Datastore-Inhalte bleiben unangetastet")
+		}
+		return p, nil
+	}
 	if e.Type != "file" {
 		p.task("file-type", e.Path, "Dateityp und Metadaten manuell übernehmen")
 		return p, nil

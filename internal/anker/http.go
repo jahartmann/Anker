@@ -187,6 +187,12 @@ func Handler(s *Service, a *Auth, local bool) http.Handler {
 			jsonError(w, fail(503, "Anker wird aktualisiert; bitte kurz warten"))
 			return
 		}
+		if r.URL.Path == "/api/hosts/discovery" {
+			if err := s.hostDiscovery(w, r, u); err != nil {
+				jsonError(w, err)
+			}
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/hosts/connection/") {
 			if err := s.hostConnection(w, r, u); err != nil {
 				jsonError(w, err)

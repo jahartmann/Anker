@@ -1,6 +1,6 @@
 # Anker
 
-Anker sichert die **Konfiguration von Proxmox-Hosts** zentral über SSH. Die Sicherungen bleiben als lesbare Ordner verfügbar. Weboberfläche, Terminaloberfläche und Befehle verwenden denselben Dienst.
+Anker sichert die **Konfiguration von Proxmox-VE-Hosts und Proxmox Backup Servern** zentral über SSH. Die Sicherungen bleiben als lesbare Ordner verfügbar. Weboberfläche, Terminaloberfläche und Befehle verwenden denselben Dienst.
 
 VM- und Containerdaten gehören weiterhin in den Proxmox Backup Server. Anker sichert Hostkonfigurationen, keine kompletten Festplattenimages. Für den zentralen Dienst einen eigenen Linux-Server, eine VM oder einen LXC-Container mit systemd verwenden.
 
@@ -158,7 +158,48 @@ sudo anker storage grow VOLUME-ID --plan PLAN-ID --confirm /srv/anker
 
 Vor Umzug, bei Laufwerksausfall und bei SFTP-Bindmounts die [Betriebsanleitung](docs/OPERATIONS.md) beachten. Der [Prüfumfang](docs/SUPPORT.md) unterscheidet lokale Tests, Linux-Prüfungen und noch offene Proxmox-Abnahme.
 
+## Proxmox Backup Server
+
+PBS wird beim Anbinden und bei der Hostprüfung automatisch erkannt. Einrichtung über **Hosts → Host hinzufügen**, SSH-Fingerprint prüfen und anschließend **Jetzt sichern** wählen. Die Hostdetails zeigen PBS-Version, Datastores und konfigurierte Sync-, Prune- und Verify-Jobs. Bestehende PVE-Sicherungen bleiben kompatibel.
+
+Gesichert werden `/etc/proxmox-backup/` sowie die Systemkonfiguration im Hostprofil. PBS erlaubt für dieses Konfigurationsbackup ausschließlich `/etc`, `/usr/local` und deren Unterverzeichnisse; `/etc/proxmox-backup` wird immer ergänzt. Konfigurierte Datastore-Verzeichnisse und erkannte Chunk-Speicher werden bei Dateierfassung und Inventarisierung ausgeschlossen. Ein nicht lesbares oder ungültiges Datastore-Verzeichnisprofil bricht die Erfassung ab. Datastore-Inhalte und clientseitige Verschlüsselungsschlüssel müssen separat gesichert werden.
+
+PBS-Sicherungen unterstützen Prüfsummenprüfung, Sicherungsvergleich, geschützte Dateivergleiche und Download. Dateien unter `/etc/proxmox-backup/` gelten als vertraulich; Anzeigen und Downloads verwenden die vorhandenen Berechtigungen. Konfigurationsdateien werden live gelesen, ohne global atomaren Snapshot. Fehlende Dateien, Lesefehler und fehlgeschlagene PBS-Inventarabfragen erscheinen als Hinweise beziehungsweise unvollständige Sicherung.
+
+### PBS-Konfiguration geführt wiederherstellen
+
+Unter **Wiederherstellung planen** eine PBS-Sicherung wählen. **Gesamte PBS-Konfiguration auswählen** übernimmt die Dateiauswahl; anschließend jede Datei vergleichen und ausdrücklich eine Fassung wählen. Geführte Übernahme unterstützt freigegebene gewöhnliche Dateien unmittelbar unter `/etc/proxmox-backup/`, unter anderem ACLs, Benutzer, Remotes, Zertifikate, Schlüssel und Jobdefinitionen. Unbekannte Dateien, Unterverzeichnisse, Links und ACLs/xattrs bleiben manuell. Betriebssystemdateien und Dateientfernungen sind bei PBS ausgeschlossen. PVE und PBS dürfen nicht gemischt werden; Quelle und Ziel benötigen dieselbe unterstützte PBS-Hauptversion (3 oder 4).
+
+Das PBS-Ziel zuerst mit aktuellem Hosthelfer anbinden. Vor **Ziel prüfen**, Übernahme und Rücksetzung beide PBS-Dienste am Ziel stoppen:
+
+```sh
+sudo systemctl stop proxmox-backup-proxy proxmox-backup
+```
+
+Anker prüft den Stillstand, Dateiinhalte und Metadaten sowie vorhandene Datastore-Verzeichnisse, `.chunks`-Verzeichnisidentitäten und Mount-IDs. Fehlende Datastores zuerst außerhalb dieses Assistenten ohne Initialisierung vorhandener Daten einbinden. Nicht eindeutig nachgewiesene, relative oder nicht eingehängte Datastore-Pfade sowie nicht eindeutig zuordenbare Bind-/Subvolume-Mounts im Konfigurations-/Journalpfad bleiben manuell.
+
+Für `datastore.cfg`, `sync.cfg`, `prune.cfg` und `verification.cfg` die **vorbereitete Fassung** prüfen. `datastore.cfg` behält die vorhandenen Ziel-Datastores samt Pfaden, Backends, Gerätebindung und Wartungsmodus; lediglich unterstützte Einstellungen werden aus der Quelle übernommen. GC-/Prune-Zeitpläne und automatische Datastore-Aktionen werden entfernt. Zurückgespielte Sync-/Verify-Jobs erhalten keine Zeitplan-/Mount-Auslöser; Prune-Jobs werden deaktiviert. Zusätzliche Ziel-Datastores werden nicht entfernt. Es gibt keine Datastore-Anlage, Formatierung, Datensynchronisation, Gastwiederherstellung oder Datenlöschung.
+
+Der gespeicherte Plan benötigt die vollständige Plan-ID zur Ausführung. Vorher-Dateien und Metadaten werden im Hostjournal gesichert; anschließend wird das Ergebnis lesend geprüft. Die separate Rücksetzung benötigt erneut die Plan-ID, gestoppte Dienste und unveränderte Datastore-Identitäten; fremde Dateiänderungen bleiben erhalten. Mountwechsel oder nicht mehr eindeutige Identität blockieren den automatischen Rückweg.
+
+Anker startet weder Dienste noch Jobs. Vor einem späteren manuellen Dienststart **alle vorhandenen** Job- und Aufbewahrungsregeln am Ziel prüfen, einschließlich nicht ausgewählter Dateien. Zurückgespielte Zeitpläne erst nach einer eigenen Abnahme gezielt wieder aktivieren. Die automatisierten lokalen Prüfungen ersetzen noch keine Abnahme auf einem echten PBS.
+
 ## Proxmox-Hosts anbinden
+
+Unter **Hosts → Server suchen** findet Anker Proxmox-VE-Server ohne Passwort. Die Suche läuft vom Anker-Server aus und nutzt dessen LAN-/VPN-Erreichbarkeit. Netze der lokalen Schnittstellen werden zum Ergänzen vorgeschlagen. Für mehrere Standorte die Suchbereiche gesammelt einfügen, zum Beispiel:
+
+```text
+10.20.0.0/24
+10.21.0.0 255.255.255.0
+10.22.0.0/255.255.255.0
+```
+
+Ein Netz pro Zeile; Komma und Semikolon trennen ebenfalls Einträge. **Netzbereiche speichern** behält die Liste nach einem Neustart. Bis zu 128 Netzbereiche und 65.536 unterschiedliche Zieladressen pro Suchlauf sind möglich; 35 Standortnetze mit jeweils `/24` passen in einen Lauf. Überlappende Bereiche werden zusammengefasst. Größere Bereiche auf mehrere Läufe verteilen. Webport (Standard 8006) und SSH-Port (Standard 22) sind anpassbar.
+
+**Server suchen** zeigt Fortschritt und laufend gefundene Server mit Adresse, ermittelbarem DNS-Namen, verfügbarer Version und SSH-Erreichbarkeit. Die Suche lässt sich abbrechen; Teilergebnisse bleiben bis zum nächsten Suchlauf oder Dienstneustart verfügbar. Das Fenster kann während der Suche geschlossen und erneut geöffnet werden. Nicht erreichbare, anders adressierte oder durch Firewalls gesperrte Dienste können fehlen. Die Erkennung anhand der Webantwort ist noch keine Identitätsprüfung. Gefundene Hosts lassen sich über **Einzeln einrichten** mit vorausgefüllter Adresse anbinden.
+
+Optional mehrere neue Hosts auswählen und **gemeinsame Zugangsdaten prüfen und Hosts einrichten** öffnen: SSH-Identitäten lesen, Fingerprints unabhängig vergleichen und einzeln bestätigen. Erst dann **Zugänge prüfen** starten. Passwort 1 wird zuerst verwendet, das optionale Passwort 2 nur nach abgelehnter Anmeldung; erfolgreiche Anmeldungen und Verbindungsfehler werden im zweiten Durchlauf übersprungen. Die Prüfung führt keine Befehle auf den Hosts aus. **Geprüfte Hosts einrichten** startet anschließend ausdrücklich die normale Installation für erfolgreich geprüfte, ausgewählte Hosts. Fehler werden je Host angezeigt. Passwörter bleiben nur im Arbeitsspeicher des geöffneten Fensters und werden nicht gespeichert.
+
 
 In der Weboberfläche **Hosts → Host hinzufügen** öffnen. Adresse, SSH-Benutzer und dessen Passwort eingeben; `root` ist vorbelegt. Anker zeigt zuerst den Ed25519-Fingerprint des SSH-Servers. Auf der Proxmox-Konsole mit folgendem Befehl vergleichen und im Formular bestätigen:
 

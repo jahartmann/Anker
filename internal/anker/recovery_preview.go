@@ -30,6 +30,11 @@ func recoveryCandidateAction(e Entry, prepared PreparedRecoveryFile, before Reco
 		return RecoveryCandidateAction{"keep", "Inhalt und Schreibmetadaten identisch; Ziel behalten"}
 	}
 	reason := fileManualReason(e, snapshot.Source, snapshot.Target)
+	if reason == "" && snapshot.Source.Platform() == "pbs" {
+		if err := validatePBSPrepared(e.Path, prepared.Content, snapshot); err != nil {
+			reason = err.Error()
+		}
+	}
 	if reason == "" && decision != DecisionManual && snapshot.ID != "" && (before.State == "read" || before.State == "missing") && len(prepared.ManualTasks) == 0 {
 		return RecoveryCandidateAction{"apply", "Datei zur Übernahme vorbereiten; Planprüfungen bleiben erforderlich"}
 	}

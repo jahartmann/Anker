@@ -1,6 +1,7 @@
 package hostconnect
 
 import (
+	"anker/internal/platform"
 	"archive/tar"
 	"bytes"
 	"context"
@@ -222,8 +223,12 @@ func (m Manager) Enroll(ctx context.Context, request EnrollRequest) (Enrollment,
 		if json.Unmarshal(out, &object) != nil || object == nil {
 			return Enrollment{}, phaseError("Inventarprüfung "+role.user, ctx)
 		}
-		var version string
-		if json.Unmarshal(object["pve_version"], &version) != nil || strings.TrimSpace(version) == "" {
+		var metadata struct {
+			HostType   string `json:"host_type"`
+			PVEVersion string `json:"pve_version"`
+			PBSVersion string `json:"pbs_version"`
+		}
+		if json.Unmarshal(out, &metadata) != nil || platform.Detect(metadata.HostType, metadata.PVEVersion, metadata.PBSVersion) == "" {
 			return Enrollment{}, phaseError("Proxmox-Inventar "+role.user, ctx)
 		}
 		if role.user == "anker" {
@@ -316,11 +321,14 @@ func bundle(backup, restore ssh.PublicKey) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-const preflightCommand = "command -v pveversion >/dev/null 2>&1 && pveversion >/dev/null 2>&1"
+const preflightCommand = `if [ -d /etc/proxmox-backup ]; then
+ command -v proxmox-backup-manager >/dev/null 2>&1 && proxmox-backup-manager versions >/dev/null 2>&1
+else
+ command -v pveversion >/dev/null 2>&1 && pveversion >/dev/null 2>&1
+fi`
 const rootScript = `set -eu
 [ "$(id -u)" -eq 0 ]
-command -v pveversion >/dev/null 2>&1
-pveversion >/dev/null 2>&1
+` + preflightCommand + `
 if ! command -v sudo >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
  command -v apt-get >/dev/null 2>&1
  if ! DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 -o Acquire::Retries=2 install -y sudo </dev/null; then

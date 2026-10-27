@@ -78,11 +78,19 @@ export default function RecoveryDecisions({
           konkreten Zielbestand für diese Auswahl.
         </p>
       )}
+      {d.inspection.source.host_type === "pbs" && (
+        <p className="notice">
+          Für Datastore- und Jobdateien die vorbereitete Fassung verwenden:
+          vorhandene Ziel-Anbindungen bleiben erhalten und automatische Auslöser
+          werden deaktiviert. Quelldateien mit aktiven Zeitplänen werden nicht
+          automatisch übernommen.
+        </p>
+      )}
       <h3>Dateien entscheiden</h3>
       <p className="field-hint">
         Original übernehmen, vorbereitete Fassung prüfen, Ziel behalten oder
-        manuell bearbeiten. Geschützte Dateien bleiben manuell. Identische
-        Inhalte und Schreibmetadaten werden nicht erneut geschrieben.
+        manuell bearbeiten. Nicht freigegebene Systemdateien bleiben manuell.
+        Identische Inhalte und Schreibmetadaten werden nicht erneut geschrieben.
       </p>
       <Field label="Dateientscheidungen durchsuchen">
         <input

@@ -94,7 +94,7 @@ func sshRun(ctx context.Context, h Host, request any, consume func(io.Reader) er
 func (c SSHCollector) Probe(ctx context.Context, h Host) (Inventory, error) {
 	var inv Inventory
 	err := sshRun(ctx, h, map[string]any{"version": 1, "operation": "probe"}, func(r io.Reader) error { return json.NewDecoder(io.LimitReader(r, 16<<20)).Decode(&inv) })
-	if err == nil && inv.PVEVersion == "" {
+	if err == nil && inv.Platform() == "" {
 		err = errors.New("Ziel meldet keine Proxmox-Version")
 	}
 	inv.Fingerprint = Fingerprint(inv)
@@ -111,7 +111,7 @@ func (c SSHCollector) Collect(ctx context.Context, h Host, dest string) (Collect
 		return col, err
 	}
 	err = json.Unmarshal(data, &col)
-	if err == nil && col.Inventory.PVEVersion == "" {
+	if err == nil && col.Inventory.Platform() == "" {
 		col.Warnings = append(col.Warnings, "keine Proxmox-Version erkannt")
 	}
 	return col, err

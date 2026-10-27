@@ -4354,3 +4354,14 @@ input[type="checkbox"] {
     transition: none;
   }
 }
+
+/* Network discovery stays usable with a full multi-site inventory. */
+.discovery-actions, .discovery-suggestions { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; align-items: center; }
+.discovery-progress { display: grid; gap: .6rem; margin: 1rem 0; }
+.discovery-progress progress { width: 100%; accent-color: var(--accent); }
+.discovery-results { width: 100%; }
+.discovery-results td { vertical-align: top; }
+.discovery-identity { max-width: 28rem; margin-top: .6rem; overflow-wrap: anywhere; }
+.discovery-identity .mono { white-space: normal; word-break: break-all; }
+.discovery-results .check { align-items: flex-start; }
+@media (max-width: 600px) { .discovery-results { min-width: 620px; } }

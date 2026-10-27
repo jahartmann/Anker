@@ -368,6 +368,11 @@ func identityNames(i Inventory, key string) map[string]string {
 	return out
 }
 func fileManualReason(e Entry, source, target Inventory) string {
+	if source.Platform() == "pbs" || target.Platform() == "pbs" {
+		if pbsPair(source, target) != nil || !pbsRestorePath(e.Path) {
+			return "Nur freigegebene PBS-Konfigurationsdateien auf einem PBS-Ziel übernehmen; Zielsystem und Datastore-Inhalte erhalten"
+		}
+	}
 	if e.Type != "file" || protectedPath(e.Path) || len(e.XAttrs) > 0 {
 		return "Hardware-, Identitäts-, Cluster- oder Metadatenbestandteil gezielt manuell übernehmen"
 	}
@@ -545,7 +550,7 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 	if m.Status != "successful" {
 		i.Blockers = append(i.Blockers, "Sicherung hat Pflichtlücken; nur manueller Export ist erlaubt")
 	}
-	if versionMajor(m.Inventory.PVEVersion) != versionMajor(target.PVEVersion) || !(versionMajor(target.PVEVersion) == "8" || versionMajor(target.PVEVersion) == "9") {
+	if !recoveryVersionsSupported(m.Inventory, target) {
 		i.Blockers = append(i.Blockers, "Quell-/Zielversion ist nicht für automatische Übernahme freigegeben")
 	}
 	_, strict := s.Collector.(SSHCollector)
@@ -558,7 +563,11 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 			i.Blockers = append(i.Blockers, "Hosthelfer unterstützt Wiederherstellungsprotokoll 2 noch nicht; Ziel erneut anbinden")
 		}
 	}
-	keys := []string{"pve_version"}
+	keys := []string{target.VersionQuery()}
+	if m.Inventory.Platform() == "pbs" {
+		i.Blockers = append(i.Blockers, pbsRecoveryBlockers(target)...)
+		i.Manual = appendUnique(i.Manual, "PBS-Konfiguration nur bei gestoppten PBS-Diensten übernehmen. Datastore-Inhalte, Mounts und Backing unverändert erhalten; Jobs bleiben zunächst deaktiviert.")
+	}
 	if strict {
 		keys = append(keys, "file_inventory", "users", "groups")
 	}

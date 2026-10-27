@@ -119,7 +119,11 @@ func validateSnapshotProbe(i Inventory, result RecoveryReadResult) error {
 // target's captured inventory. It never broadens the host reader's authority.
 func recoveryEvidencePaths(selection RecoverySelection, target Inventory) []string {
 	paths := append([]string{}, selection.Paths...)
-	paths = appendUnique(paths, "etc/pve/storage.cfg")
+	if target.Platform() == "pbs" {
+		paths = appendUnique(paths, pbsConfigRoot+"datastore.cfg")
+	} else {
+		paths = appendUnique(paths, "etc/pve/storage.cfg")
+	}
 	for _, name := range selection.Paths {
 		if strings.HasPrefix(name, "etc/network/") {
 			paths = appendUnique(paths, "etc/network/interfaces")
@@ -176,6 +180,7 @@ func (s *Service) captureRecoveryUnlocked(ctx context.Context, r PlanRequest) (R
 	if err != nil {
 		return RecoveryInspection{}, err
 	}
+
 	selection, err := scenarioSelection(m, r)
 	if err != nil {
 		return RecoveryInspection{}, err
@@ -193,6 +198,9 @@ func (s *Service) captureRecoveryUnlocked(ctx context.Context, r PlanRequest) (R
 	}
 	target, err := s.Collector.Probe(ctx, h)
 	if err != nil {
+		return RecoveryInspection{}, err
+	}
+	if err := pbsPair(m.Inventory, target); err != nil {
 		return RecoveryInspection{}, err
 	}
 	target.Fingerprint = Fingerprint(target)

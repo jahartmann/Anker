@@ -125,7 +125,7 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		r.Items[len(r.Items)-1].Provenance = "Menschlicher Bericht von " + ref.Drill.Actor + ", erfasst " + ref.Drill.RecordedAt
 	}
 	if manifestErr != nil {
-		for _, key := range []string{"pve_version", "users", "groups", "file_inventory"} {
+		for _, key := range []string{m.Inventory.VersionQuery(), "users", "groups", "file_inventory"} {
 			add("query."+key, "unknown", "Quellabfrage "+key, "Manifestbeleg nicht verfügbar.", "", "Manifest prüfen")
 		}
 		add("profile", "unknown", "Hostprofil", "Autorisiertes Hostprofil nicht belegbar.", "", "Quelle erneut sichern")
@@ -137,7 +137,7 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		State string `json:"state"`
 	}
 	_ = json.Unmarshal(m.Inventory.Details["command_results"], &queries)
-	for _, key := range []string{"pve_version", "users", "groups", "file_inventory"} {
+	for _, key := range []string{m.Inventory.VersionQuery(), "users", "groups", "file_inventory"} {
 		state := "unknown"
 		if q, ok := queries[key]; ok && (q.State == "ok" || q.State == "failed") {
 			state = q.State
@@ -158,11 +158,18 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 		add("query."+key, state, "Quellabfrage "+key, detail, m.Inventory.CapturedAt, action)
 	}
 	var capabilities struct {
+		ConfigBackup         bool `json:"config_backup"`
 		RestoreProtocol      int  `json:"restore_protocol"`
 		Journal              bool `json:"journal"`
 		RecoveryReadProtocol int  `json:"recovery_read_protocol"`
 	}
-	if err := json.Unmarshal(m.Inventory.Details["capabilities"], &capabilities); err == nil && capabilities.RestoreProtocol >= 2 && capabilities.Journal && capabilities.RecoveryReadProtocol >= 1 {
+	if m.Inventory.Platform() == "pbs" {
+		if json.Unmarshal(m.Inventory.Details["capabilities"], &capabilities) == nil && capabilities.ConfigBackup {
+			add("helper", "ok", "Helferfähigkeit", "PBS-Konfigurationserfassung belegt. Wiederherstellungsfähigkeit wird am Ziel separat geprüft.", m.Inventory.CapturedAt, "")
+		} else {
+			add("helper", "unknown", "Helferfähigkeit", "PBS-Konfigurationserfassung nicht belegt.", m.Inventory.CapturedAt, "Mit aktuellem Helfer erneut sichern")
+		}
+	} else if err := json.Unmarshal(m.Inventory.Details["capabilities"], &capabilities); err == nil && capabilities.RestoreProtocol >= 2 && capabilities.Journal && capabilities.RecoveryReadProtocol >= 1 {
 		add("helper", "ok", "Helferfähigkeit", "Erforderliche Quellfähigkeiten wurden bei der Aufnahme gemeldet.", m.Inventory.CapturedAt, "")
 	} else {
 		add("helper", "unknown", "Helferfähigkeit", "Quellfähigkeiten sind nicht vollständig belegt.", m.Inventory.CapturedAt, "Mit aktuellem Helfer erneut sichern")
@@ -226,6 +233,9 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 }
 
 func queryPayloadPresent(inv Inventory, entries []Entry, key string) bool {
+	if key == "pbs_version" {
+		return inv.Platform() == "pbs"
+	}
 	if key == "pve_version" {
 		return inv.PVEVersion != ""
 	}

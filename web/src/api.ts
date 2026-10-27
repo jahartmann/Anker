@@ -20,6 +20,16 @@ export interface Inventory {
   >;
   captured_at?: string;
   hostname: string;
+  host_type?: "pve" | "pbs";
+  pbs_version?: string;
+  pbs_datastores?: { name: string; path: string }[];
+  pbs_jobs?: {
+    kind: string;
+    name: string;
+    store: string;
+    schedule: string;
+    disabled: boolean;
+  }[];
   pve_version: string;
   debian: string;
   kernel: string;
@@ -64,6 +74,7 @@ export interface Host {
   probe_error?: string;
 }
 export interface Backup {
+  host_type?: "pve" | "pbs";
   evidence_revision?: string;
   manifest_sha?: string;
   verification_attempt?: { at: string; state: string };

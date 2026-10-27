@@ -13,7 +13,7 @@ export function changeArea(path: string) {
   )
     return "Netzwerk";
   if (
-    /^\/etc\/(pve\/storage\.cfg$|fstab$|crypttab$|lvm(?:\/|$)|zfs(?:\/|$))/.test(
+    /^\/etc\/(pve\/storage\.cfg$|proxmox-backup\/datastore\.cfg$|fstab$|crypttab$|lvm(?:\/|$)|zfs(?:\/|$))/.test(
       path,
     )
   )

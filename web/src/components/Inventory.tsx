@@ -13,6 +13,7 @@ export default function Inventory({
   collectedAt?: string;
   queryError?: string;
 }) {
+  const isPBS = inventory.host_type === "pbs";
   const [networkQuery, setNetworkQuery] = useState("");
   const [diskQuery, setDiskQuery] = useState("");
   const [networkPage, setNetworkPage] = useState(1);
@@ -81,6 +82,11 @@ export default function Inventory({
       result.state !== "ok",
   );
   const detailLabels: Record<string, string> = {
+    pbs_version: "PBS-Version",
+    pbs_datastores: "PBS-Datastores",
+    pbs_sync_jobs: "PBS-Sync-Jobs",
+    pbs_prune_jobs: "PBS-Prune-Jobs",
+    pbs_verify_jobs: "PBS-Verify-Jobs",
     addresses: "IP-Adressen",
     routes: "Netzwerkrouten",
     packages: "Pakete",
@@ -134,8 +140,11 @@ export default function Inventory({
       </div>
       <dl className="inventory-summary">
         <div>
-          <dt>Proxmox</dt>
-          <dd>{inventory.pve_version || "Nicht erfasst"}</dd>
+          <dt>{isPBS ? "Proxmox Backup Server" : "Proxmox VE"}</dt>
+          <dd>
+            {(isPBS ? inventory.pbs_version : inventory.pve_version) ||
+              "Nicht erfasst"}
+          </dd>
         </div>
         <div>
           <dt>Debian</dt>
@@ -149,10 +158,12 @@ export default function Inventory({
           <dt>Bootmodus</dt>
           <dd>{inventory.boot_mode || "Nicht erfasst"}</dd>
         </div>
-        <div>
-          <dt>Cluster</dt>
-          <dd>{inventory.cluster_id || "Standalone"}</dd>
-        </div>
+        {!isPBS && (
+          <div>
+            <dt>Cluster</dt>
+            <dd>{inventory.cluster_id || "Standalone"}</dd>
+          </div>
+        )}
         {inventory.cluster_id && (
           <div>
             <dt>Quorum</dt>
@@ -168,6 +179,68 @@ export default function Inventory({
           </div>
         )}
       </dl>
+      {isPBS && (
+        <section className="inventory-section" aria-label="PBS-Konfiguration">
+          <h3>PBS-Konfiguration</h3>
+          <p className="notice">
+            Gesichert wird die Konfiguration. Datastore-Inhalte werden separat
+            gesichert. Die geführte Wiederherstellung übernimmt ausschließlich
+            PBS-Konfigurationen; Datastore-Inhalte bleiben erhalten.
+          </p>
+          <h4>Datastores</h4>
+          {queryNotice("pbs_datastores", "Datastores")}
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Pfad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(inventory.pbs_datastores || []).map((store) => (
+                  <tr key={store.name}>
+                    <td>{store.name}</td>
+                    <td className="mono">{store.path}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {results.pbs_datastores?.state === "ok" &&
+            !inventory.pbs_datastores?.length && (
+              <p>Keine Datastores konfiguriert.</p>
+            )}
+          <h4>Konfigurierte Jobs</h4>
+          {queryNotice("pbs_sync_jobs", "Sync-Jobs")}
+          {queryNotice("pbs_prune_jobs", "Prune-Jobs")}
+          {queryNotice("pbs_verify_jobs", "Verify-Jobs")}
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Typ</th>
+                  <th>Name</th>
+                  <th>Datastore</th>
+                  <th>Zeitplan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(inventory.pbs_jobs || []).map((job) => (
+                  <tr key={job.kind + ":" + job.name}>
+                    <td>{job.kind}</td>
+                    <td>{job.name}</td>
+                    <td>{job.store}</td>
+                    <td>
+                      {job.disabled ? "Deaktiviert" : job.schedule || "Manuell"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <section
         className="inventory-section"
         aria-labelledby="inventory-network-title"
