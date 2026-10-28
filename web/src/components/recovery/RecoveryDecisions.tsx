@@ -22,7 +22,7 @@ export default function RecoveryDecisions({
   const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 25)));
   if (!d.inspection) return null;
   return (
-    <section aria-label="Entscheidungen">
+    <section aria-label="Entscheidungen" data-surface-topic="recovery">
       <h2>3 · Entscheidungen</h2>
       <p>
         {d.openFiles + d.openMappings} offene Entscheidungen ·{" "}

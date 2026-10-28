@@ -99,6 +99,7 @@ export default function RecoveryWizard({
   return (
     <section
       className="recovery-workspace"
+      data-surface-topic="recovery"
       aria-label="Wiederherstellung vorbereiten"
       ref={heading}
       tabIndex={-1}

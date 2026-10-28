@@ -44,7 +44,7 @@ export default function RecoveryMapping({
       </p>
     );
   return (
-    <section className="recovery-mapping">
+    <section className="recovery-mapping" data-surface-topic="network">
       <h3>Benötigte Zuordnungen</h3>
       <p className="field-hint">
         {inspection.ports?.length || 0} verwendete Ports ·{" "}

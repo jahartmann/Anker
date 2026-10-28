@@ -385,6 +385,7 @@ function Expand({
   }
   return (
     <Dialog
+      topic="storage"
       title="Speicher erweitern"
       onClose={onClose}
       busy={loading || busy}
@@ -624,7 +625,12 @@ function NewDrive({
         ]
       : [];
   return (
-    <Dialog title="Neues Laufwerk einbinden" onClose={onClose} wide>
+    <Dialog
+      topic="storage"
+      title="Neues Laufwerk einbinden"
+      onClose={onClose}
+      wide
+    >
       {container ? (
         <p>
           Zusätzlichen Speicher in der Containerverwaltung als Mountpoint an den
@@ -778,7 +784,10 @@ export default function Storage({ notify }: { notify: Notify }) {
     );
   const running = operation?.status === "running";
   return (
-    <section className="storage-section">
+    <section
+      className="storage-section paper-panel"
+      data-surface-topic="storage"
+    >
       <div className="section-heading">
         <div>
           <h3 className="topic-heading">

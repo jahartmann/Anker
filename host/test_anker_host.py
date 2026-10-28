@@ -3,6 +3,13 @@ spec=importlib.util.spec_from_file_location('helper',pathlib.Path(__file__).with
 helper=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
 class HostHelperTests(unittest.TestCase):
+ def test_invalid_paths_explain_the_format_without_disclosing_input(self):
+  cases=[('', 'empty or non-text'),('/etc/secret-value','relative path'),('etc\\secret-value','backslash'),('etc/../secret-value','parent component'),('etc/\x00secret-value','NUL character')]
+  for value,reason in cases:
+   with self.subTest(reason=reason):
+    with self.assertRaisesRegex(ValueError,reason) as error:helper.relative(value)
+    self.assertNotIn('secret-value',str(error.exception))
+  self.assertEqual(str(helper.relative('etc/network/interfaces')),'etc/network/interfaces')
  def test_snapshot_matches_database_tree(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);(root/'etc').mkdir();(root/'var/lib/pve-cluster').mkdir(parents=True)

@@ -42,6 +42,7 @@ import {
 import type { Notify } from "../components/shared";
 import { BackupHistory } from "./Backups";
 import BackupReadiness from "../components/BackupReadiness";
+import BackupIssues from "../components/BackupIssues";
 import Inventory from "../components/Inventory";
 import ActiveJobs from "../components/ActiveJobs";
 export function HostForm({
@@ -186,6 +187,7 @@ function HostConnection({
   }
   return (
     <Dialog
+      topic="server"
       title={host ? "Verbindung einrichten" : "Host hinzufügen"}
       onClose={close}
       busy={!!busy}
@@ -465,6 +467,7 @@ function ManualHostForm({
   }
   return (
     <Dialog
+      topic="server"
       title={host ? "Host bearbeiten" : "Host hinzufügen"}
       onClose={onClose}
       busy={busy}
@@ -1100,6 +1103,22 @@ export default function Hosts({
                     </button>
                   )}
                 </section>
+                <BackupIssues
+                  backup={latest}
+                  onSettings={
+                    canEdit ? () => setTab("Einstellungen") : undefined
+                  }
+                  onRetry={
+                    canOperate && !activeHostJob && !startingAction
+                      ? () => {
+                          void action(
+                            "hosts/" + host.id + "/backup",
+                            "Neue Sicherung gestartet",
+                          );
+                        }
+                      : undefined
+                  }
+                />
                 <div className="host-status-strip">
                   <div>
                     <span className="eyebrow">Sicherungsstatus</span>
@@ -1151,7 +1170,7 @@ export default function Hosts({
                   </div>
                 </div>
                 <div className="host-workspaces">
-                  <section className="host-workspace">
+                  <section className="host-workspace" data-topic="capture">
                     <span className="eyebrow">
                       <FolderOpen size={14} aria-hidden="true" /> Letzter Stand
                     </span>
@@ -1205,7 +1224,7 @@ export default function Hosts({
                       openChangeDetail(from, to);
                     }}
                   />
-                  <section className="host-workspace">
+                  <section className="host-workspace" data-topic="recovery">
                     <span className="eyebrow">
                       <RotateCcw size={14} aria-hidden="true" />{" "}
                       Wiederherstellung
@@ -1389,6 +1408,7 @@ export default function Hosts({
                   <section
                     className="host-settings-card"
                     aria-label="Sicherungsregeln für diesen Host"
+                    data-surface-topic="schedule"
                   >
                     <h3 className="topic-heading">
                       <TopicSymbol topic="schedule" />
@@ -1423,6 +1443,7 @@ export default function Hosts({
                   <section
                     className="host-settings-card"
                     aria-label="SSH-Verbindung für diesen Host"
+                    data-surface-topic="network"
                   >
                     <h3 className="topic-heading">
                       <TopicSymbol topic="network" />
@@ -1771,7 +1792,11 @@ export default function Hosts({
           </>
         )}
         {removing && host && (
-          <Dialog title="Host entfernen" onClose={() => setRemoving(false)}>
+          <Dialog
+            topic="server"
+            title="Host entfernen"
+            onClose={() => setRemoving(false)}
+          >
             <p className="dialog-intro">
               Zeitplan und Zugangseintrag für {host.name} entfernen. Vorhandene
               Sicherungen bleiben erhalten.

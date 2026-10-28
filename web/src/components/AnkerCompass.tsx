@@ -194,7 +194,7 @@ export default function AnkerCompass({
     }
   }
   return (
-    <Dialog title="Anker Kompass" onClose={onClose} wide>
+    <Dialog topic="server" title="Anker Kompass" onClose={onClose} wide>
       <div className="compass-body" ref={stage}>
         {stale && (
           <p className="notice warning" role="status">

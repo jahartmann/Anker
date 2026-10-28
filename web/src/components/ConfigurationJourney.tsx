@@ -175,7 +175,11 @@ export default function ConfigurationJourney({
   }
   const detailButton = valid && data?.rows !== null && data?.rows !== undefined;
   return (
-    <section className="configuration-journey" aria-label="Konfigurationsreise">
+    <section
+      className="configuration-journey"
+      data-surface-topic="activity"
+      aria-label="Konfigurationsreise"
+    >
       <header className="journey-heading">
         <div>
           <span className="eyebrow">

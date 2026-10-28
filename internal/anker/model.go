@@ -161,6 +161,7 @@ type Manifest struct {
 	Dependencies  []DependencyEvidence `json:"dependencies,omitempty"`
 }
 type Backup struct {
+	Issues              []BackupIssue            `json:"issues,omitempty"`
 	HostType            string                   `json:"host_type,omitempty"`
 	EvidenceRevision    string                   `json:"evidence_revision,omitempty"`
 	VerificationAttempt *integrityAttempt        `json:"verification_attempt,omitempty"`
@@ -180,25 +181,26 @@ type Backup struct {
 	Warnings            []string                 `json:"warnings"`
 }
 type Job struct {
-	Revision     int    `json:"revision,omitempty"`
-	MaxAttempts  int    `json:"max_attempts,omitempty"`
-	RetryAt      string `json:"retry_at,omitempty"`
-	Message      string `json:"message,omitempty"`
-	LastError    string `json:"last_error,omitempty"`
-	RetryOf      string `json:"retry_of,omitempty"`
-	SourceSetID  string `json:"source_set_id,omitempty"`
-	ID           string `json:"id"`
-	HostID       string `json:"host_id"`
-	Kind         string `json:"kind"`
-	State        string `json:"state"`
-	CreatedAt    string `json:"created_at"`
-	StartedAt    string `json:"started_at,omitempty"`
-	Trigger      string `json:"trigger,omitempty"`
-	ScheduledDay string `json:"scheduled_day,omitempty"`
-	FinishedAt   string `json:"finished_at,omitempty"`
-	ResultID     string `json:"result_id,omitempty"`
-	Error        string `json:"error,omitempty"`
-	Attempts     int    `json:"attempts"`
+	Issues       []BackupIssue `json:"issues,omitempty"`
+	Revision     int           `json:"revision,omitempty"`
+	MaxAttempts  int           `json:"max_attempts,omitempty"`
+	RetryAt      string        `json:"retry_at,omitempty"`
+	Message      string        `json:"message,omitempty"`
+	LastError    string        `json:"last_error,omitempty"`
+	RetryOf      string        `json:"retry_of,omitempty"`
+	SourceSetID  string        `json:"source_set_id,omitempty"`
+	ID           string        `json:"id"`
+	HostID       string        `json:"host_id"`
+	Kind         string        `json:"kind"`
+	State        string        `json:"state"`
+	CreatedAt    string        `json:"created_at"`
+	StartedAt    string        `json:"started_at,omitempty"`
+	Trigger      string        `json:"trigger,omitempty"`
+	ScheduledDay string        `json:"scheduled_day,omitempty"`
+	FinishedAt   string        `json:"finished_at,omitempty"`
+	ResultID     string        `json:"result_id,omitempty"`
+	Error        string        `json:"error,omitempty"`
+	Attempts     int           `json:"attempts"`
 }
 type RecoveryNetworkMapping struct {
 	AddressCIDR string   `json:"address_cidr"`

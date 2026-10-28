@@ -183,6 +183,7 @@ export default function RecoveryOutcomeCards({
   return (
     <section
       className="recovery-outcome"
+      data-surface-topic="security"
       aria-label="Ergebnis der Wiederherstellung"
     >
       <div className="outcome-heading">

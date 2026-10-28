@@ -118,7 +118,12 @@ function UpdateSourceDialog({
     }
   }
   return (
-    <Dialog title="Updatequelle einrichten" busy={busy} onClose={onClose}>
+    <Dialog
+      topic="updates"
+      title="Updatequelle einrichten"
+      busy={busy}
+      onClose={onClose}
+    >
       <p className="dialog-intro">
         Anker installiert nur Releases mit einer gültigen Signatur dieser
         Quelle.
@@ -321,7 +326,10 @@ export default function Updates({
     }
   }
   return (
-    <section className="update-section">
+    <section
+      className="update-section paper-panel"
+      data-surface-topic="updates"
+    >
       <div className="section-heading">
         <div>
           <h2 className="topic-heading">
@@ -527,6 +535,7 @@ export default function Updates({
       )}
       {confirm && state?.available && (
         <Dialog
+          topic="updates"
           title="Update installieren"
           busy={busy}
           onClose={() => setConfirm(false)}

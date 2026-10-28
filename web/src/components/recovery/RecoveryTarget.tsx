@@ -17,7 +17,7 @@ export default function RecoveryTarget({
   const isPBS =
     status.backups.find((b) => b.id === d.backup)?.host_type === "pbs";
   return (
-    <section aria-label="SSH-Zielprüfung">
+    <section aria-label="SSH-Zielprüfung" data-surface-topic="network">
       <h2>2 · Ziel anbinden und prüfen</h2>
       <p>
         „Ziel prüfen“ liest das aktuelle Zielinventar und erfasst die

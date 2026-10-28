@@ -101,7 +101,10 @@ export default function Certificates({
     }
   }
   return (
-    <section className="update-section certificate-section">
+    <section
+      className="update-section certificate-section paper-panel"
+      data-surface-topic="security"
+    >
       <div className="section-heading">
         <div>
           <h3 className="topic-heading">
@@ -257,6 +260,7 @@ export default function Certificates({
       )}
       {confirm && (
         <Dialog
+          topic="security"
           title="Zertifikat erneuern"
           busy={busy}
           onClose={() => {

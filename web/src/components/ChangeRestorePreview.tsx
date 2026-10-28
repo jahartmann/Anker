@@ -229,8 +229,13 @@ export default function ChangeRestorePreview({
   ]);
   const affected = data?.files.filter((f) => f.action !== "keep").length || 0;
   return (
-    <Dialog title="Wiederherstellungsvorschau" onClose={onClose} wide>
-      <div className="rollback-preview">
+    <Dialog
+      topic="recovery"
+      title="Wiederherstellungsvorschau"
+      onClose={onClose}
+      wide
+    >
+      <div className="rollback-preview" data-surface-topic="recovery">
         <div className="rollback-intro">
           <span className="eyebrow">
             <RotateCcw size={14} aria-hidden="true" /> Rückkehr zum früheren

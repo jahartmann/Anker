@@ -13,7 +13,15 @@ import (
 	"time"
 )
 
-func (s *Service) Jobs() ([]Job, error) { return records[Job](s.Store, "jobs") }
+func (s *Service) Jobs() ([]Job, error) {
+	jobs, err := records[Job](s.Store, "jobs")
+	for i := range jobs {
+		if jobs[i].Error != "" {
+			jobs[i].Issues = backupIssues([]string{jobs[i].Error})
+		}
+	}
+	return jobs, err
+}
 func (s *Service) Job(id string) (Job, error) {
 	var j Job
 	if !validID(id) {
@@ -24,6 +32,9 @@ func (s *Service) Job(id string) (Job, error) {
 	}
 	if j.ID != id {
 		return j, errors.New("Auftragseintrag ist ungültig")
+	}
+	if j.Error != "" {
+		j.Issues = backupIssues([]string{j.Error})
 	}
 	return j, nil
 }
@@ -124,7 +135,11 @@ func (s *Service) backupRunner(hostID string) func(context.Context) (string, err
 			return "", err
 		}
 		if b.Status == "partial" {
-			return b.ID, errors.New("Sicherung hat Pflichtlücken; Warnungen im Sicherungsstand prüfen")
+			issues := backupIssues(b.Warnings)
+			if len(issues) > 0 {
+				return b.ID, fmt.Errorf("Sicherung unvollständig: %s", issues[0].Title)
+			}
+			return b.ID, errors.New("Sicherung unvollständig; Erfassung und Prüfergebnisse ansehen")
 		}
 		return b.ID, err
 	}

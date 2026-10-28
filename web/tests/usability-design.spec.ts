@@ -15,7 +15,10 @@ test("view actions remain reachable at narrow viewport", async ({ page }) => {
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator(".problem-card summary").first().click();
+  await expect(page.locator(".problem-card details").first()).toHaveAttribute(
+    "open",
+    "",
+  );
   const action = page.getByRole("button", { name: /^Host .* prüfen$/ }).first();
   await expect(action).toBeVisible();
   const hostName = (await action.getAttribute("aria-label"))!.slice(5, -7);
@@ -223,7 +226,10 @@ test("overview host handoff is consumed after dismiss and navigation", async ({
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
   await nav.getByRole("button", { name: "Übersicht", exact: true }).click();
-  await page.locator(".problem-card summary").first().click();
+  await expect(page.locator(".problem-card details").first()).toHaveAttribute(
+    "open",
+    "",
+  );
   await page
     .getByRole("button", { name: /^Host .* prüfen$/ })
     .first()

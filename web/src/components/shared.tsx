@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Anchor, X, MoreHorizontal } from "lucide-react";
+import { Anchor, X, MoreHorizontal, Inbox, CircleAlert } from "lucide-react";
 import { api, labels } from "../api";
 import { TopicSymbol } from "./InfrastructureDetails";
 import type { InfrastructureTopic } from "./InfrastructureDetails";
@@ -47,7 +47,9 @@ export function State({ value, label }: { value: string; label?: string }) {
             ? "queued"
             : "muted";
   return (
-    <span className={"state " + tone}>{label || labels[value] || value}</span>
+    <span className={"state " + tone} data-state={value}>
+      {label || labels[value] || value}
+    </span>
   );
 }
 export function Pagination({
@@ -117,7 +119,7 @@ export function Heading({
   count?: number;
 }) {
   return (
-    <header className="page-heading">
+    <header className="page-heading" data-ui="view-heading">
       <div>
         <h1 aria-label={accessibleTitle}>{title}</h1>
         {count !== undefined && (
@@ -175,7 +177,10 @@ export function Empty({
   children?: ReactNode;
 }) {
   return (
-    <div className="empty">
+    <div className="empty" data-ui="empty-state">
+      <span className="empty-emblem" aria-hidden="true">
+        <Inbox size={23} strokeWidth={1.6} />
+      </span>
       <h3>{title}</h3>
       <p>{children}</p>
     </div>
@@ -192,6 +197,7 @@ export function LoadError({
 }) {
   return (
     <div className="load-error">
+      <CircleAlert className="load-error-emblem" size={21} aria-hidden="true" />
       <p className="warning" role="alert">
         {message}
       </p>
@@ -427,12 +433,14 @@ export function Dialog({
   onClose,
   wide = false,
   busy = false,
+  topic = "server",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
   busy?: boolean;
+  topic?: InfrastructureTopic;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const titleID = useId();
@@ -492,6 +500,7 @@ export function Dialog({
     <div className="dialog-backdrop">
       <div
         className={"dialog " + (wide ? "dialog-wide" : "")}
+        data-surface-topic={topic}
         ref={root}
         role="dialog"
         aria-modal="true"
@@ -500,7 +509,10 @@ export function Dialog({
         aria-labelledby={titleID}
       >
         <div className="dialog-title">
-          <h2 id={titleID}>{title}</h2>
+          <h2 id={titleID}>
+            <TopicSymbol topic={topic} />
+            {title}
+          </h2>
           <button
             className="icon-button"
             onClick={onClose}

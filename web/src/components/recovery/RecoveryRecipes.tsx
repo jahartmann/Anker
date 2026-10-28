@@ -28,7 +28,11 @@ export default function RecoveryRecipes({
   const result = d.recipePreview;
   if (!recipes.length && !error) return null;
   return (
-    <section className="recovery-recipes" aria-label="Geprüfte Zuordnungen">
+    <section
+      className="recovery-recipes"
+      data-surface-topic="network"
+      aria-label="Geprüfte Zuordnungen"
+    >
       <h3>Zuordnungsvorlage</h3>
       <p className="field-hint">
         Geprüfte Zuordnungen mit dem aktuellen Ziel vergleichen. Dateien,
@@ -125,6 +129,7 @@ export function SaveRecoveryRecipe({
   return (
     <section
       className="recovery-recipes"
+      data-surface-topic="network"
       aria-label="Zuordnungsvorlage speichern"
     >
       <h3>Zuordnungen wiederverwenden</h3>

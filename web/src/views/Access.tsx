@@ -50,7 +50,7 @@ export default function Access({
     };
   }, [reload]);
   return (
-    <section className="detail-section">
+    <section className="detail-section paper-panel" data-surface-topic="access">
       <div className="section-heading">
         <div>
           <h3 className="topic-heading">
@@ -248,7 +248,7 @@ function UserDialog({
     }
   }
   return (
-    <Dialog title={title} busy={busy} onClose={close}>
+    <Dialog topic="access" title={title} busy={busy} onClose={close}>
       <p className="dialog-intro">
         {kind === "create"
           ? "Ein eigener Zugang für die Arbeit mit Anker."

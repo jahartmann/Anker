@@ -180,7 +180,7 @@ export default function RecoverySource({
     return `${source.host_name} · ${preciseDate(source.created_at)} · ${shortId(source.id)}`;
   }
   return (
-    <section aria-label="Quelle und Situation">
+    <section aria-label="Quelle und Situation" data-surface-topic="archive">
       <h2>1 · Quelle und Situation</h2>
       <div className="form-grid">
         <Field label="Quellhost">

@@ -54,7 +54,11 @@ export default function RecoveryChecks({
   );
   const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
   return (
-    <section aria-label="Betriebsprüfungen" className="recovery-checks">
+    <section
+      aria-label="Betriebsprüfungen"
+      className="recovery-checks"
+      data-surface-topic="security"
+    >
       <h3>Manuelle Aufgaben und Betriebsprüfungen</h3>
       <p className="field-hint">
         Benutzerbestätigungen dokumentieren eigene Prüfungen. Sie ersetzen keine
@@ -64,6 +68,7 @@ export default function RecoveryChecks({
       <section
         aria-label="Maschinelle Prüfversuche"
         className="recovery-checks"
+        data-surface-topic="security"
       >
         <h3>Maschinelle Prüfversuche</h3>
         <p className="field-hint">

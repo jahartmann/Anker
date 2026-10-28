@@ -98,6 +98,7 @@ export default function ChangeSummary({
         (compact ? " change-summary-compact" : "")
       }
       aria-label="Änderungszusammenfassung"
+      data-topic="changes"
     >
       <span className="eyebrow">
         <GitCompareArrows size={14} aria-hidden="true" /> Seit dem vorherigen

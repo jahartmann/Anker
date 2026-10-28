@@ -72,7 +72,11 @@ export default function BackupReadiness({
       </section>
     );
   return (
-    <section className="readiness detail-section" aria-label="Prüfergebnisse">
+    <section
+      className="readiness detail-section"
+      data-surface-topic="archive"
+      aria-label="Prüfergebnisse"
+    >
       <h3>Prüfergebnisse</h3>
       <p className="field-hint">
         Quelle: {backup.host_name} · {date(backup.created_at)} ·{" "}

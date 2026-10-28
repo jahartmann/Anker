@@ -200,6 +200,7 @@ func (s *Service) ListBackups(hostID string) ([]Backup, error) {
 	out := []Backup{}
 	for _, b := range all {
 		if hostID == "" || b.HostID == hostID {
+			b.Issues = backupIssues(b.Warnings)
 			out = append(out, b)
 		}
 	}
@@ -214,6 +215,9 @@ func (s *Service) Backup(id string) (Backup, error) {
 	err := s.Store.Get("backups", id, &b)
 	if err == nil && (!validID(b.HostID) || b.ID != id) {
 		return b, errors.New("ungültiger Katalogeintrag")
+	}
+	if err == nil {
+		b.Issues = backupIssues(b.Warnings)
 	}
 	return b, err
 }

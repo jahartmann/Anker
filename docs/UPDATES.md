@@ -2,6 +2,14 @@
 
 Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
+## Hinweise zu v0.2.18
+
+v0.2.18 zeigt Ursachen unvollständiger oder fehlgeschlagener Sicherungen direkt beim Host, Sicherungsstand und Auftrag. Ein technischer Hinweis mit geschützten Angaben verdeckt nicht mehr automatisch die fachliche Erklärung und Abhilfe. Ungültige Pfadangaben, fehlende Pflichtpfade, nicht erfasste Verweise und fehlende Berechtigungen werden getrennt eingeordnet. Ein Verweis außerhalb des erfassten Dateibaums belegt nicht, dass die Datei auf dem Host fehlt. Die Einordnung gilt auch für bereits gespeicherte Warnungen; die Sicherungsdateien werden dafür nicht umgeschrieben.
+
+Das Serverupdate genügt für die neue Anzeige. Für genauere Formatgründe aus dem Hosthelfer vorhandene PVE-/PBS-Hosts über **Verbindung einrichten** aktualisieren und anschließend eine neue Sicherung starten. Fehlende Dateien und falsche Profile müssen anhand der konkreten Ursache korrigiert werden; das Update repariert keine unbekannten Hostkonfigurationen automatisch. **Sicherungsprofil prüfen** öffnet die Host-Einstellungen. Fehlgeschlagene Aufträge mit erhaltenem Teilstand bieten **Unvollständige Sicherung prüfen** direkt an. Datastore-Inhalte bleiben ausgeschlossen.
+
+Die gemeinsame Notion-Kartenbasis mit versetzten Schatten gilt jetzt auch für Haupt- und Unteransichten, Dialoge, Anmeldung, Formulare, Tabellen, Vergleiche, Konfigurationsreise und Wiederherstellungsschritte. Themenakzente und technische Details ergänzen die beschrifteten Betriebszustände.
+
 ## Hinweise zu v0.2.17
 
 v0.2.17 ersetzt die bisherige Netzsuche durch eine fortsetzbare PVE-/PBS-Suche. Kurze TCP-Prüfungen beider Webports filtern die HTTPS-Erkennung; unklare Verbindungen erhalten eine langsamere Nachprüfung. Bekannte Adressen, konfigurierte Peers und aus Treffern gelernte Adressendungen werden bevorzugt. Trotzdem werden alle ausgewählten Adressen geprüft, auch bei einzelnen Hosts pro Standort. Abbruch, Zeitfenster und Neustart behalten den gespeicherten Stand; **Suche fortsetzen** verwendet die ursprünglichen Netze und Ports. Ein abrupt beendeter Prozess kann die Arbeit seit dem letzten Speicherpunkt wiederholen. Vor einem Update hält Anker laufende Suchen an und speichert den Fortschritt.

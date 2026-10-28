@@ -100,7 +100,11 @@ export default function SystemDiagnosis({ value }: { value: unknown }) {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
   return (
-    <section className="system-diagnosis" aria-label="Diagnoseübersicht">
+    <section
+      className="system-diagnosis"
+      data-surface-topic="system"
+      aria-label="Diagnoseübersicht"
+    >
       <p className="muted">
         Aktuelle Serverantwort und Ablagespeicher. Hostverbindungen,
         Sicherungsintegrität und echte Wiederherstellungen werden separat

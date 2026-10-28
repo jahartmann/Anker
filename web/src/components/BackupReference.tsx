@@ -221,6 +221,7 @@ export default function BackupReferencePanel({
       )}
       {editing && (
         <Dialog
+          topic="archive"
           title={`Referenz · ${hostName}`}
           onClose={() => setEditing(false)}
           busy={busy}

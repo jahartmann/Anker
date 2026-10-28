@@ -90,7 +90,7 @@ function Login({ onLogin }: { onLogin: (u: User, demo: boolean) => void }) {
   }
   return (
     <div className="login-page">
-      <div className="login-form">
+      <div className="login-form" data-surface-topic="server">
         <div className="wordmark">
           <BrandMark />
           Anker

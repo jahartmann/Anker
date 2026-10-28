@@ -267,6 +267,7 @@ export default function BackupComparison({
   return (
     <section
       className="detail-section backup-comparison"
+      data-surface-topic="activity"
       aria-label="Sicherungsvergleich"
     >
       <div className="comparison-intro">

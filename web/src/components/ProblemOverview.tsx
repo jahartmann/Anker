@@ -39,7 +39,7 @@ function ProblemGroup({
             ? "Ein neuer vollständiger Stand ist erforderlich."
             : "Status oder Zeitangaben benötigen eine Prüfung."}
       </p>
-      <details>
+      <details open>
         <summary>
           {hosts.length === 1
             ? "Betroffenen Host ansehen"

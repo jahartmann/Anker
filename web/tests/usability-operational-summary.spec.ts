@@ -129,7 +129,7 @@ test("incomplete sources cannot produce a reassuring summary", async ({
   expect(calls).toBe(0);
 });
 
-test("a large problem collection stays in three collapsed cards with bounded searchable details", async ({
+test("a large problem collection exposes three bounded searchable groups without hiding errors", async ({
   page,
 }, info) => {
   const { base, host } = await fixture(page);
@@ -160,17 +160,11 @@ test("a large problem collection stays in three collapsed cards with bounded sea
   );
   await expect(
     region.getByRole("button", { name: /Host .* prüfen/ }),
-  ).toHaveCount(0);
-  await region
-    .getByText("98 betroffene Hosts ansehen", { exact: true })
-    .click();
-  await expect(
-    region.getByRole("button", { name: /Host .* prüfen/ }),
-  ).toHaveCount(4);
+  ).toHaveCount(6);
   await region.getByRole("textbox").fill("problem-099");
   await expect(
     region.getByRole("button", { name: /Host .* prüfen/ }),
-  ).toHaveCount(1);
+  ).toHaveCount(3);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     390,

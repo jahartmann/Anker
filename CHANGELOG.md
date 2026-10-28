@@ -2,6 +2,15 @@
 
 ## Unveröffentlicht
 
+## v0.2.18 – 28. Oktober 2026
+
+- Durchgängige Papierkarten-Gestaltung für alle Hauptansichten, Hostregister und Einstellungsbereiche sowie Vergleiche, Konfigurationsreise, Cluster-Sicherungssets, Wiederherstellungsplanung und Ergebnisnachweise. Eine gemeinsame Themenbasis gilt auch außerhalb der Seite in Dialogen, Anmeldung, leeren Ansichten, Fehlermeldungen, Tabellen, Formularen und technischen Details. Versetzte Schatten bleiben erhalten; Dialogtitel zeigen das passende technische Symbol.
+
+- Sicherungsdiagnosen direkt in Hostübersicht, Sicherungsfokus, Dateiansicht und Auftragsdetails: Ursache, sicher darstellbarer Pfad und konkrete Abhilfe. Ungültige Pfade, fehlende Pflichtpfade, nicht erfasste Verweise, Leserechte, Inventarfehler und Erfassungsgrenzen werden unterschieden. Geschützte Rohmeldungen verdecken nicht mehr automatisch die fachliche Erklärung. Historische Warnungen erhalten die neue Einordnung ohne Änderung ihrer Sicherungsdateien.
+- Fehlgeschlagene Sicherungsaufträge mit erhaltenem Teilstand verlinken direkt auf diesen Stand. Hinweise und betroffene Hosts sind ohne zusätzliches Aufklappen sichtbar; Listen bleiben begrenzt. Profilprüfung und neue Sicherung stehen als ausdrückliche Aktionen bereit. Fehlende Konfigurationsdateien werden nicht automatisch angelegt oder Pflichtpfade entfernt.
+- Notion-Karten mit deutlich versetzten Schatten bleiben die Gestaltungsbasis. Stärkere thematische Akzente, technische Symbole und griffigere Buttons ziehen sich durch Haupt- und Unteransichten. Die Hostübersicht trennt Handlungsbedarf, Betriebsdaten sowie Sicherung, Änderungen und Wiederherstellung.
+- Hosthelfer benennt bei ungültigen Pfaden den Formatgrund statt nur „invalid path“, ohne die möglicherweise geschützte Eingabe offenzulegen.
+
 ## v0.2.17 – 27. Oktober 2026
 
 - Fortsetzbare PVE-/PBS-Netzsuche: kurze parallele TCP-Prüfung beider Webports, HTTPS-Erkennung nur offener Ports und langsamere Nachprüfung unklarer Verbindungen. Gespeicherte Einzelprüfungen und Treffer bleiben nach Abbruch, Zeitlimit und Neustart erhalten; Updates halten die Suche vor dem Katalogsnapshot an. Die Oberfläche zeigt Phase, Schnellrundenfortschritt und Fortsetzung mit ursprünglichem Suchumfang.

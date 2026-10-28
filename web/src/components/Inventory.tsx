@@ -166,7 +166,7 @@ export default function Inventory({
           ? value.split("\n").filter(Boolean).length
           : undefined;
   return (
-    <div className="inventory">
+    <div className="inventory" data-surface-topic="system">
       <h3 className="topic-heading">
         <TopicSymbol topic="server" />
         Hostinventar
@@ -303,6 +303,7 @@ export default function Inventory({
       <section
         className="inventory-section"
         aria-labelledby="inventory-network-title"
+        data-surface-topic="network"
       >
         <div className="inventory-toolbar">
           <h3 id="inventory-network-title">
@@ -389,6 +390,7 @@ export default function Inventory({
       <section
         className="inventory-section"
         aria-labelledby="inventory-disks-title"
+        data-surface-topic="storage"
       >
         <div className="inventory-toolbar">
           <h3 id="inventory-disks-title">

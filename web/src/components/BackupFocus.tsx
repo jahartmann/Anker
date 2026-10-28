@@ -6,6 +6,7 @@ import { HostName } from "../hostNames";
 import { recoverySource, usableRecoverySource } from "../hostHealth";
 import ChangeSummary from "./ChangeSummary";
 import { State } from "./shared";
+import BackupIssues from "./BackupIssues";
 
 function problem(backup: Backup) {
   return !usableRecoverySource(backup);
@@ -64,7 +65,8 @@ export default function BackupFocus({
     latest.verification_error || latest.status === "damaged"
       ? "Bei der Prüfung wurden Fehler gefunden. Sieh dir die Dateien und Prüfergebnisse an."
       : latest.status === "partial"
-        ? "In dieser Sicherung fehlen benötigte Dateien. Prüfe die Hinweise."
+        ? latest.issues?.[0]?.detail ||
+          "Die Erfassung ist unvollständig. Prüfe die Ursachen und nächsten Schritte zu diesem Stand."
         : !usableRecoverySource(latest)
           ? "Status oder Datum sind unklar. Prüfe den Stand, bevor du ihn verwendest."
           : "Hier findest du die Dateien und Prüfergebnisse der letzten Sicherung.";
@@ -86,6 +88,7 @@ export default function BackupFocus({
           </span>
         </div>
       </header>
+      <BackupIssues backup={latest} />
       <div className="backup-focus-grid">
         <section
           className={
@@ -93,6 +96,7 @@ export default function BackupFocus({
             (needsReview ? "needs-review" : "")
           }
           aria-label="Letzter Sicherungsstand"
+          data-topic="capture"
         >
           <span className="eyebrow">
             {needsReview ? (
@@ -156,6 +160,7 @@ export default function BackupFocus({
         <section
           className="host-workspace backup-focus-card"
           aria-label="Stand zur Wiederherstellung"
+          data-topic="recovery"
         >
           <span className="eyebrow">
             <RotateCcw size={15} aria-hidden="true" /> Wiederherstellung

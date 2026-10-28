@@ -9,7 +9,7 @@ export default function RecoveryNetwork({
   const stanzas = d.mappingInspection?.network_stanzas || [];
   if (!stanzas.length) return null;
   return (
-    <section aria-label="Netzwerk vorbereiten">
+    <section aria-label="Netzwerk vorbereiten" data-surface-topic="network">
       <h3>Managementnetz vorbereiten</h3>
       <p>
         Quellstanza und IP-Familie ausdrücklich auswählen. Leere Werte bleiben

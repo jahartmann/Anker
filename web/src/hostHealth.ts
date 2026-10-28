@@ -64,8 +64,9 @@ export function assessHost(
       text: "Letzte Sicherung unvollständig",
       tone: "warning",
       backup: latest,
-      reason:
-        "In der letzten Sicherung fehlen benötigte Dateien. Prüfe die Hinweise und starte danach eine neue Sicherung.",
+      reason: latest.issues?.[0]
+        ? latest.issues[0].title + ": " + latest.issues[0].detail
+        : "Die letzte Sicherung ist unvollständig. Ursache und nächste Schritte findest du direkt beim Host.",
       action: "files",
       actionLabel: "Fehlende Bestandteile prüfen",
     };

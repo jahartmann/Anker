@@ -114,7 +114,7 @@ export default function ClusterSets({
     }
   }
   return (
-    <div className="cluster-sets">
+    <div className="cluster-sets" data-surface-topic="workloads">
       <button className="back-button" onClick={onBack}>
         ← Zurück zu Sicherungen
       </button>

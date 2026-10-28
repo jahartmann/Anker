@@ -344,6 +344,7 @@ export default function HostDiscovery({
 
   return (
     <Dialog
+      topic="network"
       title="Proxmox-Server suchen"
       onClose={() => {
         if (!pending.current) {

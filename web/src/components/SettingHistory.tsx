@@ -117,6 +117,7 @@ export default function SettingHistory({
     <details
       ref={panel}
       className="setting-trace"
+      data-surface-topic="catalog"
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >

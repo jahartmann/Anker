@@ -68,7 +68,12 @@ function EvidenceFile({
           })
           .slice(0, 8);
   return (
-    <Dialog title="Gespeicherter Nachweis" onClose={onClose} wide>
+    <Dialog
+      topic="catalog"
+      title="Gespeicherter Nachweis"
+      onClose={onClose}
+      wide
+    >
       <div className="setting-proof-file">
         <strong>{path}</strong>
         <time dateTime={observation.created_at}>
@@ -155,6 +160,7 @@ export default function SettingExplanation({
   return (
     <section
       className="setting-explanation"
+      data-surface-topic="catalog"
       aria-label="Bedeutung der Änderung"
     >
       <div className="setting-explanation-heading">

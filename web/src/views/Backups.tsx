@@ -1,5 +1,6 @@
 import { ServerRack as Server } from "../components/InfrastructureDetails";
 import BackupFocus from "../components/BackupFocus";
+import BackupIssues from "../components/BackupIssues";
 import { HostName } from "../hostNames";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { api, bytes, date, preciseDate, calendarDate } from "../api";
@@ -285,7 +286,8 @@ export function BackupTable({
                       )}
                       {b.warnings?.length > 0 && (
                         <div className="secondary-line warning">
-                          {b.warnings.length} Hinweise
+                          {b.issues?.[0]?.title ||
+                            `${b.warnings.length} Hinweise`}
                         </div>
                       )}
                     </td>
@@ -706,6 +708,14 @@ function BackupCollections({
                       Integritätsprüfung fehlgeschlagen
                     </p>
                   )}
+                  {latest.issues?.[0] && (
+                    <p className="collection-warning">
+                      {latest.issues[0].title}
+                      {latest.issues[0].path
+                        ? ` · ${latest.issues[0].path}`
+                        : ""}
+                    </p>
+                  )}
                 </div>
                 <State
                   value={latest.verification_error ? "damaged" : latest.status}
@@ -1117,27 +1127,17 @@ export function FileBrowser({
   }
   const selectedEntry = files.find((f) => f.path === selected);
   return (
-    <Dialog title={"Dateien · " + backup.host_name} wide onClose={onClose}>
+    <Dialog
+      topic="archive"
+      title={"Dateien · " + backup.host_name}
+      wide
+      onClose={onClose}
+    >
       <p className="dialog-intro">
         {date(backup.created_at)} · {backup.files} Einträge · Dateien werden im
         Original heruntergeladen.
       </p>
-      {!!backup.warnings?.length && (
-        <details className="backup-notes">
-          <summary>
-            <span className="state warning">
-              {backup.warnings.length}{" "}
-              {backup.warnings.length === 1 ? "Hinweis" : "Hinweise"}
-            </span>{" "}
-            Hinweise zu diesem Stand ansehen
-          </summary>
-          <ul>
-            {backup.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <BackupIssues backup={backup} />
       <FileNavigation
         directory={directory}
         query={query}

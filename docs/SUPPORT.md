@@ -1,5 +1,11 @@
 # Unterstützungsstand
 
+## Sicherungsdiagnosen und Gestaltung in v0.2.18
+
+Gezielte Go-Regressionen prüfen die verständliche Einordnung geschützter Rohwarnungen, den Schutz von Zugangsdaten, sichere Pfadmetadaten, die Anzeige historischer Sicherungswarnungen vor dem Öffnen der Dateien und die Unterscheidung von Pfadformat-, Berechtigungs-, Datenbank- und Metadatenfehlern. Python-Prüfungen decken die konkreteren Formatgründe im Hosthelfer ab. Diese Tests reparieren keine unbekannten Konfigurationen realer PBS-/PVE-Hosts; ein konkreter Fehler dort benötigt weiterhin seine Originalmeldung und eine Prüfung am betroffenen Host.
+
+Die Browserabdeckung umfasst 325 Fälle einschließlich einer Matrix aller sechs Hauptansichten, fünf Hostregister und sieben Einstellungsbereiche bei Desktop- und Mobilbreite. Weitere Prüfungen decken Dialogthemen, erhaltene versetzte Kartenschatten, direkte Ursachenanzeige, ausdrückliche Profil-/Sicherungsaktionen, den Zugang zu gespeicherten Teilsicherungen, Kontraste, Tastaturbedienung und den nutzbaren Platz im mobilen Dateibrowser ab. Vor einer Veröffentlichung verlangt der Release-Workflow außerdem Go Race/Vet, alle Python- und Browserprüfungen, echte systemd-Integration sowie die Signatur- und Startprüfung der fertigen Linux-Pakete.
+
 ## Netzsuche in v0.2.17
 
 Die fortsetzbare PVE-/PBS-Suche ist mit einem simulierten vollständigen `/16` (65.534 nutzbare Adressen) einschließlich schneller und langsamer TCP-Runde geprüft. Weitere Go-Prüfungen decken HTTPS nur bei offenen Ports, PVE-/PBS-Erkennung mit selbstsigniertem TLS, Wiederaufnahme offener TCP-/HTTPS-Prüfungen, Prozessneustart, Speicherfehler, Update-Stillstand, ausgewählte Netzgrenzen und die lernende Suchreihenfolge ab. Python-Fixtures prüfen Standalone-PVE ohne Clusterabfrage, Clusterstatus und Corosync-Fallback sowie PBS-Remote-Adressen ohne Passwort- oder Datastore-Zugriff. Browserprüfungen decken Fortsetzen mit ursprünglichem Suchumfang, gemeinsame PVE-/PBS-Anzeige je Adresse und die bestehende Fingerprint-/Anbindungsführung ab.

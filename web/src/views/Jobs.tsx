@@ -1,5 +1,6 @@
 import { TopicSymbol } from "../components/InfrastructureDetails";
 import { HostName } from "../hostNames";
+import BackupIssues from "../components/BackupIssues";
 import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
 import type { Job, Status } from "../api";
@@ -195,17 +196,29 @@ export default function Jobs({
   function resultAction(job: Job) {
     if (
       job.kind === "backup" &&
-      job.state === "successful" &&
+      ["successful", "failed"].includes(job.state) &&
       job.result_id &&
       status.backups.some((backup) => backup.id === job.result_id)
     )
       return (
-        <button
-          className="text-button"
-          onClick={() => openBackup(job.result_id!)}
-        >
-          Sicherung öffnen
-        </button>
+        <span className="job-result-link">
+          {job.state === "failed" && (
+            <span className="job-result-cause">
+              {status.backups.find((b) => b.id === job.result_id)?.issues?.[0]
+                ?.title ||
+                job.error ||
+                "Sicherung unvollständig"}
+            </span>
+          )}
+          <button
+            className="text-button"
+            onClick={() => openBackup(job.result_id!)}
+          >
+            {job.state === "failed"
+              ? "Unvollständige Sicherung prüfen"
+              : "Sicherung öffnen"}
+          </button>
+        </span>
       );
     if (
       job.kind === "restore" &&
@@ -500,7 +513,12 @@ export default function Jobs({
         </p>
       ) : null}
       {detailID && (
-        <Dialog title="Auftragsdetails" onClose={closeDetail} busy={busy}>
+        <Dialog
+          topic="activity"
+          title="Auftragsdetails"
+          onClose={closeDetail}
+          busy={busy}
+        >
           {!currentDetail ? (
             error ? (
               <LoadError message={error} retry={() => load(detailID)} />
@@ -627,6 +645,14 @@ export default function Jobs({
                 )}
                 {selected.error && selected.error !== selected.message && (
                   <p className="notice warning">{selected.error}</p>
+                )}
+                {selected.kind === "backup" && (
+                  <BackupIssues
+                    backup={status.backups.find(
+                      (b) => b.id === selected.result_id,
+                    )}
+                    issues={selected.issues}
+                  />
                 )}
                 {selected.kind === "restore" && (
                   <p className="hint">

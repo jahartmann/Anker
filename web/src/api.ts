@@ -73,7 +73,16 @@ export interface Host {
   last_probe?: string;
   probe_error?: string;
 }
+export interface BackupIssue {
+  code: string;
+  title: string;
+  detail: string;
+  action: string;
+  path?: string;
+  path_protected?: boolean;
+}
 export interface Backup {
+  issues?: BackupIssue[];
   host_type?: "pve" | "pbs";
   evidence_revision?: string;
   manifest_sha?: string;
@@ -210,6 +219,7 @@ export interface FileComparison {
   masked: boolean;
 }
 export interface Job {
+  issues?: BackupIssue[];
   revision?: number;
   max_attempts?: number;
   retry_at?: string;

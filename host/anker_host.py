@@ -264,7 +264,11 @@ def probe(root=pathlib.Path('/'),test_mode=False):
  return {'hostname':socket.gethostname(),'pbs_datastores':pbs_datastores,'pbs_jobs':pbs_jobs,'host_type':platform,'pve_version':version if platform=='pve' else '', 'pbs_version':version if platform=='pbs' else '', 'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
 
 def relative(path):
- if not path or path.startswith('/') or '\\' in path or '\x00' in path or any(x in ('','..','.') for x in path.split('/')):raise ValueError('invalid path')
+ if not isinstance(path,str) or not path:raise ValueError('invalid path: empty or non-text path')
+ if path.startswith('/'):raise ValueError('invalid path: expected a relative path')
+ if '\\' in path:raise ValueError('invalid path: backslash is not supported')
+ if '\x00' in path:raise ValueError('invalid path: NUL character is not supported')
+ if any(x in ('','..','.') for x in path.split('/')):raise ValueError('invalid path: empty, dot or parent component is not allowed')
  return pathlib.PurePosixPath(path)
 def confined(root,path):
  relative(path);dest=root

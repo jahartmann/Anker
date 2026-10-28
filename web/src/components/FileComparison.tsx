@@ -86,7 +86,7 @@ export default function FileComparisonView({
           return groups;
         });
   return (
-    <div className="file-comparison">
+    <div className="file-comparison" data-surface-topic="activity">
       <div className="preview-heading">
         <span className="eyebrow">Ausgewählte Änderung</span>
         <strong>{c.path.split("/").filter(Boolean).at(-1)}</strong>

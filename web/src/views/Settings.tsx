@@ -291,7 +291,10 @@ export default function Settings({
           )}
         </div>
       )}
-      <div className="settings-context">
+      <div
+        className="settings-context"
+        data-surface-topic={settingsTopics[tab]}
+      >
         <TopicSymbol topic={settingsTopics[tab]} />
         <div>
           <span className="settings-context-scope">
@@ -306,7 +309,11 @@ export default function Settings({
         </div>
       </div>
       {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
-        <form className="settings-form" onSubmit={save}>
+        <form
+          className="settings-form"
+          data-surface-topic="settings"
+          onSubmit={save}
+        >
           {saveControls}
           <fieldset className="form-fields" disabled={busy || updating}>
             {tab === "Zeitplan" ? (
@@ -384,7 +391,7 @@ export default function Settings({
                 </fieldset>
               </section>
             ) : tab === "Aufbewahrung" ? (
-              <section>
+              <section className="paper-panel" data-surface-topic="archive">
                 <div className="retention-rules">
                   {(
                     [
@@ -575,39 +582,47 @@ export default function Settings({
       )}
       {tab === "Zugriff" && (
         <div inert={updating}>
-          <form className="settings-form access-policy" onSubmit={save}>
+          <form
+            className="settings-form access-policy"
+            data-surface-topic="access"
+            onSubmit={save}
+          >
             {saveControls}
-            <section>
+            <section className="paper-panel">
               <h3>Anmeldung</h3>
               <p className="muted">Eine Anmeldung ist immer erforderlich.</p>
-              <Field
-                label="Sitzungsdauer in Tagen"
-                hint="1 bis 365 Tage. Standard: 30 Tage. Gilt für neue Sitzungen, auch über einen Neustart hinweg."
-              >
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  required
-                  value={value.session_days}
-                  disabled={busy || updating}
-                  onChange={(e) => set("session_days", +e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Passwort-Mindestlänge"
-                hint="8 bis 128 Zeichen. Gilt für neu angelegte und geänderte Passwörter; bestehende bleiben gültig."
-              >
-                <input
-                  type="number"
-                  min={8}
-                  max={128}
-                  required
-                  value={value.password_min_length ?? 8}
-                  disabled={busy || updating}
-                  onChange={(e) => set("password_min_length", +e.target.value)}
-                />
-              </Field>
+              <div className="form-grid access-policy-fields">
+                <Field
+                  label="Sitzungsdauer in Tagen"
+                  hint="1 bis 365 Tage. Standard: 30 Tage. Gilt für neue Sitzungen, auch über einen Neustart hinweg."
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    required
+                    value={value.session_days}
+                    disabled={busy || updating}
+                    onChange={(e) => set("session_days", +e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Passwort-Mindestlänge"
+                  hint="8 bis 128 Zeichen. Gilt für neu angelegte und geänderte Passwörter; bestehende bleiben gültig."
+                >
+                  <input
+                    type="number"
+                    min={8}
+                    max={128}
+                    required
+                    value={value.password_min_length ?? 8}
+                    disabled={busy || updating}
+                    onChange={(e) =>
+                      set("password_min_length", +e.target.value)
+                    }
+                  />
+                </Field>
+              </div>
             </section>
           </form>
           <Access

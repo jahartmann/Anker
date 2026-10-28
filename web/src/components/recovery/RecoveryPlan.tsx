@@ -408,6 +408,7 @@ export default function RecoveryPlan({
   return (
     <section
       className="recovery-workspace recovery-plan-page"
+      data-surface-topic="recovery"
       aria-label="Wiederherstellungsplan"
       aria-busy={busy}
     >

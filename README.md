@@ -245,6 +245,10 @@ Das Hostprofil `/etc/anker-host.json` sichert standardmäßig `/etc` und `/usr/l
 
 ### Zeitplan und Aufträge
 
+**Sicherungsfehler verstehen:** Unvollständige Stände zeigen ihre Ursachen direkt in Hostübersicht und Sicherungsfokus. Jede Diagnose nennt den sicher darstellbaren Pfad, die Bedeutung und eine passende Abhilfe. „Ungültiger Pfad“ bezeichnet einen Formatfehler und belegt nicht, dass eine Datei fehlt. „Verwendete Datei nicht in der Sicherung“ bezeichnet einen Konfigurationsverweis außerhalb der erfassten Dateien; die Existenz auf dem Host muss gesondert geprüft werden. Geschützte Inhalte bleiben verborgen, die fachliche Erklärung und Abhilfe bleiben sichtbar. Vorhandene historische Sicherungen werden dafür nicht verändert.
+
+**Sicherungsprofil prüfen** öffnet die Host-Einstellungen. Veraltete Pflichtpfade dort ausdrücklich korrigieren; benötigte zusätzliche Konfigurationspfade müssen auch im root-eigenen Hostprofil `/etc/anker-host.json` erlaubt sein. Danach **Neue Sicherung starten** wählen. Fehlende Dateien werden nicht durch leere Dateien ersetzt und Anforderungen nicht automatisch entfernt. Für die detaillierteren Formatmeldungen vorhandene Hosthelfer über **Verbindung einrichten** aktualisieren. Fehlgeschlagene Aufträge mit gespeichertem Teilstand bieten **Unvollständige Sicherung prüfen** direkt an. PBS-Datastore-Inhalte bleiben außerhalb der Konfigurationssicherung.
+
 Unter **Einstellungen → Zeitplan** stehen tägliche Startzeit, Zeitzone, Parallelität und Wiederholungen. Ein Host übernimmt diese Zeit oder bekommt im Hostformular eine eigene Startzeit. „Automatisch sichern“ pausiert nur den Zeitplan; „Jetzt sichern“ bleibt möglich. Anker prüft jede Minute selbst, ob ein Lauf fällig ist. Keine Crontab anlegen. Hosts starten mit einem festen Versatz von weniger als einer Stunde, spätestens um 23:59 Uhr. Die Demo führt keine automatischen Sicherungen aus.
 
 **Aufträge → Details** zeigt Auslöser, Erstellzeit, tatsächlichen Start, Versuche und Fehler. Von dort die fertige Sicherung öffnen, einen aktiven Auftrag abbrechen oder eine fehlgeschlagene Sicherung/Hostprüfung erneut starten. Administratoren können abgeschlossene Einträge entfernen; Sicherungen und Tagesmarker bleiben erhalten. Wiederherstellungen erneut über einen frisch geprüften Plan bestätigen. Bereits eingeplante Tagesläufe werden nach Zeitplanänderung oder Neustart nicht nochmals gestartet. Ausgefallene frühere Tage werden nicht nachträglich rekonstruiert.
@@ -368,6 +372,10 @@ Auf `http://127.0.0.1:8087` mit `demo` / `anker-demo-2026` anmelden. Mit `Ctrl+C
 Beim ersten Start muss der Demoordner leer sein. `.anker-mode` hält die Betriebsart fest. Demo und Produktion dürfen sich nicht überlappen; `/srv/anker` und seine Eltern- und Unterverzeichnisse sind für Demo gesperrt. Alte unmarkierte Demoordner bleiben erhalten; stattdessen einen neuen Demoordner wählen. Den Marker nicht zum Wechseln der Betriebsart entfernen oder ändern.
 
 ## Entwicklung und Lizenz
+
+Die Oberfläche behält helle Notion-Karten mit versetzten Schatten als Grundlage. Server-/Admin-Details entstehen durch technische Symbole, griffige Buttons und deutlich erkennbare Themenakzente. Sicherung, Änderungen und Wiederherstellung sollen sich über Beschriftung, Symbol und Gestaltung unterscheiden. Fehlerursachen und passende Abhilfen stehen direkt beim betroffenen Stand; Statusfarben ergänzen diese Angaben.
+
+Die gemeinsame Basis in `web/src/paper.css` gilt für alle sechs Arbeitsbereiche, die fünf Hostregister und die sieben Einstellungsbereiche. Sie umfasst auch Anmeldung, Netzsuche, Benutzerverwaltung, Zertifikate, Updates, Speicherassistenten, Cluster-Sicherungssets, Datei- und Sicherungsvergleiche, Einstellungsverläufe, Wiederherstellungsschritte und Ergebnisnachweise. Dialoge erhalten ihr Thema ausdrücklich über die gemeinsame Dialogkomponente, da sie außerhalb des normalen Seitenbaums gerendert werden. Browserprüfungen gehen Haupt- und Unteransichten bei Desktop- und Mobilbreite durch.
 
 ```sh
 go test -race ./...

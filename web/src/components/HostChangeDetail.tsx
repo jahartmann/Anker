@@ -49,6 +49,7 @@ export default function HostChangeDetail({
   return (
     <section
       className="node-change-detail"
+      data-surface-topic="activity"
       aria-label="Änderungsdetails der Node"
     >
       <button className="back-button" onClick={onBack}>
