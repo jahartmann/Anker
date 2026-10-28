@@ -154,7 +154,7 @@ export function DetailSection({
   topic?: InfrastructureTopic;
 }) {
   return (
-    <details className="detail-disclosure">
+    <details className="detail-disclosure" data-surface-topic={topic}>
       <summary>
         {topic ? (
           <span className="topic-heading">

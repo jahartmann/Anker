@@ -242,6 +242,7 @@ export default function Settings({
           <div
             className="settings-nav-group"
             key={group.title}
+            data-surface-topic={settingsTopics[group.tabs[0]]}
             role="group"
             aria-label={group.title}
           >
@@ -311,7 +312,7 @@ export default function Settings({
       {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
         <form
           className="settings-form"
-          data-surface-topic="settings"
+          data-surface-topic={settingsTopics[tab]}
           onSubmit={save}
         >
           {saveControls}
@@ -651,6 +652,13 @@ export default function Settings({
                 key={id}
                 type="button"
                 className="secondary"
+                data-surface-topic={
+                  id === "betrieb-speicher"
+                    ? "storage"
+                    : id === "betrieb-pruefung"
+                      ? "system"
+                      : "activity"
+                }
                 aria-label={label}
                 onClick={() =>
                   document.getElementById(id)?.scrollIntoView({

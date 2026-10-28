@@ -215,6 +215,7 @@ export default function ChangeTimeline({
   return (
     <details
       className="change-timeline"
+      data-surface-topic="activity"
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >

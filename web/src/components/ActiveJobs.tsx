@@ -69,7 +69,11 @@ export default function ActiveJobs({
   }, [running]);
   if (!jobs.length) return null;
   return (
-    <section className="active-jobs" aria-labelledby={titleID}>
+    <section
+      className="active-jobs"
+      data-surface-topic="activity"
+      aria-labelledby={titleID}
+    >
       <div className="active-jobs-heading">
         <h3 id={titleID}>{title}</h3>
         <div className="active-jobs-counts">

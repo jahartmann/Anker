@@ -186,6 +186,10 @@ Anker startet weder Dienste noch Jobs. Vor einem späteren manuellen Dienststart
 
 ## Proxmox-Hosts anbinden
 
+Die Hostübersicht fasst Hosts in Standortkarten zusammen. **Ansicht gruppieren** bietet Automatik, Standort, Servertyp, IPv4-Netz (`/24`) und eine gemeinsame Liste. Die Auswahl gilt auch für die Suchergebnisse und wird in diesem Browser gespeichert. Manuelle **Gruppen** in den Hosteinstellungen haben Vorrang. Gemeinsame Namensteile nach Abzug von Serverrollen und separaten Knotennummern liefern Standortvorschläge, z. B. `pve-cp-01` und `pbs-cp-02` → **CP**. Automatik nutzt außerdem gemeinsame `/24`-Netze. Eindeutige passende Hostgruppen können als Vorschlag auch neue Hosts einordnen; widersprüchliche manuelle Gruppen werden nicht zusammengeführt. IP-Nähe beweist keinen Standort. Die Anzeige kennzeichnet abgeleitete Zuordnungen und ihre Grundlage; gespeichert werden sie erst durch eine bewusst gesetzte Hostgruppe. DNS-Ziele und IPv6-Adressen werden nicht anhand von Textähnlichkeit als IPv4-Netz behandelt.
+
+Serverrollen erscheinen getrennt als PVE (Orange), PBS (Grün) oder unbekannt. Bei eingerichteten Hosts bestätigt das Inventar den Typ; in der Netzsuche beschreibt er nur die erkannte Webantwort. Die Namensanzeige berücksichtigt **CP, RS, GS, FZ, Gym, PVE und PBS**, auch mit Ziffern. Katalognamen, SSH-Ziele und IDs bleiben unverändert; die Suche verwendet weiterhin die Originalnamen.
+
 Unter **Hosts → Server suchen** findet Anker Proxmox-VE-Server ohne Passwort. Die Suche läuft vom Anker-Server aus und nutzt dessen LAN-/VPN-Erreichbarkeit. Netze der lokalen Schnittstellen werden zum Ergänzen vorgeschlagen. Für mehrere Standorte die Suchbereiche gesammelt einfügen, zum Beispiel:
 
 ```text

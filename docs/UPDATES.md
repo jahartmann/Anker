@@ -2,6 +2,14 @@
 
 Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
+## Hinweise zu v0.2.19
+
+v0.2.19 bündelt die kräftigere Gestaltung aller Haupt- und Unteransichten mit Standortkarten und verbesserter Namensdarstellung. Das Serverupdate genügt; für diese Änderungen ist kein Austausch der Hosthelfer nötig.
+
+Unter **Hosts → Ansicht gruppieren** zwischen Automatik, Standort, Servertyp, IPv4-Netz (`/24`) und einer gemeinsamen Liste wählen. Die Auswahl gilt auch für Suchergebnisse und wird in diesem Browser gespeichert. Manuelle Hostgruppen haben Vorrang. Automatische Standortvorschläge aus gemeinsamen Namensteilen oder `/24`-Netzen sind begründet gekennzeichnet. Sie ändern keine gespeicherten Hostgruppen. Eindeutige passende Gruppen können neue Hosts als Vorschlag einordnen; widersprüchliche manuelle Gruppen bleiben getrennt. Einen Standort über die Gruppe in den Hosteinstellungen ausdrücklich festlegen.
+
+Die Anzeige berücksichtigt CP, RS, GS, FZ, Gym und technische Abkürzungen auch in nummerierten Namen und FQDNs. Katalognamen, SSH-Ziele und IDs bleiben erhalten. Die Inhalte von Sicherungen und PBS-Datastores werden durch diese Darstellungsänderungen nicht verändert.
+
 ## Hinweise zu v0.2.18
 
 v0.2.18 zeigt Ursachen unvollständiger oder fehlgeschlagener Sicherungen direkt beim Host, Sicherungsstand und Auftrag. Ein technischer Hinweis mit geschützten Angaben verdeckt nicht mehr automatisch die fachliche Erklärung und Abhilfe. Ungültige Pfadangaben, fehlende Pflichtpfade, nicht erfasste Verweise und fehlende Berechtigungen werden getrennt eingeordnet. Ein Verweis außerhalb des erfassten Dateibaums belegt nicht, dass die Datei auf dem Host fehlt. Die Einordnung gilt auch für bereits gespeicherte Warnungen; die Sicherungsdateien werden dafür nicht umgeschrieben.

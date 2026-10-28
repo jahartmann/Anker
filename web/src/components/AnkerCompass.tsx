@@ -69,6 +69,15 @@ export function CompassEntrypoints({
         <button
           key={id}
           className={`compass-intent compass-${tone}`}
+          data-surface-topic={
+            id === "secure"
+              ? "archive"
+              : id === "changes"
+                ? "activity"
+                : id === "restore"
+                  ? "recovery"
+                  : "server"
+          }
           onClick={() => onChoose(id)}
         >
           <span className="compass-emblem">

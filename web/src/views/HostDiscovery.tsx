@@ -1,3 +1,10 @@
+import {
+  groupHosts,
+  serverPalette,
+  groupingOptions,
+  type HostGrouping,
+} from "../hostGrouping";
+import { HostName } from "../hostNames";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Host, HostIdentity } from "../api";
@@ -43,12 +50,16 @@ type Access = {
 };
 
 export default function HostDiscovery({
+  grouping,
+  onGroupingChange,
   hosts,
   onClose,
   onConfigure,
   onSaved,
   notify,
 }: {
+  grouping: HostGrouping;
+  onGroupingChange: (value: HostGrouping) => void;
   hosts: Host[];
   onClose: () => void;
   onConfigure: (address: string, port: number) => void;
@@ -101,6 +112,36 @@ export default function HostDiscovery({
       }, new Map<string, Found>())
       .values(),
   );
+  const discoveredHosts = results.map((found) => ({
+    id: `discovered:${found.address}`,
+    name: found.name || found.address,
+    address: found.address,
+    group:
+      hosts.find(
+        (host) => host.address.toLowerCase() === found.address.toLowerCase(),
+      )?.group || "",
+    inventory: { host_type: found.kind, pve_version: "" },
+  }));
+  const discoveryBuckets = groupHosts(
+    [
+      ...hosts.filter(
+        (host) =>
+          !results.some(
+            (found) =>
+              found.address.toLowerCase() === host.address.toLowerCase(),
+          ),
+      ),
+      ...discoveredHosts,
+    ],
+    grouping,
+  )
+    .map((bucket) => ({
+      ...bucket,
+      results: results.filter((found) =>
+        bucket.hosts.some((host) => host.id === `discovered:${found.address}`),
+      ),
+    }))
+    .filter((bucket) => bucket.results.length > 0);
   const eligible = selected.filter(
     (address) =>
       confirmed.includes(address) &&
@@ -604,6 +645,25 @@ export default function HostDiscovery({
       {results.length > 0 && (
         <>
           <h3>Gefundene Server</h3>
+          <Field label="Suchergebnisse gruppieren">
+            <select
+              aria-label="Suchergebnisse gruppieren"
+              value={grouping}
+              onChange={(event) => {
+                onGroupingChange(event.target.value as HostGrouping);
+              }}
+            >
+              {groupingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <p className="muted">
+            Standortvorschläge aus Namen und /24-Netzen helfen beim Einordnen.
+            Sie ändern keine Hostgruppe und bestätigen keine Identität.
+          </p>
           <label className="check">
             <input
               type="checkbox"
@@ -626,62 +686,69 @@ export default function HostDiscovery({
             />
             Alle neuen Hosts mit erreichbarem SSH auswählen
           </label>
-          <div className="table-scroll">
-            <table className="discovery-results">
-              <thead>
-                <tr>
-                  <th>Auswahl / Server</th>
-                  <th>Erkennung</th>
-                  <th>Einrichtung</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((found) => {
-                  const known = existing(found);
-                  const identity = identities[found.address];
-                  const chosen = selected.includes(found.address);
-                  return (
-                    <tr key={found.address}>
-                      <td>
-                        <label className="check">
-                          <input
-                            type="checkbox"
-                            aria-label={`${found.address} auswählen`}
-                            disabled={
-                              !!busy ||
-                              running ||
-                              known ||
-                              !found.ssh_reachable ||
-                              access[found.address]?.status === "enrolled"
-                            }
-                            checked={chosen}
-                            onChange={(e) =>
-                              setSelected((old) =>
-                                e.target.checked
-                                  ? [...old, found.address]
-                                  : old.filter((a) => a !== found.address),
-                              )
-                            }
-                          />
-                          <span className="mono">{found.address}</span>
-                        </label>
-                        {found.name && <div>{found.name}</div>}
-                        {identity && (
-                          <div className="discovery-identity">
-                            <span className="mono">{identity.fingerprint}</span>
-                            {identity.changed ? (
-                              <p className="warning">
-                                Hostschlüssel geändert – gesperrt
-                              </p>
-                            ) : (
+          <div className="host-site-grid discovery-sites">
+            {discoveryBuckets.map((bucket) => (
+              <section
+                className="host-site"
+                key={bucket.key}
+                aria-label={`Suchbereich ${bucket.label}`}
+                data-server-kind={serverPalette(bucket.hosts)}
+              >
+                {grouping !== "none" && (
+                  <header className="host-site-header">
+                    <div>
+                      <div className="host-site-eyebrow">
+                        {grouping === "type"
+                          ? "Servertyp"
+                          : grouping === "network"
+                            ? "IP-Netz"
+                            : bucket.inferred
+                              ? "Standortvorschlag"
+                              : "Hostbereich"}
+                      </div>
+                      <h3>{bucket.label}</h3>
+                      <p>
+                        {grouping === "type"
+                          ? "Erkennung anhand der Webantwort · SSH-Identität noch bestätigen"
+                          : bucket.reason}
+                      </p>
+                    </div>
+                    <span className="host-site-count">
+                      {bucket.results.length} gefunden
+                    </span>
+                  </header>
+                )}
+                <div className="table-scroll">
+                  <table className="discovery-results">
+                    <thead>
+                      <tr>
+                        <th>Auswahl / Server</th>
+                        <th>Erkennung</th>
+                        <th>Einrichtung</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bucket.results.map((found) => {
+                        const known = existing(found);
+                        const identity = identities[found.address];
+                        const chosen = selected.includes(found.address);
+                        return (
+                          <tr key={found.address}>
+                            <td>
                               <label className="check">
                                 <input
                                   type="checkbox"
-                                  aria-label={`Fingerprint für ${found.address} bestätigt`}
-                                  disabled={!!busy}
-                                  checked={confirmed.includes(found.address)}
+                                  aria-label={`${found.address} auswählen`}
+                                  disabled={
+                                    !!busy ||
+                                    running ||
+                                    known ||
+                                    !found.ssh_reachable ||
+                                    access[found.address]?.status === "enrolled"
+                                  }
+                                  checked={chosen}
                                   onChange={(e) =>
-                                    setConfirmed((old) =>
+                                    setSelected((old) =>
                                       e.target.checked
                                         ? [...old, found.address]
                                         : old.filter(
@@ -690,69 +757,115 @@ export default function HostDiscovery({
                                     )
                                   }
                                 />
-                                Fingerprint unabhängig geprüft und bestätigt
+                                <span className="mono">{found.address}</span>
                               </label>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {(found.services || [found]).map((service, index) => (
-                          <div key={index}>
-                            {service.kind === "pbs"
-                              ? "Proxmox Backup Server"
-                              : "Proxmox VE"}
-                            {service.version ? ` ${service.version}` : ""}
-                            {service.web_port
-                              ? ` · Port ${service.web_port}`
-                              : ""}
-                          </div>
-                        ))}
-                        {found.source && found.source !== "network" && (
-                          <div className="muted">
-                            Hinweis:{" "}
-                            {found.source === "cluster"
-                              ? "bekannter Cluster"
-                              : found.source === "pbs-config"
-                                ? "PBS-Konfiguration"
-                                : "bekannter Host"}
-                          </div>
-                        )}
-                        <div className="muted">
-                          SSH{" "}
-                          {found.ssh_reachable
-                            ? "erreichbar"
-                            : "nicht erreichbar"}
-                        </div>
-                        {known && <div>Bereits eingerichtet</div>}
-                      </td>
-                      <td>
-                        {access[found.address] && (
-                          <p role="status">{access[found.address].message}</p>
-                        )}
-                        {!known &&
-                          access[found.address]?.status !== "enrolled" && (
-                            <button
-                              className="secondary"
-                              disabled={
-                                !!busy || running || !found.ssh_reachable
-                              }
-                              onClick={() =>
-                                onConfigure(
-                                  found.address,
-                                  scan!.config.ssh_port,
-                                )
-                              }
-                            >
-                              Einzeln einrichten
-                            </button>
-                          )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              {found.name && (
+                                <div>
+                                  <HostName name={found.name} />
+                                </div>
+                              )}
+                              {identity && (
+                                <div className="discovery-identity">
+                                  <span className="mono">
+                                    {identity.fingerprint}
+                                  </span>
+                                  {identity.changed ? (
+                                    <p className="warning">
+                                      Hostschlüssel geändert – gesperrt
+                                    </p>
+                                  ) : (
+                                    <label className="check">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Fingerprint für ${found.address} bestätigt`}
+                                        disabled={!!busy}
+                                        checked={confirmed.includes(
+                                          found.address,
+                                        )}
+                                        onChange={(e) =>
+                                          setConfirmed((old) =>
+                                            e.target.checked
+                                              ? [...old, found.address]
+                                              : old.filter(
+                                                  (a) => a !== found.address,
+                                                ),
+                                          )
+                                        }
+                                      />
+                                      Fingerprint unabhängig geprüft und
+                                      bestätigt
+                                    </label>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {(found.services || [found]).map(
+                                (service, index) => (
+                                  <div key={index}>
+                                    {service.kind === "pbs"
+                                      ? "Proxmox Backup Server"
+                                      : "Proxmox VE"}
+                                    {service.version
+                                      ? ` ${service.version}`
+                                      : ""}
+                                    {service.web_port
+                                      ? ` · Port ${service.web_port}`
+                                      : ""}
+                                  </div>
+                                ),
+                              )}
+                              {found.source && found.source !== "network" && (
+                                <div className="muted">
+                                  Hinweis:{" "}
+                                  {found.source === "cluster"
+                                    ? "bekannter Cluster"
+                                    : found.source === "pbs-config"
+                                      ? "PBS-Konfiguration"
+                                      : "bekannter Host"}
+                                </div>
+                              )}
+                              <div className="muted">
+                                SSH{" "}
+                                {found.ssh_reachable
+                                  ? "erreichbar"
+                                  : "nicht erreichbar"}
+                              </div>
+                              {known && <div>Bereits eingerichtet</div>}
+                            </td>
+                            <td>
+                              {access[found.address] && (
+                                <p role="status">
+                                  {access[found.address].message}
+                                </p>
+                              )}
+                              {!known &&
+                                access[found.address]?.status !==
+                                  "enrolled" && (
+                                  <button
+                                    className="secondary"
+                                    disabled={
+                                      !!busy || running || !found.ssh_reachable
+                                    }
+                                    onClick={() =>
+                                      onConfigure(
+                                        found.address,
+                                        scan!.config.ssh_port,
+                                      )
+                                    }
+                                  >
+                                    Einzeln einrichten
+                                  </button>
+                                )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
           </div>
           <details className="detail-section">
             <summary>

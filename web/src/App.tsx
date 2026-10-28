@@ -762,6 +762,15 @@ export default function App() {
                         <div
                           className={"overview-metric " + metric.tone}
                           key={metric.label}
+                          data-surface-topic={
+                            metric.filter === "jobs"
+                              ? "activity"
+                              : metric.filter === "saved"
+                                ? "archive"
+                                : metric.filter === "attention"
+                                  ? "recovery"
+                                  : "server"
+                          }
                         >
                           <dt>
                             {(() => {

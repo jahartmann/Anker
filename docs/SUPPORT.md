@@ -1,5 +1,11 @@
 # Unterstützungsstand
 
+## Standortkarten und Gestaltung in v0.2.19
+
+Die lokale Browserprüfung umfasst 330 Fälle. Acht zusätzliche Abschlussprüfungen decken die fertige Themenzuordnung, Dialoge und Kontraste bei Hover und Tastaturfokus ab. Die Gestaltungsmatrix prüft sechs Hauptansichten, fünf Hostregister und sieben Einstellungsbereiche bei Desktop- und Mobilbreite. Namens- und Gruppierungsprüfungen decken Abkürzungen, Ziffern und FQDNs, gemeinsame PVE-/PBS-Namen über Netzgrenzen, `/24`-Vorschläge, manuelle Vorrangregeln, mehrdeutige Standorte, Filter und die im Browser gespeicherte Auswahl ab. Die Netzsuche behält ausdrückliche Auswahl und SSH-Identitätsbestätigung bei.
+
+Automatische Standorte sind nachvollziehbare Vorschläge und keine verifizierte Standortinventarisierung. Nach Servertyp sortierte eingerichtete Hosts verwenden Inventardaten; die Netzsuche benennt die Erkennung anhand der Webantwort. Vor der Veröffentlichung werden Go Race/Vet, Python, die vollständige Browsersuite, echte systemd-Integration sowie signierte Linux-Pakete im Release-Workflow erneut geprüft.
+
 ## Sicherungsdiagnosen und Gestaltung in v0.2.18
 
 Gezielte Go-Regressionen prüfen die verständliche Einordnung geschützter Rohwarnungen, den Schutz von Zugangsdaten, sichere Pfadmetadaten, die Anzeige historischer Sicherungswarnungen vor dem Öffnen der Dateien und die Unterscheidung von Pfadformat-, Berechtigungs-, Datenbank- und Metadatenfehlern. Python-Prüfungen decken die konkreteren Formatgründe im Hosthelfer ab. Diese Tests reparieren keine unbekannten Konfigurationen realer PBS-/PVE-Hosts; ein konkreter Fehler dort benötigt weiterhin seine Originalmeldung und eine Prüfung am betroffenen Host.

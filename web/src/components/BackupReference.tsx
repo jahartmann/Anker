@@ -141,6 +141,7 @@ export default function BackupReferencePanel({
   return (
     <section
       className="backup-reference"
+      data-surface-topic="archive"
       aria-label={`Referenz für ${hostName}`}
     >
       <div className="backup-reference-head">

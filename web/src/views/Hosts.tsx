@@ -1,3 +1,12 @@
+import {
+  groupHosts,
+  groupingOptions,
+  readHostGrouping,
+  serverType,
+  serverTypeLabel,
+  serverPalette,
+  type HostGrouping,
+} from "../hostGrouping";
 import HostDiscovery from "./HostDiscovery";
 import {
   ServerRack as Server,
@@ -705,6 +714,16 @@ export default function Hosts({
   }>();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("");
+  const [grouping, setGrouping] = useState<HostGrouping>(readHostGrouping);
+  function changeGrouping(value: HostGrouping) {
+    setGrouping(value);
+    setPage(1);
+    try {
+      localStorage.setItem("anker.hostGrouping", value);
+    } catch {
+      /* Storage may be unavailable. */
+    }
+  }
   const [stateFilter, setStateFilter] =
     useState<HostStateFilter>(initialStateFilter);
   const [page, setPage] = useState(1);
@@ -810,7 +829,25 @@ export default function Hosts({
               ? h.enabled && hostState(h, status).tone !== "success"
               : h.enabled && hostState(h, status).tone === "success")),
   );
+  const inventoryBuckets = groupHosts(status.hosts, grouping);
+  const filteredIDs = new Set(hosts.map((host) => host.id));
+  const orderedHosts = inventoryBuckets.flatMap((bucket) =>
+    bucket.hosts.filter((host) => filteredIDs.has(host.id)),
+  );
   const currentPage = Math.min(page, Math.max(1, Math.ceil(hosts.length / 8)));
+  const visibleIDs = new Set(
+    orderedHosts
+      .slice((currentPage - 1) * 8, currentPage * 8)
+      .map((host) => host.id),
+  );
+  const visibleBuckets = inventoryBuckets
+    .map((bucket) => ({
+      ...bucket,
+      palette: serverPalette(bucket.hosts),
+      matching: bucket.hosts.filter((host) => filteredIDs.has(host.id)),
+      hosts: bucket.hosts.filter((host) => visibleIDs.has(host.id)),
+    }))
+    .filter((bucket) => bucket.hosts.length > 0);
   const saved = status.hosts.filter(
     (h) => hostState(h, status).tone === "success",
   ).length;
@@ -1632,7 +1669,9 @@ export default function Hosts({
               >
                 <option value="">Alle Gruppen</option>
                 {groups.map((g) => (
-                  <option key={g}>{g}</option>
+                  <option key={g} value={g}>
+                    {displayHostName(g)}
+                  </option>
                 ))}
               </select>
               <select
@@ -1650,113 +1689,218 @@ export default function Hosts({
                 <option value="paused">Pausiert</option>
               </select>
             </div>
+            <div className="host-organization">
+              <div>
+                <Network size={19} aria-hidden="true" />
+                <strong>Deine Infrastruktur</strong>
+                <span>
+                  {inventoryBuckets.length}{" "}
+                  {grouping === "type"
+                    ? "Servertypen"
+                    : grouping === "none"
+                      ? "Ansicht"
+                      : "Bereiche"}
+                </span>
+              </div>
+              <label>
+                Ansicht gruppieren
+                <select
+                  aria-label="Ansicht gruppieren"
+                  value={grouping}
+                  onChange={(event) =>
+                    changeGrouping(event.target.value as HostGrouping)
+                  }
+                >
+                  {groupingOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p>
+                Manuelle Hostgruppen haben Vorrang. Automatische Standorte sind
+                Vorschläge aus Namen oder IPv4-Netzen. Über die Gruppe in den
+                Hosteinstellungen kannst du sie korrigieren. Diese Ansicht wird
+                in diesem Browser gespeichert.
+              </p>
+            </div>
             {hosts.length ? (
-              <div className="table-scroll data-surface">
-                <table className="host-table">
-                  <thead>
-                    <tr>
-                      <th>Host</th>
-                      <th>Gruppe</th>
-                      <th>Letzte Sicherung</th>
-                      <th>Status</th>
-                      <th className="right">Aktionen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hosts
-                      .slice((currentPage - 1) * 8, currentPage * 8)
-                      .map((h) => {
-                        const state = hostState(h, status);
+              <div className="host-site-grid">
+                {visibleBuckets.map((bucket) => (
+                  <section
+                    className="host-site"
+                    key={bucket.key}
+                    aria-label={`Hostbereich ${bucket.label}`}
+                    data-inferred={bucket.inferred}
+                    data-server-kind={bucket.palette}
+                  >
+                    {grouping !== "none" && (
+                      <header className="host-site-header">
+                        <span className="host-site-symbol">
+                          <Network size={22} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <div className="host-site-eyebrow">
+                            {grouping === "type"
+                              ? "Servertyp"
+                              : grouping === "network"
+                                ? "IP-Netz"
+                                : bucket.inferred
+                                  ? "Standortvorschlag"
+                                  : "Hostbereich"}
+                          </div>
+                          <h2>{bucket.label}</h2>
+                          <p>{bucket.reason}</p>
+                        </div>
+                        <span className="host-site-count">
+                          {bucket.hosts.length === bucket.matching.length
+                            ? `${bucket.hosts.length} ${bucket.hosts.length === 1 ? "Host" : "Hosts"}`
+                            : `${bucket.hosts.length} von ${bucket.matching.length} Hosts`}
+                        </span>
+                      </header>
+                    )}
+                    <div
+                      className="host-site-services"
+                      aria-label="Serverrollen im Bereich"
+                    >
+                      {(["pve", "pbs", "unknown"] as const).map((type) => {
+                        const count = bucket.matching.filter(
+                          (host) => serverType(host) === type,
+                        ).length;
                         return (
-                          <tr key={h.id}>
-                            <td>
-                              <button
-                                className="name-link"
-                                aria-label={h.name}
-                                onClick={() => {
-                                  setSelected(h.id);
-                                  setTab("Übersicht");
-                                }}
-                              >
-                                <HostName name={h.name} />
-                              </button>
-                              <div className="secondary-line mono">
-                                {h.address}
-                              </div>
-                              <div className="secondary-line host-backup-mobile">
-                                Letzter Stand:{" "}
-                                <BackupAge
-                                  createdAt={state.backup?.created_at}
-                                />
-                              </div>
-                            </td>
-                            <td>
-                              <span
-                                className={
-                                  h.cluster_id
-                                    ? "group-tag cluster"
-                                    : "group-tag"
-                                }
-                              >
-                                {h.group || "Standalone"}
-                              </span>
-                            </td>
-                            <td className="date">
-                              <BackupAge createdAt={state.backup?.created_at} />
-                            </td>
-                            <td>
-                              <span className={"state " + state.tone}>
-                                {state.text}
-                              </span>
-                              {status.jobs.some(
-                                (j) =>
-                                  j.host_id === h.id &&
-                                  j.kind === "backup" &&
-                                  ["queued", "running"].includes(j.state),
-                              ) && (
-                                <div className="secondary-line">
-                                  <State
-                                    value={
-                                      status.jobs.some(
-                                        (j) =>
-                                          j.host_id === h.id &&
-                                          j.kind === "backup" &&
-                                          j.state === "running",
-                                      )
-                                        ? "running"
-                                        : "queued"
-                                    }
-                                    label={
-                                      status.jobs.some(
-                                        (j) =>
-                                          j.host_id === h.id &&
-                                          j.kind === "backup" &&
-                                          j.state === "running",
-                                      )
-                                        ? "Sicherung läuft"
-                                        : "Sicherung wartet"
-                                    }
-                                  />
-                                </div>
-                              )}
-                            </td>
-                            <td className="right">
-                              <button
-                                className="text-button"
-                                onClick={() => {
-                                  setSelected(h.id);
-                                  setTab("Übersicht");
-                                }}
-                              >
-                                Öffnen{" "}
-                                <ChevronRight size={14} aria-hidden="true" />
-                              </button>
-                            </td>
-                          </tr>
+                          count > 0 && (
+                            <span key={type} className={`server-role ${type}`}>
+                              {type === "pve"
+                                ? "PVE · Virtualisierung"
+                                : type === "pbs"
+                                  ? "PBS · Backupserver"
+                                  : "Servertyp offen"}
+                              <b>{count}</b>
+                            </span>
+                          )
                         );
                       })}
-                  </tbody>
-                </table>
+                    </div>
+                    <div className="table-scroll data-surface">
+                      <table className="host-table">
+                        <thead>
+                          <tr>
+                            <th>Host</th>
+                            <th>Gruppe</th>
+                            <th>Letzte Sicherung</th>
+                            <th>Status</th>
+                            <th className="right">Aktionen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bucket.hosts.map((h) => {
+                            const state = hostState(h, status);
+                            return (
+                              <tr key={h.id}>
+                                <td>
+                                  <button
+                                    className="name-link"
+                                    aria-label={h.name}
+                                    onClick={() => {
+                                      setSelected(h.id);
+                                      setTab("Übersicht");
+                                    }}
+                                  >
+                                    <HostName name={h.name} />
+                                  </button>
+                                  <div className="host-node-meta">
+                                    <span
+                                      className={`server-role ${serverType(h)}`}
+                                    >
+                                      {serverTypeLabel(h)}
+                                    </span>
+                                    <span className="mono">{h.address}</span>
+                                  </div>
+                                  <div className="secondary-line host-backup-mobile">
+                                    Letzter Stand:{" "}
+                                    <BackupAge
+                                      createdAt={state.backup?.created_at}
+                                    />
+                                  </div>
+                                </td>
+                                <td>
+                                  <span
+                                    className={
+                                      h.cluster_id
+                                        ? "group-tag cluster"
+                                        : "group-tag"
+                                    }
+                                  >
+                                    {h.group
+                                      ? displayHostName(h.group)
+                                      : "Nicht festgelegt"}
+                                  </span>
+                                </td>
+                                <td className="date">
+                                  <BackupAge
+                                    createdAt={state.backup?.created_at}
+                                  />
+                                </td>
+                                <td>
+                                  <span className={"state " + state.tone}>
+                                    {state.text}
+                                  </span>
+                                  {status.jobs.some(
+                                    (j) =>
+                                      j.host_id === h.id &&
+                                      j.kind === "backup" &&
+                                      ["queued", "running"].includes(j.state),
+                                  ) && (
+                                    <div className="secondary-line">
+                                      <State
+                                        value={
+                                          status.jobs.some(
+                                            (j) =>
+                                              j.host_id === h.id &&
+                                              j.kind === "backup" &&
+                                              j.state === "running",
+                                          )
+                                            ? "running"
+                                            : "queued"
+                                        }
+                                        label={
+                                          status.jobs.some(
+                                            (j) =>
+                                              j.host_id === h.id &&
+                                              j.kind === "backup" &&
+                                              j.state === "running",
+                                          )
+                                            ? "Sicherung läuft"
+                                            : "Sicherung wartet"
+                                        }
+                                      />
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="right">
+                                  <button
+                                    className="text-button"
+                                    onClick={() => {
+                                      setSelected(h.id);
+                                      setTab("Übersicht");
+                                    }}
+                                  >
+                                    Öffnen{" "}
+                                    <ChevronRight
+                                      size={14}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ))}
               </div>
             ) : (
               <Empty
@@ -1833,6 +1977,8 @@ export default function Hosts({
         )}
         {discoveryOpen && (
           <HostDiscovery
+            grouping={grouping}
+            onGroupingChange={changeGrouping}
             hosts={status.hosts}
             onClose={() => setDiscoveryOpen(false)}
             onSaved={refresh}

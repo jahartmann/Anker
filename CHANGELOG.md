@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+## v0.2.19 – 28. Oktober 2026
+
+- Kräftige Themenköpfe, technische Symbole und versetzte Papierschatten durchgängig in allen Arbeitsbereichen, Hostregistern, Einstellungen, Aufträgen, Dateiansichten, Vergleichen und Wiederherstellungsdetails. Gemeinsame Farbpalette für Inhaltsthemen und Buttons; Statusbeschriftungen bleiben separat. Einstellungsformulare übernehmen das gewählte Thema statt auf Blau zurückzufallen. Kontrast von Dialog-Schließen und Verlaufsaktionen auf farbigen Flächen korrigiert.
+
+- Standortkarten für Hostübersicht und Netzsuchergebnisse mit erklärten Vorschlägen aus gemeinsamen Namensteilen und IPv4-Netzen. Manuelle Hostgruppen haben Vorrang, mehrdeutige Standorte bleiben getrennt. Gruppierung wahlweise automatisch, nach Standort, Servertyp, `/24`-Netz oder ohne Gruppierung; Auswahl im Browser gespeichert. Suche, Filter und begrenzte Seitengröße bleiben erhalten.
+- Namensanzeige berücksichtigt CP, RS, GS, FZ, Gym und technische Abkürzungen einschließlich nummerierter Namen und FQDNs. Kräftigere Infrastrukturfarben, sichtbare PVE-/PBS-Rollen, Standortkopf und versetzte Papierkartenschatten für Desktop und Mobilgeräte.
+
 ## v0.2.18 – 28. Oktober 2026
 
 - Durchgängige Papierkarten-Gestaltung für alle Hauptansichten, Hostregister und Einstellungsbereiche sowie Vergleiche, Konfigurationsreise, Cluster-Sicherungssets, Wiederherstellungsplanung und Ergebnisnachweise. Eine gemeinsame Themenbasis gilt auch außerhalb der Seite in Dialogen, Anmeldung, leeren Ansichten, Fehlermeldungen, Tabellen, Formularen und technischen Details. Versetzte Schatten bleiben erhalten; Dialogtitel zeigen das passende technische Symbol.

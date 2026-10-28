@@ -47,6 +47,26 @@ test("all six workspaces keep the paper hierarchy on desktop and phones", async 
         page.getByRole("heading", { name, exact: true }).first(),
       ).toBeVisible();
       await fits(page);
+      const headingPaint = await page
+        .locator(".page-heading")
+        .first()
+        .evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            edge: parseFloat(style.borderTopWidth),
+          };
+        });
+      const channels = headingPaint.background
+        .match(/\d+/g)!
+        .slice(0, 3)
+        .map(Number);
+      expect(
+        Math.max(...channels) - Math.min(...channels),
+      ).toBeGreaterThanOrEqual(18);
+      expect(headingPaint.shadow).not.toBe("none");
+      expect(headingPaint.edge).toBeGreaterThanOrEqual(3);
       if (name === "Sicherungen") {
         const shadows = await page
           .locator(".backup-focus-grid > section, .backup-collection")
@@ -116,10 +136,34 @@ test("all host tabs and seven settings areas use the same readable surfaces", as
         .getByRole("button", { name, exact: true })
         .click();
       await expect(page.locator(".settings-context")).toBeVisible();
+      if (["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(name)) {
+        const legend = page.locator(".settings-group legend").first();
+        if (await legend.count()) {
+          expect(
+            await legend.evaluate(
+              (element) => getComputedStyle(element).backgroundColor,
+            ),
+          ).toBe(
+            await page
+              .locator(".settings-context")
+              .evaluate((element) => getComputedStyle(element).backgroundColor),
+          );
+        }
+      }
       if (["Zugriff", "Zertifikate", "Updates", "Betrieb"].includes(name))
         await expect(
           page.locator(".paper-panel:visible").first(),
         ).toBeVisible();
+      if (name === "Betrieb") {
+        const summaryColors = await page
+          .locator(".betrieb-section .detail-disclosure > summary")
+          .evaluateAll((elements) =>
+            elements.map(
+              (element) => getComputedStyle(element).backgroundColor,
+            ),
+          );
+        expect(new Set(summaryColors).size).toBeGreaterThanOrEqual(2);
+      }
       await fits(page);
       await page.screenshot({
         path: `/tmp/anker-design-settings-${width}-${name}.png`,
