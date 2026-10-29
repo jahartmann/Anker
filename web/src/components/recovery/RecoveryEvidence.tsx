@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import { useMemo, useState } from "react";
 import { Field, Pagination } from "../shared";
 export default function RecoveryEvidence({
@@ -11,6 +12,7 @@ export default function RecoveryEvidence({
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-evidence", 25);
   const matches = useMemo(
     () =>
       items.filter((item) =>
@@ -18,9 +20,12 @@ export default function RecoveryEvidence({
       ),
     [items, query],
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(matches.length / listSize)),
+  );
   const rows = matches
-    .slice((current - 1) * 25, current * 25)
+    .slice((current - 1) * listSize, current * listSize)
     .map((item, i) => <li key={(current - 1) * 25 + i}>{item}</li>);
   return (
     <details
@@ -54,7 +59,8 @@ export default function RecoveryEvidence({
         {items.length > 25 && (
           <Pagination
             page={current}
-            pageSize={25}
+            pageSize={listSize}
+            onPageSizeChange={setListSize}
             total={matches.length}
             onPageChange={setPage}
             label={title}

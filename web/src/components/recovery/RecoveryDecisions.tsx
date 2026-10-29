@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import type { FileDecision, RecoveryPreview } from "../../api";
@@ -16,10 +17,14 @@ export default function RecoveryDecisions({
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-decisions", 25);
   const rows = d.selectedPaths.filter((p) =>
     p.toLowerCase().includes(query.toLowerCase()),
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 25)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(rows.length / listSize)),
+  );
   if (!d.inspection) return null;
   return (
     <section aria-label="Entscheidungen" data-surface-topic="recovery">
@@ -102,66 +107,74 @@ export default function RecoveryDecisions({
         />
       </Field>
       <div className="recovery-decision-files">
-        {rows.slice((current - 1) * 25, current * 25).map((path) => (
-          <div key={path}>
-            <DraftFileComparison
-              key={d.previewKey + path}
-              draft={d}
-              path={path}
-              canReveal={canReveal}
-            />
-            <Field
-              label={"Entscheidung für " + path}
-              hint={
-                "Zielaufnahme: " +
-                ({
-                  read: "gelesen",
-                  missing: "nicht vorhanden",
-                  unreadable: "nicht lesbar",
-                  unsupported: "nicht unterstützt",
-                  too_large: "zu groß",
-                  changed: "während Prüfung verändert",
-                  limit: "Prüfgrenze erreicht",
-                }[
-                  d.inspection?.files?.find((f) => f.path === path)?.state || ""
-                ] || "unbekannt")
-              }
-            >
-              <select
-                value={d.decisions[path] || ""}
-                onChange={(e) =>
-                  d.setDecisions((old) => ({
-                    ...old,
-                    [path]: e.target.value as FileDecision,
-                  }))
+        {rows
+          .slice((current - 1) * listSize, current * listSize)
+          .map((path) => (
+            <div key={path}>
+              <DraftFileComparison
+                key={d.previewKey + path}
+                draft={d}
+                path={path}
+                canReveal={canReveal}
+              />
+              <Field
+                label={"Entscheidung für " + path}
+                hint={
+                  "Zielaufnahme: " +
+                  ({
+                    read: "gelesen",
+                    missing: "nicht vorhanden",
+                    unreadable: "nicht lesbar",
+                    unsupported: "nicht unterstützt",
+                    too_large: "zu groß",
+                    changed: "während Prüfung verändert",
+                    limit: "Prüfgrenze erreicht",
+                  }[
+                    d.inspection?.files?.find((f) => f.path === path)?.state ||
+                      ""
+                  ] || "unbekannt")
                 }
               >
-                <option value="">Entscheidung auswählen</option>
-                {d.removeFiles.includes(path) ? (
-                  <>
-                    <option value="remove">Datei ausdrücklich entfernen</option>
-                    <option value="keep">Ziel behalten · nicht löschen</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="backup">
-                      Original aus Sicherung übernehmen
-                    </option>
-                    <option value="prepared">
-                      Vorbereitete Fassung verwenden
-                    </option>
-                    <option value="keep">Ziel behalten</option>
-                    <option value="manual">Manuell bearbeiten</option>
-                  </>
-                )}
-              </select>
-            </Field>
-          </div>
-        ))}
+                <select
+                  value={d.decisions[path] || ""}
+                  onChange={(e) =>
+                    d.setDecisions((old) => ({
+                      ...old,
+                      [path]: e.target.value as FileDecision,
+                    }))
+                  }
+                >
+                  <option value="">Entscheidung auswählen</option>
+                  {d.removeFiles.includes(path) ? (
+                    <>
+                      <option value="remove">
+                        Datei ausdrücklich entfernen
+                      </option>
+                      <option value="keep">
+                        Ziel behalten · nicht löschen
+                      </option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="backup">
+                        Original aus Sicherung übernehmen
+                      </option>
+                      <option value="prepared">
+                        Vorbereitete Fassung verwenden
+                      </option>
+                      <option value="keep">Ziel behalten</option>
+                      <option value="manual">Manuell bearbeiten</option>
+                    </>
+                  )}
+                </select>
+              </Field>
+            </div>
+          ))}
       </div>
       <Pagination
         page={current}
-        pageSize={25}
+        pageSize={listSize}
+        onPageSizeChange={setListSize}
         total={rows.length}
         onPageChange={setPage}
         label="Dateientscheidungen"

@@ -259,6 +259,47 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	path := strings.Join(parts[1:], "/")
 	method := r.Method
+	if path == "backup-remediation" || strings.HasPrefix(path, "backup-remediation/") {
+		segments := strings.Split(path, "/")
+		if len(segments) > 2 {
+			return fail(404, "Sammelauftrag nicht gefunden")
+		}
+		id := ""
+		if len(segments) == 2 {
+			id = segments[1]
+		}
+		if method == "GET" && id == "" {
+			plan, err := s.BackupRemediationPlan()
+			if err != nil {
+				return err
+			}
+			return jsonOut(w, plan)
+		}
+		if method == "GET" && id != "" {
+			run, err := s.BackupRemediationRun(u.ID, id)
+			if err != nil {
+				return err
+			}
+			return jsonOut(w, run)
+		}
+		if method == "POST" && id == "" {
+			if err := require(u, "restore"); err != nil {
+				return err
+			}
+			var request RemediationRequest
+			if err := input(r, &request); err != nil {
+				return err
+			}
+			run, err := s.StartBackupRemediation(u.ID, request)
+			if err != nil {
+				return err
+			}
+			s.LogAudit(u.ID, "backup.remediation", run.ID)
+			return jsonOut(w, run)
+		}
+		return fail(405, "GET oder POST erforderlich")
+
+	}
 	switch path {
 	case "storage", "storage/state", "storage/plan", "storage/grow":
 		return s.capacity(w, r, u)

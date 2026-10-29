@@ -1,3 +1,6 @@
+import { useListPageSize, PageSizeSelect } from "../listPageSize";
+import JobProgress from "../components/JobProgress";
+import { ArrowUpRight, ListFilter } from "lucide-react";
 import { TopicSymbol } from "../components/InfrastructureDetails";
 import { HostName } from "../hostNames";
 import BackupIssues from "../components/BackupIssues";
@@ -98,7 +101,12 @@ export default function Jobs({
     (a, b) =>
       b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
   );
-  const pageSize = limit || 15;
+  const [historySize, setHistorySize] = useListPageSize("jobs", 15);
+  const [recentSize, setRecentSize] = useListPageSize(
+    "recent-jobs",
+    limit || 5,
+  );
+  const pageSize = limit ? recentSize : historySize;
   const currentPage = Math.min(
     page,
     Math.max(1, Math.ceil(history.length / pageSize)),
@@ -291,8 +299,28 @@ export default function Jobs({
           ))}
         </div>
       )}
+      {!limit && (
+        <ActiveJobs
+          key={[query, host, kind, state].join("\0")}
+          status={{ ...status, jobs: filtered }}
+          openJob={load}
+        />
+      )}
       {!limit && status.jobs.length > 0 && (
         <div className="collection-toolbar jobs-toolbar">
+          <PageSizeSelect
+            value={historySize}
+            initial={15}
+            label="Aufträge pro Seite"
+            onChange={(size) => {
+              setHistorySize(size);
+              setPage(1);
+            }}
+          />
+          <span className="jobs-filter-caption">
+            <ListFilter size={16} aria-hidden="true" />
+            Suche & Auswahl
+          </span>
           <Field label="Aufträge suchen">
             <input
               type="search"
@@ -382,13 +410,6 @@ export default function Jobs({
           Filter zurücksetzen
         </button>
       )}
-      {!limit && (
-        <ActiveJobs
-          key={[query, host, kind, state].join("\0")}
-          status={{ ...status, jobs: filtered }}
-          openJob={load}
-        />
-      )}
       {!limit && history.length > 0 && (
         <div className="section-heading jobs-history-heading">
           <h3>Auftragsverlauf</h3>
@@ -396,6 +417,14 @@ export default function Jobs({
             {history.length} abgeschlossen
           </span>
         </div>
+      )}
+      {limit && status.jobs.length > limit && (
+        <PageSizeSelect
+          value={recentSize}
+          initial={limit}
+          label="Letzte Aufträge anzeigen"
+          onChange={setRecentSize}
+        />
       )}
       {jobs.length && limit ? (
         <ul className="jobs-recent-list" aria-label="Letzte Aufträge">
@@ -417,11 +446,11 @@ export default function Jobs({
               </div>
               <div className="jobs-result-actions">{resultAction(job)}</div>
               <button
-                className="text-button"
+                className="job-open-button"
                 aria-label={`Auftrag ${job.id} ansehen`}
                 onClick={() => load(job.id)}
               >
-                Details
+                Ablauf ansehen <ArrowUpRight size={15} aria-hidden="true" />
               </button>
             </li>
           ))}
@@ -433,12 +462,10 @@ export default function Jobs({
               <thead>
                 <tr>
                   <th>Auftrag</th>
-                  <th>Status</th>
-                  <th>Erstellt</th>
-                  <th>Laufzeit</th>
-                  <th>Ergebnis</th>
+                  <th>Status & Ergebnis</th>
+                  <th>Zeitpunkt & Laufzeit</th>
                   <th>
-                    <span className="sr-only">Details</span>
+                    <span className="sr-only">Ablauf</span>
                   </th>
                 </tr>
               </thead>
@@ -457,24 +484,33 @@ export default function Jobs({
                         {j.trigger === "scheduled" ? " · Zeitplan" : ""}
                       </div>
                     </td>
-                    <td>
+                    <td className="job-history-result">
                       <State
                         value={j.state}
                         label={
                           j.state === "successful" ? "Erfolgreich" : undefined
                         }
                       />
+                      <div className="job-history-outcome">
+                        {resultAction(j)}
+                      </div>
                     </td>
-                    <td className="date">{date(j.created_at)}</td>
-                    <td className="date">{jobDuration(j) || "—"}</td>
-                    <td>{resultAction(j)}</td>
+                    <td className="job-history-time">
+                      <span>{date(j.created_at)}</span>
+                      <small>
+                        {jobDuration(j)
+                          ? "Laufzeit " + jobDuration(j)
+                          : "Laufzeit nicht erfasst"}
+                      </small>
+                    </td>
                     <td>
                       <button
-                        className="text-button"
+                        className="job-open-button"
                         aria-label={`Auftrag ${j.id} ansehen`}
                         onClick={() => load(j.id)}
                       >
-                        Details
+                        Ablauf ansehen{" "}
+                        <ArrowUpRight size={15} aria-hidden="true" />
                       </button>
                     </td>
                   </tr>
@@ -516,6 +552,7 @@ export default function Jobs({
         <Dialog
           topic="activity"
           title="Auftragsdetails"
+          wide
           onClose={closeDetail}
           busy={busy}
         >
@@ -528,7 +565,7 @@ export default function Jobs({
           ) : (
             selected && (
               <>
-                <p className="dialog-intro">
+                <p className="dialog-intro job-detail-identity">
                   {labels[selected.kind] || selected.kind} ·{" "}
                   <HostName
                     name={
@@ -537,100 +574,97 @@ export default function Jobs({
                     }
                   />
                 </p>
-                <section
-                  className="job-detail-group"
-                  aria-label="Auftrag und Ausführung"
-                >
-                  <h3 className="topic-heading">
-                    <TopicSymbol topic="activity" />
-                    Auftrag und Ausführung
-                  </h3>
-                  <dl className="update-facts">
-                    <div>
-                      <dt>Auftrag</dt>
-                      <dd className="mono">{selected.id}</dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>
-                        <State
-                          value={selected.state}
-                          label={
-                            selected.state === "successful"
-                              ? "Erfolgreich"
-                              : undefined
-                          }
-                        />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Auslöser</dt>
-                      <dd>
-                        {trigger(selected)}
-                        {selected.scheduled_day
-                          ? " · " + selected.scheduled_day
-                          : ""}
-                      </dd>
-                    </div>
-                  </dl>
-                </section>
-                <section className="job-detail-group" aria-label="Zeitverlauf">
-                  <h3 className="topic-heading">
-                    <TopicSymbol topic="schedule" />
-                    Zeitverlauf
-                  </h3>
-                  <dl className="update-facts">
-                    <div>
-                      <dt>Erstellt</dt>
-                      <dd>{date(selected.created_at)}</dd>
-                    </div>
-                    <div>
-                      <dt>Gestartet</dt>
-                      <dd>
-                        {selected.started_at
-                          ? date(selected.started_at)
-                          : "Nicht erfasst"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Beendet</dt>
-                      <dd>
-                        {selected.finished_at
-                          ? date(selected.finished_at)
-                          : "—"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Versuche</dt>
-                      <dd>
-                        {selected.attempts}
-                        {selected.max_attempts
-                          ? ` von höchstens ${selected.max_attempts}`
-                          : ""}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Laufzeit</dt>
-                      <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
-                    </div>
-                  </dl>
-                </section>
-                {selected.message && (
-                  <p
-                    className={
-                      "notice " +
-                      (selected.retry_at || selected.state === "interrupted"
-                        ? "warning"
-                        : "")
+                <div className="job-detail-status">
+                  <State
+                    value={selected.state}
+                    label={
+                      selected.state === "successful"
+                        ? "Erfolgreich"
+                        : undefined
                     }
-                    aria-live="polite"
+                  />
+                  <span>
+                    {jobDuration(selected)
+                      ? "Laufzeit " + jobDuration(selected)
+                      : "Noch keine Laufzeit"}
+                  </span>
+                  <span>
+                    {trigger(selected)} · Versuch {selected.attempts}
+                    {selected.max_attempts ? ` / ${selected.max_attempts}` : ""}
+                  </span>
+                </div>
+                <JobProgress job={selected} expanded />
+                <details className="job-technical-details">
+                  <summary>Kennung und Zeitverlauf</summary>
+                  <section
+                    className="job-detail-group"
+                    aria-label="Auftrag und Ausführung"
                   >
-                    {selected.message}
-                    {selected.retry_at && (
-                      <> Nächster Versuch: {date(selected.retry_at)}.</>
-                    )}
-                  </p>
-                )}
+                    <h3 className="topic-heading">
+                      <TopicSymbol topic="activity" />
+                      Auftrag und Ausführung
+                    </h3>
+                    <dl className="update-facts">
+                      <div>
+                        <dt>Auftrag</dt>
+                        <dd className="mono">{selected.id}</dd>
+                      </div>
+                      <div>
+                        <dt>Auslöser</dt>
+                        <dd>
+                          {trigger(selected)}
+                          {selected.scheduled_day
+                            ? " · " + selected.scheduled_day
+                            : ""}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+                  <section
+                    className="job-detail-group"
+                    aria-label="Zeitverlauf"
+                  >
+                    <h3 className="topic-heading">
+                      <TopicSymbol topic="schedule" />
+                      Zeitverlauf
+                    </h3>
+                    <dl className="update-facts">
+                      <div>
+                        <dt>Erstellt</dt>
+                        <dd>{date(selected.created_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>Gestartet</dt>
+                        <dd>
+                          {selected.started_at
+                            ? date(selected.started_at)
+                            : "Nicht erfasst"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Beendet</dt>
+                        <dd>
+                          {selected.finished_at
+                            ? date(selected.finished_at)
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Versuche</dt>
+                        <dd>
+                          {selected.attempts}
+                          {selected.max_attempts
+                            ? ` von höchstens ${selected.max_attempts}`
+                            : ""}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Laufzeit</dt>
+                        <dd>{jobDuration(selected) || "Nicht erfasst"}</dd>
+                      </div>
+                    </dl>
+                  </section>
+                </details>
                 {selected.last_error && (
                   <details className="job-last-error">
                     <summary>Letzter Verbindungsfehler</summary>
@@ -643,9 +677,14 @@ export default function Jobs({
                     Wiederholte Startanfragen öffnen diesen Auftrag.
                   </p>
                 )}
-                {selected.error && selected.error !== selected.message && (
-                  <p className="notice warning">{selected.error}</p>
-                )}
+                {selected.error &&
+                  selected.error !== selected.message &&
+                  !(
+                    selected.kind === "backup" &&
+                    (selected.issues?.length ||
+                      status.backups.find((b) => b.id === selected.result_id)
+                        ?.issues?.length)
+                  ) && <p className="notice warning">{selected.error}</p>}
                 {selected.kind === "backup" && (
                   <BackupIssues
                     backup={status.backups.find(
@@ -724,7 +763,14 @@ export default function Jobs({
                     </footer>
                   </>
                 ) : (
-                  <footer className="dialog-footer">
+                  <footer className="dialog-footer job-detail-actions">
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={closeDetail}
+                    >
+                      Schließen
+                    </button>
                     {canManage && finished(selected) && (
                       <button
                         className="text-button"
@@ -744,7 +790,7 @@ export default function Jobs({
                           ? "Abbruch angefordert"
                           : busy
                             ? "Wird angefordert …"
-                            : "Abbrechen"}
+                            : "Auftrag abbrechen"}
                       </button>
                     )}
                     {canEdit &&

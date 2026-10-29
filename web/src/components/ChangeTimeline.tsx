@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import ChangeHighlights from "./ChangeHighlights";
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, GitCompareArrows, Check, CircleDot } from "lucide-react";
@@ -195,6 +196,7 @@ export default function ChangeTimeline({
 }) {
   const [open, setOpen] = useState(initiallyOpen);
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("change-timeline", 4);
   const sorted = useMemo(
     () =>
       backups
@@ -211,7 +213,10 @@ export default function ChangeTimeline({
         ),
     [backups],
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(sorted.length / 4)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(sorted.length / listSize)),
+  );
   return (
     <details
       className="change-timeline"
@@ -243,33 +248,36 @@ export default function ChangeTimeline({
               bleiben im Sicherungsverlauf erreichbar.
             </p>
           )}
-          {sorted.slice((current - 1) * 4, current * 4).map((after, offset) => {
-            const index = (current - 1) * 4 + offset;
-            const before = sorted
-              .slice(index + 1)
-              .find(
-                (b) =>
-                  b.host_id === after.host_id &&
-                  Date.parse(b.created_at) < Date.parse(after.created_at),
+          {sorted
+            .slice((current - 1) * listSize, current * listSize)
+            .map((after, offset) => {
+              const index = (current - 1) * listSize + offset;
+              const before = sorted
+                .slice(index + 1)
+                .find(
+                  (b) =>
+                    b.host_id === after.host_id &&
+                    Date.parse(b.created_at) < Date.parse(after.created_at),
+                );
+              return (
+                <TimelineEvent
+                  key={after.id}
+                  latest={index === 0}
+                  before={before}
+                  after={after}
+                  onCompare={(from, to) => {
+                    onCompare(from, to);
+                  }}
+                />
               );
-            return (
-              <TimelineEvent
-                key={after.id}
-                latest={index === 0}
-                before={before}
-                after={after}
-                onCompare={(from, to) => {
-                  onCompare(from, to);
-                }}
-              />
-            );
-          })}
+            })}
           {!sorted.length && (
             <p>Noch keine datierten Sicherungsstände vorhanden.</p>
           )}
           <Pagination
             page={current}
-            pageSize={4}
+            pageSize={listSize}
+            onPageSizeChange={setListSize}
             total={sorted.length}
             onPageChange={setPage}
             label="Änderungszeitpunkte"

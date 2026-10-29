@@ -1,3 +1,5 @@
+import BackupRemediation from "../components/BackupRemediation";
+import { useListPageSize, PageSizeSelect } from "../listPageSize";
 import {
   groupHosts,
   groupingOptions,
@@ -673,6 +675,7 @@ function BackupAge({ createdAt }: { createdAt?: string }) {
 }
 
 export default function Hosts({
+  actorID = "",
   status,
   notify,
   refresh,
@@ -690,6 +693,7 @@ export default function Hosts({
   initialStateFilter = "",
   onInitialStateFilterConsumed,
 }: {
+  actorID?: string;
   status: Status;
   notify: Notify;
   refresh: () => void;
@@ -834,10 +838,14 @@ export default function Hosts({
   const orderedHosts = inventoryBuckets.flatMap((bucket) =>
     bucket.hosts.filter((host) => filteredIDs.has(host.id)),
   );
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(hosts.length / 8)));
+  const [hostPageSize, setHostPageSize] = useListPageSize("hosts", 8);
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(hosts.length / hostPageSize)),
+  );
   const visibleIDs = new Set(
     orderedHosts
-      .slice((currentPage - 1) * 8, currentPage * 8)
+      .slice((currentPage - 1) * hostPageSize, currentPage * hostPageSize)
       .map((host) => host.id),
   );
   const visibleBuckets = inventoryBuckets
@@ -1579,6 +1587,14 @@ export default function Hosts({
                 )
               }
             />
+            <BackupRemediation
+              status={status}
+              actorID={actorID}
+              canEdit={canOperate}
+              refresh={refresh}
+              openJob={openJob}
+              openBackup={openBackup}
+            />
             {status.hosts.length > 0 && (
               <section
                 className="host-list-focus"
@@ -1702,6 +1718,15 @@ export default function Hosts({
                 <option value="paused">Pausiert</option>
               </select>
             </div>
+            <PageSizeSelect
+              value={hostPageSize}
+              initial={8}
+              label="Hosts pro Seite"
+              onChange={(size) => {
+                setHostPageSize(size);
+                setPage(1);
+              }}
+            />
             <div className="host-organization">
               <div>
                 <Network size={19} aria-hidden="true" />
@@ -1934,7 +1959,7 @@ export default function Hosts({
             {hosts.length > 0 && (
               <Pagination
                 page={currentPage}
-                pageSize={8}
+                pageSize={hostPageSize}
                 total={hosts.length}
                 onPageChange={setPage}
                 label="Hosts"

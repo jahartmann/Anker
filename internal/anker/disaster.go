@@ -659,7 +659,7 @@ func disasterValidate(p *disasterPackage) error {
 		}
 		rows[key] = true
 		switch r.Bucket {
-		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "recovery-recipes", "users", "credentials", "settings":
+		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "recovery-recipes", "users", "credentials", "settings", "backup_remediation":
 			var object map[string]json.RawMessage
 			if err := json.Unmarshal(r.Value, &object); err != nil || object == nil {
 				return errors.New("Katalogobjekt fehlt oder ist ungültig")
@@ -669,6 +669,12 @@ func disasterValidate(p *disasterPackage) error {
 				if json.Unmarshal(object["id"], &id) != nil || id != r.ID {
 					return errors.New("Katalogobjekt-ID widerspricht Inventar")
 				}
+			}
+		}
+		if r.Bucket == "backup_remediation" {
+			var run RemediationRun
+			if json.Unmarshal(r.Value, &run) != nil || run.ID != r.ID || !validRemediationRun(run) {
+				return errors.New("Ungültiger Sammelauftrag im Katalog")
 			}
 		}
 		if r.Bucket == "hosts" || r.Bucket == "backups" || r.Bucket == "plans" || r.Bucket == "recovery-inspections" || r.Bucket == "recovery-recipes" {
@@ -1188,6 +1194,8 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 					object["state"] = json.RawMessage(`"interrupted"`)
 					object["error"] = json.RawMessage(`"Disaster-Import: Auftrag wird nicht fortgesetzt"`)
 					object["finished_at"], _ = json.Marshal(now())
+					object["retry_at"] = json.RawMessage(`""`)
+					object["message"] = object["error"]
 					// Imported active capture jobs receive durable interruption evidence
 					// in the same isolation transaction, independent of job removal.
 					raw, e := json.Marshal(object)
@@ -1197,6 +1205,22 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 					var interrupted Job
 					if e = json.Unmarshal(raw, &interrupted); e != nil {
 						return e
+					}
+					// Preserve unknown future stage fields while closing operational state.
+					if rawStages, ok := object["stages"]; ok {
+						var stages []map[string]json.RawMessage
+						if e = json.Unmarshal(rawStages, &stages); e != nil {
+							return e
+						}
+						for _, stage := range stages {
+							var state string
+							if json.Unmarshal(stage["state"], &state) == nil && state == "running" {
+								stage["state"] = json.RawMessage(`"interrupted"`)
+								stage["finished_at"], _ = json.Marshal(now())
+								stage["updated_at"] = stage["finished_at"]
+							}
+						}
+						object["stages"], _ = json.Marshal(stages)
 					}
 					if e = putClusterSetOutcome(tx, interrupted); e != nil {
 						return e
@@ -1208,6 +1232,20 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 				return err
 			}
 			if _, err = tx.Exec("UPDATE records SET value=? WHERE bucket=? AND id=?", data, r.Bucket, r.ID); err != nil {
+				return err
+			}
+		case "backup_remediation":
+			var run RemediationRun
+			if err = json.Unmarshal(r.Value, &run); err != nil || !validRemediationRun(run) {
+				return errors.New("Ungültiger importierter Sammelauftrag")
+			}
+			for i := range run.Targets {
+				if run.Targets[i].State == "pending" {
+					run.Targets[i].State = "skipped"
+					run.Targets[i].Message = "Disaster-Import: nicht gestartete Sammelaktion wird nicht fortgesetzt. Bei Bedarf eine neue Aktion ausdrücklich starten."
+				}
+			}
+			if err = txPut(tx, "backup_remediation", r.ID, run); err != nil {
 				return err
 			}
 		case "recovery-inspections":

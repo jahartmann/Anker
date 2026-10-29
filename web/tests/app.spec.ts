@@ -1800,6 +1800,7 @@ test("job details link to their backup and removing history preserves it", async
   await page.getByRole("button", { name: "Aufträge", exact: true }).click();
   await page.getByRole("button", { name: `Auftrag ${job.id} ansehen` }).click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByText("Kennung und Zeitverlauf", { exact: true }).click();
   await expect(dialog.getByText(job.id, { exact: true })).toBeVisible();
   await expect(dialog.getByText("Manuell", { exact: true })).toBeVisible();
   await dialog
@@ -1867,7 +1868,9 @@ test("job cancellation stays disabled until the worker finishes and failed jobs 
   await expect(
     dialog.getByRole("button", { name: "Eintrag entfernen", exact: true }),
   ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Auftrag abbrechen", exact: true })
+    .click();
   await expect(
     dialog.getByRole("button", { name: "Wird angefordert …" }),
   ).toBeDisabled();
@@ -1883,6 +1886,7 @@ test("job cancellation stays disabled until the worker finishes and failed jobs 
   await dialog
     .getByRole("button", { name: "Erneut starten", exact: true })
     .click();
+  await dialog.getByText("Kennung und Zeitverlauf", { exact: true }).click();
   await expect(dialog.getByText("ui-retry-job", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Geplant", { exact: true })).toBeVisible();
   expect(retryCalls).toBe(1);
@@ -2000,7 +2004,7 @@ test("fresh job details take precedence over an older status list", async ({
     dialog.getByRole("button", { name: "Erneut starten", exact: true }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+    dialog.getByRole("button", { name: "Auftrag abbrechen", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -2042,6 +2046,7 @@ test("late job detail responses cannot replace a different selected job", async 
     .getByRole("button", { name: "Auftrag current-job-b ansehen" })
     .click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByText("Kennung und Zeitverlauf", { exact: true }).click();
   await expect(dialog.getByText(b.id, { exact: true })).toBeVisible();
   const late = page.waitForResponse((response) =>
     response.url().endsWith("/api/jobs/delayed-job-a"),

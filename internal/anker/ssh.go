@@ -1,6 +1,7 @@
 package anker
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -102,7 +103,7 @@ func (c SSHCollector) Probe(ctx context.Context, h Host) (Inventory, error) {
 }
 func (c SSHCollector) Collect(ctx context.Context, h Host, dest string) (Collection, error) {
 	var col Collection
-	err := sshRun(ctx, h, map[string]any{"version": 1, "operation": "collect"}, func(r io.Reader) error { return ExtractTar(r, dest) })
+	err := sshRun(ctx, h, map[string]any{"version": 1, "operation": "collect"}, func(r io.Reader) error { return receiveCollection(ctx, r, dest) })
 	if err != nil {
 		return col, err
 	}
@@ -116,6 +117,20 @@ func (c SSHCollector) Collect(ctx context.Context, h Host, dest string) (Collect
 	}
 	return col, err
 }
+
+// Report transfer only after bytes actually arrive; an SSH process start alone
+// does not prove that the host has completed collection or sent a package.
+func receiveCollection(ctx context.Context, r io.Reader, dest string) error {
+	buffered := bufio.NewReader(r)
+	if _, err := buffered.Peek(1); err != nil {
+		return fmt.Errorf("Host lieferte kein Konfigurationspaket; Verbindung und Hosthelfer prüfen: %w", err)
+	}
+	if err := reportJobStage(ctx, "receive", "Konfigurationspaket empfangen", "Das Paket vom Host übertragen und im geschützten Sicherungsbereich entpacken.", 0, 0); err != nil {
+		return err
+	}
+	return ExtractTar(buffered, dest)
+}
+
 func (c SSHCollector) Apply(ctx context.Context, h Host, p Plan, root string) (ApplyResult, error) {
 	var result ApplyResult
 	files := []map[string]any{}

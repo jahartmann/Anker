@@ -220,7 +220,20 @@ export interface FileComparison {
   error?: string;
   masked: boolean;
 }
+export interface JobStage {
+  id: string;
+  title: string;
+  detail: string;
+  state: string;
+  attempt: number;
+  started_at: string;
+  updated_at: string;
+  finished_at?: string;
+  completed?: number;
+  total?: number;
+}
 export interface Job {
+  stages?: JobStage[];
   issues?: BackupIssue[];
   revision?: number;
   max_attempts?: number;

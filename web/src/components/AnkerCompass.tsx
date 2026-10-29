@@ -1,3 +1,4 @@
+import { useListPageSize, PageSizeSelect } from "../listPageSize";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -115,6 +116,7 @@ export default function AnkerCompass({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(initialHost);
   const [page, setPage] = useState(0);
+  const [hostSize, setHostSize] = useListPageSize("compass-hosts", 4);
   const stage = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (selected && intent)
@@ -144,7 +146,7 @@ export default function AnkerCompass({
         return priority(a) - priority(b) || a.name.localeCompare(b.name, "de");
       });
   }, [status, query]);
-  const lastPage = Math.max(0, Math.ceil(hosts.length / 4) - 1);
+  const lastPage = Math.max(0, Math.ceil(hosts.length / hostSize) - 1);
   const currentPage = Math.min(page, lastPage);
   const host = status.hosts.find((h) => h.id === selected);
   const state = host && hostState(host, status);
@@ -260,9 +262,21 @@ export default function AnkerCompass({
                     }}
                   />
                 </label>
+                <PageSizeSelect
+                  value={hostSize}
+                  initial={4}
+                  label="Kompass-Hosts pro Seite"
+                  onChange={(size) => {
+                    setHostSize(size);
+                    setPage(0);
+                  }}
+                />
                 <div className="compass-hosts">
                   {hosts
-                    .slice(currentPage * 4, currentPage * 4 + 4)
+                    .slice(
+                      currentPage * hostSize,
+                      currentPage * hostSize + hostSize,
+                    )
                     .map((h) => {
                       const health = hostState(h, status);
                       return (
@@ -295,9 +309,12 @@ export default function AnkerCompass({
                 {hosts.length > 4 && (
                   <div className="compass-pagination">
                     <span>
-                      {currentPage * 4 + 1}–
-                      {Math.min(currentPage * 4 + 4, hosts.length)} von{" "}
-                      {hosts.length} Hosts
+                      {currentPage * hostSize + 1}–
+                      {Math.min(
+                        currentPage * hostSize + hostSize,
+                        hosts.length,
+                      )}{" "}
+                      von {hosts.length} Hosts
                     </span>
                     <button
                       className="secondary"

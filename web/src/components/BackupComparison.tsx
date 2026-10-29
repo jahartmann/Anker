@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { traceableSettings } from "../settingHistory";
 import { changeSubject } from "../changeHighlights";
 import { displayHostName, HostName } from "../hostNames";
@@ -65,7 +66,7 @@ export default function BackupComparison({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useListPageSize("comparison-files", 25);
   const [selected, setSelected] = useState("");
   const [comparison, setComparison] = useState<FileComparison | null>(null);
   const [loading, setLoading] = useState(false);
@@ -659,6 +660,8 @@ export default function BackupComparison({
                         >
                           <option value={25}>25 pro Seite</option>
                           <option value={50}>50 pro Seite</option>
+                          <option value={100}>100 pro Seite</option>
+                          <option value={200}>200 pro Seite</option>
                         </select>
                         <Pagination
                           page={currentPage}

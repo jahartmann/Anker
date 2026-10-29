@@ -35,6 +35,9 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 		return p, err
 	}
 	defer s.release(p.TargetID)
+	if err := reportJobStage(ctx, "source", "Quelle und Plan prüfen", "Integrität der Sicherung und vorbereitete Dateien prüfen.", 0, 0); err != nil {
+		return p, err
+	}
 	if err = s.VerifyBackup(p.BackupID); err != nil {
 		return p, err
 	}
@@ -55,6 +58,9 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	}
 	if connection != snapshot.ConnectionSHA {
 		return p, errors.New("Zielverbindung wurde geändert; Vergleich wiederholen")
+	}
+	if err := reportJobStage(ctx, "target", "Zielzustand prüfen", "Zielidentität und Voraussetzungen mit dem freigegebenen Plan abgleichen.", 0, 0); err != nil {
+		return p, err
 	}
 	inv, err := s.Collector.Probe(ctx, h)
 	if err != nil {
@@ -148,6 +154,9 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 	}
 	if currentConnection != snapshot.ConnectionSHA {
 		return p, errors.New("Zielverbindung während Vorprüfung geändert; Vergleich wiederholen")
+	}
+	if err := reportJobStage(ctx, "apply", "Dateien übernehmen", "Freigegebene Änderungen über den Hosthelfer ausführen und dessen Ergebnis abwarten.", 0, 0); err != nil {
+		return p, err
 	}
 	p.State = "applying"
 	if err = s.savePlan(p); err != nil {

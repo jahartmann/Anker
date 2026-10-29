@@ -83,6 +83,7 @@ func (s *Service) RecoverJobs() error {
 		if j.State == "running" || j.State == "queued" {
 			previousState := j.State
 			j.State = "interrupted"
+			finishJobStage(&j, "interrupted")
 			if j.Kind == "backup" || j.Kind == "probe" {
 				if previousState == "queued" {
 					j.Message = "Nach Dienstneustart beendet: Auftrag war noch in der Warteschlange. Bei Bedarf gezielt erneut starten."
@@ -153,6 +154,9 @@ func (s *Service) probeRunner(hostID string) func(context.Context) (string, erro
 		if err != nil {
 			return "", err
 		}
+		if err := reportJobStage(ctx, "probe", "Host untersuchen", "Verbindung und Systeminventar des Hosts abfragen.", 0, 0); err != nil {
+			return "", err
+		}
 		inv, err := s.Collector.Probe(ctx, h)
 		var probeError string
 		if err != nil {
@@ -163,6 +167,11 @@ func (s *Service) probeRunner(hostID string) func(context.Context) (string, erro
 		var inventory *Inventory
 		if err == nil {
 			inventory = &inv
+		}
+		if err == nil {
+			if progressErr := reportJobStage(ctx, "catalog", "Inventar speichern", "Erkannte Systemdaten im Katalog aktualisieren.", 0, 0); progressErr != nil {
+				return "", progressErr
+			}
 		}
 		saveErr := s.updateHostInventory(h, inventory, probeError)
 		if err == nil {
@@ -202,11 +211,27 @@ func (s *Service) queueAtForSet(hostID, kind string, at *time.Time, setID string
 	return s.queueAtForSetRetry(hostID, kind, at, setID, "", run)
 }
 func (s *Service) queueAtForSetRetry(hostID, kind string, at *time.Time, setID, retryOf string, run func(context.Context) (string, error)) (Job, error) {
+	return s.queueOperation(hostID, kind, at, setID, retryOf, "", run)
+}
+func (s *Service) queueOperation(hostID, kind string, at *time.Time, setID, retryOf, requestedID string, run func(context.Context) (string, error), checks ...func() error) (Job, error) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	jobs, err := s.Jobs()
 	if err != nil {
 		return Job{}, err
+	}
+	if requestedID != "" {
+		if !validID(requestedID) {
+			return Job{}, fail(400, "Ungültige Auftragskennung")
+		}
+		for _, previous := range jobs {
+			if previous.ID == requestedID {
+				if previous.HostID != hostID || previous.Kind != kind {
+					return Job{}, fail(409, "Auftragskennung passt nicht zum Host")
+				}
+				return previous, nil
+			}
+		}
 	}
 	if retryOf != "" {
 		for _, previous := range jobs {
@@ -256,7 +281,16 @@ func (s *Service) queueAtForSetRetry(hostID, kind string, at *time.Time, setID, 
 			return Job{}, errHostJobActive
 		}
 	}
-	j := Job{ID: ID(), Revision: 1, RetryOf: retryOf, Message: "Wartet auf einen freien Ausführungsplatz.", SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return Job{}, err
+		}
+	}
+	jobID := requestedID
+	if jobID == "" {
+		jobID = ID()
+	}
+	j := Job{ID: jobID, Revision: 1, RetryOf: retryOf, Message: "Wartet auf einen freien Ausführungsplatz.", SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
 	if day != "" {
 		j.Trigger = "scheduled"
 	}
@@ -355,7 +389,10 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		if err = s.saveJobProgress(&j); err != nil {
 			break
 		}
-		j.ResultID, err = run(ctx)
+		j.ResultID, err = run(s.jobContext(ctx, &j))
+		if err != nil && ctx.Err() == nil {
+			finishJobStage(&j, "failed")
+		}
 		if err == nil || ctx.Err() != nil || j.ResultID != "" || !transientConnection(err) {
 			break
 		}
@@ -393,6 +430,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		j.Message = "Abgebrochen. Ausstehende Wiederholungen wurden beendet."
 	}
 	j.FinishedAt = now()
+	finishJobStage(&j, j.State)
 	if s.persistJob(j) {
 		s.notifyJob(j)
 	}

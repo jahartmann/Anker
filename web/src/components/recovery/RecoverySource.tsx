@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import RemovalFiles from "./RemovalFiles";
 import { useEffect, useMemo, useState } from "react";
 import { preciseDate, labels } from "../../api";
@@ -23,6 +24,7 @@ function RestoreFiles({
     useFileNavigation(source);
   const [selectedOnly, setSelectedOnly] = useState(selectedFirst);
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-source", 25);
   const selected = useMemo(() => new Set(files), [files]);
   const indexed = useMemo(() => indexManifest(entries), [entries]);
   const matches = useMemo(
@@ -44,7 +46,10 @@ function RestoreFiles({
   useEffect(() => {
     setPage(1);
   }, [query, selectedOnly, entries, directory]);
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(matches.length / listSize)),
+  );
   function moveTo(path: string) {
     navigate(path);
     setPage(1);
@@ -81,7 +86,7 @@ function RestoreFiles({
         </button>
       </div>
       <div className="restore-file-items">
-        {matches.slice((current - 1) * 25, current * 25).map((f) =>
+        {matches.slice((current - 1) * listSize, current * listSize).map((f) =>
           f.type === "directory" ? (
             <button
               type="button"
@@ -138,7 +143,8 @@ function RestoreFiles({
       </div>
       <Pagination
         page={current}
-        pageSize={25}
+        pageSize={listSize}
+        onPageSizeChange={setListSize}
         total={matches.length}
         onPageChange={setPage}
         label="Dateien"

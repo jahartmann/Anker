@@ -212,7 +212,9 @@ test("active jobs distinguish queued work from running attempts and retain open 
   await expect(running).toContainText("Versuch 2");
   await expect(running).toContainText("Laufzeit 9 Min.");
   await expect(running).toContainText("Gestartet");
-  await expect(active.getByRole("progressbar")).toHaveCount(0);
+  await expect(active.getByRole("progressbar")).toHaveCount(4);
+  for (const bar of await active.getByRole("progressbar").all())
+    await expect(bar).not.toHaveAttribute("aria-valuenow");
   await active.getByRole("button", { name: "Nächste aktive Aufträge" }).click();
   await expect(active.getByRole("listitem")).toHaveCount(4);
   await expect(active).toContainText("Wartet auf Ausführung");
@@ -232,6 +234,6 @@ test("active jobs distinguish queued work from running attempts and retain open 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("active-running-0");
   await expect(
-    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+    dialog.getByRole("button", { name: "Auftrag abbrechen", exact: true }),
   ).toHaveCount(0);
 });

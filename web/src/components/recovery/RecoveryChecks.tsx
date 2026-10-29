@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import { useEffect, useMemo, useState } from "react";
 import { date } from "../../api";
 import type { Plan, RecoveryTask } from "../../api";
@@ -45,6 +46,7 @@ export default function RecoveryChecks({
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-checks", 25);
   const tasks = useMemo(() => orderedTasks(plan.tasks || []), [plan.tasks]);
   const byID = new Map(tasks.map((t) => [t.id, t]));
   const matches = tasks.filter((t) =>
@@ -52,7 +54,10 @@ export default function RecoveryChecks({
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(matches.length / listSize)),
+  );
   return (
     <section
       aria-label="Betriebsprüfungen"
@@ -173,114 +178,122 @@ export default function RecoveryChecks({
         </Field>
       )}
       <ol start={(current - 1) * 25 + 1}>
-        {matches.slice((current - 1) * 25, current * 25).map((task) => {
-          const dependencies = (task.requires || []).map((id) => byID.get(id));
-          const prerequisites = dependencies.every(
-            (t) => t?.state === "user_confirmed",
-          );
-          const operationalBlocked =
-            task.kind === "manual-check" &&
-            [
-              "ready",
-              "applying",
-              "interrupted",
-              "failed",
-              "rolling_back",
-              "rollback_conflict",
-              "unknown",
-            ].includes(plan.state);
-          const allowed =
-            !disabled &&
-            plan.schema_version === 2 &&
-            !plan.blockers?.length &&
-            task.state === "pending" &&
-            manualKinds.has(task.kind) &&
-            prerequisites &&
-            !operationalBlocked;
-          const value = evidence[task.id] || "";
-          return (
-            <li key={task.id} className="recovery-task">
-              <strong>{task.title}</strong>
-              <p>{task.instruction}</p>
-              <p className="field-hint">
-                Voraussetzungen:{" "}
-                {dependencies.length
-                  ? (task.requires || [])
-                      .map(
-                        (id) =>
-                          `${byID.get(id)?.title || id} (${byID.get(id)?.state === "user_confirmed" ? "vom Benutzer bestätigt" : "offen"})`,
-                      )
-                      .join(" · ")
-                  : "Keine"}
-              </p>
-              {task.state === "user_confirmed" ? (
-                <div className="notice">
-                  <p>
-                    Vom Benutzer bestätigt ·{" "}
-                    {task.confirmed_by || "Benutzer unbekannt"} ·{" "}
-                    {date(task.confirmed_at)}
-                  </p>
-                  <p>{task.evidence}</p>
-                  <p className="field-hint">
-                    Herkunft: Benutzerbestätigung, kein maschineller Nachweis.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <p className="field-hint">
-                    Offen · Herkunft: manuelle Aufgabe
-                    {operationalBlocked
-                      ? " · Dateiübernahme und Hostzustand zuerst klären."
-                      : !prerequisites
-                        ? " · Voraussetzungen zuerst bestätigen."
-                        : "."}
-                  </p>
-                  {onConfirm && (
-                    <>
-                      <Field label={`Nachweis für ${task.title}`}>
-                        <textarea
-                          disabled={!allowed}
-                          maxLength={4096}
-                          value={value}
-                          onChange={(e) => {
-                            // Capture the input before React restores a controlled
-                            // field during a concurrent plan/status update.
-                            const nextValue = e.currentTarget.value;
-                            setEvidence((old) => ({
-                              ...old,
-                              [task.id]: nextValue,
-                            }));
+        {matches
+          .slice((current - 1) * listSize, current * listSize)
+          .map((task) => {
+            const dependencies = (task.requires || []).map((id) =>
+              byID.get(id),
+            );
+            const prerequisites = dependencies.every(
+              (t) => t?.state === "user_confirmed",
+            );
+            const operationalBlocked =
+              task.kind === "manual-check" &&
+              [
+                "ready",
+                "applying",
+                "interrupted",
+                "failed",
+                "rolling_back",
+                "rollback_conflict",
+                "unknown",
+              ].includes(plan.state);
+            const allowed =
+              !disabled &&
+              plan.schema_version === 2 &&
+              !plan.blockers?.length &&
+              task.state === "pending" &&
+              manualKinds.has(task.kind) &&
+              prerequisites &&
+              !operationalBlocked;
+            const value = evidence[task.id] || "";
+            return (
+              <li key={task.id} className="recovery-task">
+                <strong>{task.title}</strong>
+                <p>{task.instruction}</p>
+                <p className="field-hint">
+                  Voraussetzungen:{" "}
+                  {dependencies.length
+                    ? (task.requires || [])
+                        .map(
+                          (id) =>
+                            `${byID.get(id)?.title || id} (${byID.get(id)?.state === "user_confirmed" ? "vom Benutzer bestätigt" : "offen"})`,
+                        )
+                        .join(" · ")
+                    : "Keine"}
+                </p>
+                {task.state === "user_confirmed" ? (
+                  <div className="notice">
+                    <p>
+                      Vom Benutzer bestätigt ·{" "}
+                      {task.confirmed_by || "Benutzer unbekannt"} ·{" "}
+                      {date(task.confirmed_at)}
+                    </p>
+                    <p>{task.evidence}</p>
+                    <p className="field-hint">
+                      Herkunft: Benutzerbestätigung, kein maschineller Nachweis.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="field-hint">
+                      Offen · Herkunft: manuelle Aufgabe
+                      {operationalBlocked
+                        ? " · Dateiübernahme und Hostzustand zuerst klären."
+                        : !prerequisites
+                          ? " · Voraussetzungen zuerst bestätigen."
+                          : "."}
+                    </p>
+                    {onConfirm && (
+                      <>
+                        <Field label={`Nachweis für ${task.title}`}>
+                          <textarea
+                            disabled={!allowed}
+                            maxLength={4096}
+                            value={value}
+                            onChange={(e) => {
+                              // Capture the input before React restores a controlled
+                              // field during a concurrent plan/status update.
+                              const nextValue = e.currentTarget.value;
+                              setEvidence((old) => ({
+                                ...old,
+                                [task.id]: nextValue,
+                              }));
+                            }}
+                          />
+                        </Field>
+                        <button
+                          className="secondary"
+                          disabled={
+                            !allowed ||
+                            !value.trim() ||
+                            new TextEncoder().encode(value).length > 4096
+                          }
+                          onClick={() => {
+                            void onConfirm(task, value).then((saved) => {
+                              if (saved)
+                                setEvidence((old) => ({
+                                  ...old,
+                                  [task.id]: "",
+                                }));
+                            });
                           }}
-                        />
-                      </Field>
-                      <button
-                        className="secondary"
-                        disabled={
-                          !allowed ||
-                          !value.trim() ||
-                          new TextEncoder().encode(value).length > 4096
-                        }
-                        onClick={() => {
-                          void onConfirm(task, value).then((saved) => {
-                            if (saved)
-                              setEvidence((old) => ({ ...old, [task.id]: "" }));
-                          });
-                        }}
-                      >
-                        Schritt bestätigen: {task.title}
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
-            </li>
-          );
-        })}
+                        >
+                          Schritt bestätigen: {task.title}
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </li>
+            );
+          })}
       </ol>
       {tasks.length > 25 && (
         <Pagination
           page={current}
-          pageSize={25}
+          pageSize={listSize}
+          onPageSizeChange={setListSize}
           total={matches.length}
           onPageChange={setPage}
           label="Aufgaben"

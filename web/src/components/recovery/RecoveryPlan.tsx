@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import RecoveryOutcomeCards from "./RecoveryOutcomeCards";
 import RemovalFiles from "./RemovalFiles";
 import { useEffect, useRef, useState } from "react";
@@ -830,6 +831,7 @@ export default function RecoveryPlan({
 function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-plan-files", 25);
   const [path, setPath] = useState("");
   const [basis, setBasis] = useState("target");
   const [comparison, setComparison] = useState<FileComparison | null>(null);
@@ -865,7 +867,10 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
   const matches = plan.steps.filter((s) =>
     s.path.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 25)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(matches.length / listSize)),
+  );
   function select(next: string) {
     if (next === path && !reveal) return;
     setComparison(null);
@@ -884,138 +889,142 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
           }}
         />
       </Field>
-      {matches.slice((current - 1) * 25, current * 25).map((step) => (
-        <article className="recovery-plan-file" key={step.path}>
-          <div className="recovery-file-heading">
-            <strong className="mono">{step.path}</strong>
-            <span>
-              {step.action === "keep"
-                ? "Ziel behalten · kein Schreiben"
-                : step.action === "remove"
-                  ? "Datei löschen · rücksetzbar"
-                  : step.action === "apply"
-                    ? "Datei übernehmen"
-                    : "Manuell · keine automatische Übernahme"}
-            </span>
-          </div>
-          <p className="field-hint">
-            Entscheidung:{" "}
-            {step.decision === "backup"
-              ? "Originalsicherung"
-              : step.decision === "remove"
-                ? "Ausdrücklich entfernen"
-                : step.decision === "prepared"
-                  ? "Vorbereitete Datei"
-                  : step.decision === "keep"
-                    ? "Ziel behalten"
-                    : "Manuelle Referenz"}{" "}
-            · Zielpfad: {step.destination || step.path}
-          </p>
-          {step.reason && <p>{step.reason}</p>}
-          {!!step.effects?.length && (
-            <RecoveryEvidence
-              title={`Anpassungen an ${step.path}`}
-              items={step.effects.map(
-                (e) =>
-                  `${e.path} · ${e.field}: ${e.before || "(leer)"} → ${e.after || "(leer)"} · ${e.reason}`,
-              )}
-            />
-          )}
-          {/^etc\/network\//.test(step.path) && (
-            <p className="notice warning">
-              Netzwerkaktivierung und Erreichbarkeit separat an der Konsole
-              prüfen. Anker aktiviert keine Netzwerkkonfiguration automatisch.
-            </p>
-          )}
-          {/^etc\/pve\//.test(step.path) && (
-            <p className="notice warning">
-              Clusterzuordnung, Quorum und Gastdatenträger separat prüfen.
-              Gleiche Speicher-IDs belegen keine verfügbaren Volumes; kein
-              Anlegen, Formatieren oder Verschieben.
-            </p>
-          )}
-          {step.path === "etc/fstab" && (
-            <p className="notice warning">
-              Root, Boot und Swap des Ziels erhalten; weitere Mounts manuell
-              prüfen.
-            </p>
-          )}
-          {plan.source.pve_version !== plan.target.pve_version && (
-            <p className="notice warning">
-              Quelle {plan.source.pve_version} → Ziel {plan.target.pve_version}:
-              Versionsverträglichkeit für diese Datei manuell prüfen.
-            </p>
-          )}
-          {user.role !== "reader" && (
-            <button
-              className="text-button"
-              aria-pressed={path === step.path}
-              onClick={() => select(step.path)}
-            >
-              Vergleich öffnen: {step.path}
-            </button>
-          )}
-          {path === step.path && (
-            <div className="recovery-plan-comparison">
-              <Field label="Vergleichsbasis">
-                <select
-                  value={basis}
-                  onChange={(e) => {
-                    setBasis(e.target.value);
-                    setComparison(null);
-                    setReveal(false);
-                  }}
-                >
-                  <option value="target">
-                    Aufgenommenes Ziel → vorbereitet / behalten
-                  </option>
-                  <option value="source">
-                    Originalsicherung → vorbereitet / behalten
-                  </option>
-                  <option value="source-target">
-                    Originalsicherung → aufgenommenes Ziel
-                  </option>
-                </select>
-              </Field>
-              <FileComparisonView
-                comparison={comparison}
-                loading={loading}
-                error={error}
-                retry={() => {
-                  setReveal(false);
-                  setRetry((n) => n + 1);
-                }}
-              />
-              {user.secrets && comparison?.masked && (
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setComparison(null);
-                    setReveal(true);
-                  }}
-                >
-                  Geschützten Inhalt anzeigen
-                </button>
-              )}
-              {reveal && (
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setComparison(null);
-                    setReveal(false);
-                  }}
-                >
-                  Inhalt wieder schützen
-                </button>
-              )}
+      {matches
+        .slice((current - 1) * listSize, current * listSize)
+        .map((step) => (
+          <article className="recovery-plan-file" key={step.path}>
+            <div className="recovery-file-heading">
+              <strong className="mono">{step.path}</strong>
+              <span>
+                {step.action === "keep"
+                  ? "Ziel behalten · kein Schreiben"
+                  : step.action === "remove"
+                    ? "Datei löschen · rücksetzbar"
+                    : step.action === "apply"
+                      ? "Datei übernehmen"
+                      : "Manuell · keine automatische Übernahme"}
+              </span>
             </div>
-          )}
-        </article>
-      ))}
+            <p className="field-hint">
+              Entscheidung:{" "}
+              {step.decision === "backup"
+                ? "Originalsicherung"
+                : step.decision === "remove"
+                  ? "Ausdrücklich entfernen"
+                  : step.decision === "prepared"
+                    ? "Vorbereitete Datei"
+                    : step.decision === "keep"
+                      ? "Ziel behalten"
+                      : "Manuelle Referenz"}{" "}
+              · Zielpfad: {step.destination || step.path}
+            </p>
+            {step.reason && <p>{step.reason}</p>}
+            {!!step.effects?.length && (
+              <RecoveryEvidence
+                title={`Anpassungen an ${step.path}`}
+                items={step.effects.map(
+                  (e) =>
+                    `${e.path} · ${e.field}: ${e.before || "(leer)"} → ${e.after || "(leer)"} · ${e.reason}`,
+                )}
+              />
+            )}
+            {/^etc\/network\//.test(step.path) && (
+              <p className="notice warning">
+                Netzwerkaktivierung und Erreichbarkeit separat an der Konsole
+                prüfen. Anker aktiviert keine Netzwerkkonfiguration automatisch.
+              </p>
+            )}
+            {/^etc\/pve\//.test(step.path) && (
+              <p className="notice warning">
+                Clusterzuordnung, Quorum und Gastdatenträger separat prüfen.
+                Gleiche Speicher-IDs belegen keine verfügbaren Volumes; kein
+                Anlegen, Formatieren oder Verschieben.
+              </p>
+            )}
+            {step.path === "etc/fstab" && (
+              <p className="notice warning">
+                Root, Boot und Swap des Ziels erhalten; weitere Mounts manuell
+                prüfen.
+              </p>
+            )}
+            {plan.source.pve_version !== plan.target.pve_version && (
+              <p className="notice warning">
+                Quelle {plan.source.pve_version} → Ziel{" "}
+                {plan.target.pve_version}: Versionsverträglichkeit für diese
+                Datei manuell prüfen.
+              </p>
+            )}
+            {user.role !== "reader" && (
+              <button
+                className="text-button"
+                aria-pressed={path === step.path}
+                onClick={() => select(step.path)}
+              >
+                Vergleich öffnen: {step.path}
+              </button>
+            )}
+            {path === step.path && (
+              <div className="recovery-plan-comparison">
+                <Field label="Vergleichsbasis">
+                  <select
+                    value={basis}
+                    onChange={(e) => {
+                      setBasis(e.target.value);
+                      setComparison(null);
+                      setReveal(false);
+                    }}
+                  >
+                    <option value="target">
+                      Aufgenommenes Ziel → vorbereitet / behalten
+                    </option>
+                    <option value="source">
+                      Originalsicherung → vorbereitet / behalten
+                    </option>
+                    <option value="source-target">
+                      Originalsicherung → aufgenommenes Ziel
+                    </option>
+                  </select>
+                </Field>
+                <FileComparisonView
+                  comparison={comparison}
+                  loading={loading}
+                  error={error}
+                  retry={() => {
+                    setReveal(false);
+                    setRetry((n) => n + 1);
+                  }}
+                />
+                {user.secrets && comparison?.masked && (
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setComparison(null);
+                      setReveal(true);
+                    }}
+                  >
+                    Geschützten Inhalt anzeigen
+                  </button>
+                )}
+                {reveal && (
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      setComparison(null);
+                      setReveal(false);
+                    }}
+                  >
+                    Inhalt wieder schützen
+                  </button>
+                )}
+              </div>
+            )}
+          </article>
+        ))}
       {!matches.length && <p className="muted">Keine passenden Plandateien.</p>}
       <Pagination
         page={current}
-        pageSize={25}
+        pageSize={listSize}
+        onPageSizeChange={setListSize}
         total={matches.length}
         onPageChange={setPage}
         label="Plandateien"

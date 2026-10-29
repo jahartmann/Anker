@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { useState } from "react";
 import { CircleAlert, FileWarning, Wrench } from "lucide-react";
 import type { Backup, BackupIssue } from "../api";
@@ -16,6 +17,7 @@ export default function BackupIssues({
   onRetry?: () => void;
 }) {
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("backup-issues", 3);
   if (
     !backup?.warnings?.length &&
     !backup?.issues?.length &&
@@ -38,7 +40,10 @@ export default function BackupIssues({
           path: undefined,
           path_protected: warning === "[Verdeckter Inhalt]",
         }));
-  const current = Math.min(page, Math.max(1, Math.ceil(issues.length / 3)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(issues.length / listSize)),
+  );
   return (
     <section
       className="backup-issues"
@@ -62,36 +67,39 @@ export default function BackupIssues({
         </div>
       </header>
       <div className="backup-issues-list">
-        {issues.slice((current - 1) * 3, current * 3).map((issue, index) => (
-          <article
-            key={`${backup?.id || "job"}-${current}-${index}`}
-            className="backup-issue"
-            data-issue={issue.code}
-          >
-            <FileWarning size={19} aria-hidden="true" />
-            <div>
-              <h4>{issue.title}</h4>
-              {issue.path && <code className="issue-path">{issue.path}</code>}
-              <p>{issue.detail}</p>
-              {issue.path_protected && (
-                <p className="issue-privacy">
-                  {issue.code === "invalid_path"
-                    ? "Dieser Hinweis enthält keinen sicher darstellbaren Pfad. Ohne detaillierte neue Aufnahme ist die betroffene Datei nicht eindeutig bestimmbar."
-                    : "Pfad oder technische Angaben bleiben geschützt; die Ursache und Abhilfe stehen hier separat."}
-                </p>
-              )}
-              <div className="issue-remedy">
-                <Wrench size={15} aria-hidden="true" />
-                <p>{issue.action}</p>
+        {issues
+          .slice((current - 1) * listSize, current * listSize)
+          .map((issue, index) => (
+            <article
+              key={`${backup?.id || "job"}-${current}-${index}`}
+              className="backup-issue"
+              data-issue={issue.code}
+            >
+              <FileWarning size={19} aria-hidden="true" />
+              <div>
+                <h4>{issue.title}</h4>
+                {issue.path && <code className="issue-path">{issue.path}</code>}
+                <p>{issue.detail}</p>
+                {issue.path_protected && (
+                  <p className="issue-privacy">
+                    {issue.code === "invalid_path"
+                      ? "Dieser Hinweis enthält keinen sicher darstellbaren Pfad. Ohne detaillierte neue Aufnahme ist die betroffene Datei nicht eindeutig bestimmbar."
+                      : "Pfad oder technische Angaben bleiben geschützt; die Ursache und Abhilfe stehen hier separat."}
+                  </p>
+                )}
+                <div className="issue-remedy">
+                  <Wrench size={15} aria-hidden="true" />
+                  <p>{issue.action}</p>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))}
       </div>
       {issues.length > 3 && (
         <Pagination
           page={current}
-          pageSize={3}
+          pageSize={listSize}
+          onPageSizeChange={setListSize}
           total={issues.length}
           onPageChange={setPage}
           label="Sicherungshinweise"

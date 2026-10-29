@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { HostName } from "../hostNames";
 import { useState } from "react";
 import { CircleAlert, Clock3, ShieldCheck } from "lucide-react";
@@ -20,10 +21,14 @@ function ProblemGroup({
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("problem-hosts", 4);
   const filtered = hosts.filter((h) =>
     h.name.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(filtered.length / 4)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(filtered.length / listSize)),
+  );
   const Icon = critical ? CircleAlert : Clock3;
   return (
     <article className={"problem-card" + (critical ? " problem-critical" : "")}>
@@ -57,33 +62,36 @@ function ProblemGroup({
           />
         )}
         <div className="problem-hosts">
-          {filtered.slice((current - 1) * 4, current * 4).map((h) => {
-            const state = hostState(h, status);
-            return (
-              <div className="problem-host" key={h.id}>
-                <div>
-                  <strong>
-                    <HostName name={h.name} />
-                  </strong>
-                  <span className={"state " + state.tone}>{state.text}</span>
-                  <p>{state.reason}</p>
+          {filtered
+            .slice((current - 1) * listSize, current * listSize)
+            .map((h) => {
+              const state = hostState(h, status);
+              return (
+                <div className="problem-host" key={h.id}>
+                  <div>
+                    <strong>
+                      <HostName name={h.name} />
+                    </strong>
+                    <span className={"state " + state.tone}>{state.text}</span>
+                    <p>{state.reason}</p>
+                  </div>
+                  <button
+                    className="secondary"
+                    aria-label={`Host ${h.name} prüfen`}
+                    onClick={() => openHost(h.id)}
+                  >
+                    Host prüfen
+                  </button>
                 </div>
-                <button
-                  className="secondary"
-                  aria-label={`Host ${h.name} prüfen`}
-                  onClick={() => openHost(h.id)}
-                >
-                  Host prüfen
-                </button>
-              </div>
-            );
-          })}
+              );
+            })}
           {!filtered.length && <p className="muted">Keine passenden Hosts.</p>}
         </div>
         {hosts.length > 4 && (
           <Pagination
             page={current}
-            pageSize={4}
+            pageSize={listSize}
+            onPageSizeChange={setListSize}
             total={filtered.length}
             onPageChange={setPage}
             label="Betroffene Hosts"

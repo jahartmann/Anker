@@ -183,6 +183,7 @@ type Backup struct {
 	Warnings            []string                 `json:"warnings"`
 }
 type Job struct {
+	Stages       []JobStage    `json:"stages,omitempty"`
 	Issues       []BackupIssue `json:"issues,omitempty"`
 	Revision     int           `json:"revision,omitempty"`
 	MaxAttempts  int           `json:"max_attempts,omitempty"`
@@ -361,6 +362,7 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
+	remediationMu         sync.Mutex
 	clusterSetMu          sync.Mutex
 	snapshotMu            sync.Mutex
 	maintenanceMu         sync.Mutex

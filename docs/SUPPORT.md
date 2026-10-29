@@ -1,5 +1,21 @@
 # Unterstützungsstand
 
+## Sammelkorrektur bekannter Sicherungsprobleme – v0.2.21
+
+Die Sammelvorschau erkennt ausschließlich bekannte Fehlerbilder im jeweils neuesten Sicherungsstand: abgelehnte gültige systemd-Dateinamen, den lokalen Lynx-Verweis und den bekannten Powerman-Gerätebefehl. Neue Aufnahmen müssen die Nachweise für eine Korrektur erneut liefern; die Aktion blendet keine echten Fehler aus. Bestehende Hostzugänge und Profile bleiben erhalten. Neue Sicherungen werden automatisch auf Integrität geprüft; erst vollständige Erfassung und gültiger Prüfnachweis ergeben ein bestätigtes Ergebnis.
+
+Gespeicherte Sammelläufe, nutzergebundene Kennungen und deterministische Auftrags-IDs verhindern doppelte Erfassung bei Wiederholung derselben Startanfrage oder Wiederanlauf zwischen Auftragseintrag und Ergebnisquittung. Eine zusätzliche Zulassungsprüfung unter der Auftragsperre berücksichtigt inzwischen abgeschlossene Sicherungen und neu pausierte Hosts. Pausierte Zeitpläne bleiben unverändert; ihre einmalige Einbeziehung benötigt die globale ausdrückliche Auswahl. Ein Wiederherstellungsimport verwirft ungestartete Sammelaktionen, beendet offene Arbeitsschritte und erhält unbekannte Zusatzfelder in deren Nachweisen.
+
+Gezielte Go-Prüfungen mit Race Detector decken Registrierungserhalt, automatische Integritätsprüfung, unveränderte alte Teilstände, reale verbleibende Warnungen, gleichzeitige Startanfragen, beschädigte oder widersprüchliche Quittungen, Antwortverlust, Quellenwechsel, pausierte/aktive Hosts und Rollenrechte ab. Browserfälle prüfen die Sammelaktion, tatsächliche Prüfnachweise, Doppelklickschutz, denselben Abgleich nach verlorener Antwort und wiedergefundene Ergebnisse nach Neuladen, Pausenauswahl sowie Desktop-/Mobilansichten. Die vollständige Browsersuite umfasst 341 Fälle; die Go-Gesamtprüfung und Vet sind ebenfalls bestanden. Reale Produktionshosts wurden für diese Änderung nicht verändert.
+
+## Auftragsablauf und größere Listen – v0.2.21
+
+Neue Aufträge speichern beobachtete Arbeitsschritte mit Versuch, Zustand, Zeitstempeln und gegebenenfalls Eintragszählern. Sicherungen unterscheiden Host-Erfassung, bei SSH tatsächlich begonnenen Paketempfang, lokale Dateiprüfung, Abdeckungsprüfung, Nachweiserstellung und Abschluss. Nicht messbare Schritte erhalten keine erfundenen Prozentwerte oder Restzeiten. Ein fehlgeschlagener Versuch wird bei erneuter Verbindung nicht nachträglich erfolgreich eingefärbt; Abbruch und Dienstneustart schließen den offenen Schritt entsprechend ab. Für die Fortschrittsanzeige ist keine Änderung am Hosthelfer nötig. Ältere Aufträge behalten ihre bisherigen Statusmeldungen.
+
+Auftragsdetails gewichten aktuelle Tätigkeit und beobachtete Schritte vor Kennung und Zeitverlauf. Schließen des Dialogs löst keinen Auftragsabbruch aus. Status und Ergebnis stehen im Verlauf zusammen; laufende Vorgänge erscheinen vor den Filtern. Paginierten Listen stehen größere Seitengrößen bis 200 Einträge zur Verfügung. Die Auswahl bleibt pro Liste in diesem Browser gespeichert; nicht verfügbarer Browserspeicher verhindert die Bedienung nicht. Hostliste und letzte Sicherungen bieten die Auswahl direkt oberhalb der Einträge. Monatsaufteilung und Navigation im Sicherungsverlauf verwenden denselben Wert.
+
+Die Browserprüfung umfasst 337 Fälle einschließlich gemessener und offener Fortschritte, automatischer Wiederholungswartezeit, neuerer Statusrevisionen, erhaltener Abbruch-/Wiederholungslogik, 36 Hosts und letzten Sicherungen mit gespeicherter Seitengröße sowie lückenloser Monatsnavigation. Desktop und Mobilansicht wurden anhand der tatsächlich gerenderten Auftragsübersicht und Details visuell geprüft. Die vollständige Go-Suite mit Race Detector und Vet ist bestanden; gezielte Regressionen decken Worker, SSH-Empfang, Wiederholungen und Statuswechsel ab. Reale Proxmox-Hosts wurden für diese Änderung nicht verändert; die Prüffälle verwenden kontrollierte Gegenstellen und Fixtures.
+
 ## Korrekturen nach Sichtprüfung in Safari – v0.2.20
 
 Build, vollständige Go-Prüfungen, Go Vet, 125 Hosthelfer-Tests und 332 Browserprüfungen sind bestanden. Die gezielten Browserprüfungen decken die einmalige Diagnose am Host, das Entfallen aktueller Hinweise nach einem vollständigen Folgestand, 602 paginierte und durchsuchbare Verweise sowie Kontraste und Desktop-/Mobilansichten ab.

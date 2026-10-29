@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import type { ChangeRecoveryIntent } from "../components/recovery/ChangeRecoveryIntent";
 import { useEffect, useRef, useState } from "react";
 import { api, date, labels } from "../api";
@@ -74,6 +75,7 @@ export default function Restore({
   const [planQuery, setPlanQuery] = useState("");
   const [planState, setPlanState] = useState("");
   const [planPage, setPlanPage] = useState(1);
+  const [planSize, setPlanSize] = useListPageSize("plans", 25);
   const [formError, setFormError] = useState("");
   useEffect(() => {
     if (!initialPlan || activeRequest.current) return;
@@ -137,7 +139,7 @@ export default function Restore({
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const currentPlanPage = Math.min(
     planPage,
-    Math.max(1, Math.ceil(plans.length / 25)),
+    Math.max(1, Math.ceil(plans.length / planSize)),
   );
   return (
     <>
@@ -237,7 +239,10 @@ export default function Restore({
                   </thead>
                   <tbody>
                     {plans
-                      .slice((currentPlanPage - 1) * 25, currentPlanPage * 25)
+                      .slice(
+                        (currentPlanPage - 1) * planSize,
+                        currentPlanPage * planSize,
+                      )
                       .map((p) => (
                         <tr key={p.id}>
                           <td>
@@ -292,7 +297,8 @@ export default function Restore({
               )}
               <Pagination
                 page={currentPlanPage}
-                pageSize={25}
+                pageSize={planSize}
+                onPageSizeChange={setPlanSize}
                 total={plans.length}
                 onPageChange={setPlanPage}
                 label="Pläne"

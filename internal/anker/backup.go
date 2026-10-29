@@ -260,6 +260,9 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if err = os.MkdirAll(filepath.Join(stage, "files"), 0700); err != nil {
 		return b, err
 	}
+	if err := reportJobStage(ctx, "collect", "Konfiguration erfassen", "Inventar und Konfigurationsdateien vom Host abrufen. Datastore-Inhalte werden nicht erfasst.", 0, 0); err != nil {
+		return b, err
+	}
 	c, err := s.Collector.Collect(ctx, h, stage)
 	if err != nil {
 		return b, err
@@ -271,6 +274,9 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 		return b, err
 	}
 	b.HostType = c.Inventory.Platform()
+	if err := reportJobStage(ctx, "validate", "Dateien prüfen", "Pfade, Metadaten und Inhaltsprüfsummen der erfassten Einträge prüfen.", 0, len(c.Entries)); err != nil {
+		return b, err
+	}
 	// Collectors place the raw tree under stage/files.
 	seen := map[string]bool{}
 	for i := range c.Entries {
@@ -313,6 +319,14 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 			return b, errors.New("nicht unterstützter Dateityp")
 		}
 		b.Size += e.Size
+		if (i+1)%128 == 0 || i+1 == len(c.Entries) {
+			if err := reportJobStage(ctx, "validate", "Dateien prüfen", "Pfade, Metadaten und Inhaltsprüfsummen der erfassten Einträge prüfen.", i+1, len(c.Entries)); err != nil {
+				return b, err
+			}
+		}
+	}
+	if err := reportJobStage(ctx, "dependencies", "Abdeckung prüfen", "Konfigurationsverweise und Pflichtpfade mit der Erfassung abgleichen.", 0, 0); err != nil {
+		return b, err
 	}
 	c.Warnings = reconcileDependencyWarnings(stage, &c)
 	for _, required := range h.ExtraPaths {
@@ -333,6 +347,9 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if c.Inventory.Platform() == "pbs" {
 		m.Consistency = "Live configuration files captured over documented interval; datastore contents excluded"
 		m.RequiredPaths = appendUnique(m.RequiredPaths, "/etc/proxmox-backup")
+	}
+	if err := reportJobStage(ctx, "manifest", "Sicherungsnachweise erstellen", "Inventar, Manifest, Prüfsummen und Wiederherstellungshinweise schreiben.", 0, 0); err != nil {
+		return b, err
 	}
 	if err = writeJSON(filepath.Join(stage, "inventory/host.json"), c.Inventory); err != nil {
 		return b, err
@@ -370,6 +387,9 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	}
 	fmt.Fprintf(&sums, "%s  manifest.json\n", b.ManifestSHA)
 	if err = atomicWrite(filepath.Join(stage, "checksums.sha256"), []byte(sums.String()), 0600); err != nil {
+		return b, err
+	}
+	if err := reportJobStage(ctx, "publish", "Sicherung abschließen", "Dateien dauerhaft ablegen und den Sicherungsstand im Katalog eintragen.", 0, 0); err != nil {
 		return b, err
 	}
 	target := s.backupDir(b)

@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { ChangeRecoveryContext } from "./recovery/ChangeRecoveryIntent";
 import { useContext, useEffect, useState } from "react";
 import { ArrowRight, Files, RotateCcw, ShieldCheck } from "lucide-react";
@@ -160,6 +161,7 @@ export default function ChangeRestorePreview({
   const [data, setData] = useState<ChangeRestorePreviewResult | null>(null);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("change-preview", 4);
   useEffect(() => {
     const controller = new AbortController();
     setData(null);
@@ -298,27 +300,30 @@ export default function ChangeRestorePreview({
                 Dateirechte und weitere Eigenschaften. Die einzelnen
                 Unterschiede stehen in der Dateivorschau.
               </p>
-              {data.files.slice((page - 1) * 4, page * 4).map((file) => (
-                <FileCard
-                  key={data.source.id + file.path}
-                  file={file}
-                  selected={selectedFiles.includes(file.path)}
-                  onSelect={
-                    prepare && file.action !== "keep"
-                      ? (checked) =>
-                          setSelectedFiles((old) =>
-                            checked
-                              ? [...old, file.path]
-                              : old.filter((p) => p !== file.path),
-                          )
-                      : undefined
-                  }
-                />
-              ))}
+              {data.files
+                .slice((page - 1) * listSize, page * listSize)
+                .map((file) => (
+                  <FileCard
+                    key={data.source.id + file.path}
+                    file={file}
+                    selected={selectedFiles.includes(file.path)}
+                    onSelect={
+                      prepare && file.action !== "keep"
+                        ? (checked) =>
+                            setSelectedFiles((old) =>
+                              checked
+                                ? [...old, file.path]
+                                : old.filter((p) => p !== file.path),
+                            )
+                        : undefined
+                    }
+                  />
+                ))}
               {data.files.length > 4 && (
                 <Pagination
                   page={page}
-                  pageSize={4}
+                  pageSize={listSize}
+                  onPageSizeChange={setListSize}
                   total={data.files.length}
                   onPageChange={setPage}
                   label="Vorschaudateien"

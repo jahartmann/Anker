@@ -1,3 +1,4 @@
+import { PageSizeSelect } from "../listPageSize";
 import {
   useEffect,
   useRef,
@@ -57,6 +58,7 @@ export function Pagination({
   pageSize,
   total,
   onPageChange,
+  onPageSizeChange,
   label = "Einträge",
   previousLabel = "Vorherige Seite",
   nextLabel = "Nächste Seite",
@@ -65,6 +67,7 @@ export function Pagination({
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
   label?: string;
   previousLabel?: string;
   nextLabel?: string;
@@ -77,6 +80,16 @@ export function Pagination({
         {total ? (current - 1) * pageSize + 1 : 0}–
         {Math.min(current * pageSize, total)} von {total} {label}
       </span>
+      {onPageSizeChange && (
+        <PageSizeSelect
+          value={pageSize}
+          label={label + " pro Seite"}
+          onChange={(size) => {
+            onPageSizeChange(size);
+            onPageChange(1);
+          }}
+        />
+      )}
       {pages > 1 && (
         <div className="pagination-controls">
           <button

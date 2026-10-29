@@ -6,6 +6,8 @@ import "./workspace.css";
 import "./infrastructure.css";
 import "./console.css";
 import "./paper.css";
+import "./jobs.css";
+import "./remediation.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

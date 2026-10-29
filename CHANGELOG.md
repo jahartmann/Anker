@@ -1,5 +1,13 @@
 # Änderungen
 
+## v0.2.21 – 29. Oktober 2026
+
+- Sammelaktion für bekannte systemd-Pfad-, optionale Lynx- und Powerman-Verweishinweise direkt bei Hosts und Sicherungen: vorhandene Zugänge verwenden, neue Konfigurationssicherungen einreihen und anschließend automatisch Integrität prüfen. Ergebnisse unterscheiden vollständig bestätigte neue Stände, weitere Hinweise und übersprungene Hosts. Pausierte Zeitpläne werden nur nach ausdrücklicher Auswahl einmalig einbezogen und nicht aktiviert. Dauerhaft gespeicherte Sammelläufe und feste Auftragskennungen verhindern doppelte Erfassung beim Abgleichen einer verlorenen Antwort; vor Start werden aktueller Stand und aktive Aufträge nochmals geprüft. Alte Sicherungen, Hostprofile und Datastore-Inhalte bleiben erhalten.
+
+- Aufträge zeigen den aktuell beobachteten Arbeitsschritt, gemessene Eintragszahlen bei der Dateiprüfung und einen Verlauf je Versuch. SSH-Paketempfang wird erst nach eintreffenden Bytes ausgewiesen. Nicht messbare Phasen erhalten eine offene Fortschrittsanzeige; Prozentwerte und Restzeiten werden nicht geschätzt. Abbruch, Unterbrechung und fehlgeschlagene Versuche bleiben erkennbar.
+- Übersichtlichere Auftragsseite mit vier Verlaufsspalten, gemeinsamem Status-/Ergebnisbereich und sichtbarer Aktion „Ablauf ansehen“. Die Detailansicht gewichtet aktuelle Tätigkeit und Arbeitsschritte vor technischen Zeitstempeln; „Schließen“ und „Auftrag abbrechen“ sind getrennte Aktionen.
+- Seitengrößen bis 200 Einträge in paginierten Listen, insbesondere Hosts, letzte Sicherungen und Aufträge. Die Auswahl bleibt pro Liste in diesem Browser gespeichert; Suche, Filter und Dateiauswahl bleiben erhalten. Monatsverlauf verwendet dieselbe Seitengröße beim Aufteilen und Navigieren, damit keine älteren Stände übersprungen werden.
+
 ## v0.2.20 – 29. Oktober 2026
 
 - Gültige systemd-Dateinamen mit wörtlichen `\xHH`-Sequenzen werden unter `/etc/systemd/system` und `/etc/systemd/user` unterstützt, ohne diese Sequenzen zu dekodieren. Die übrigen Pfad- und Traversalprüfungen bleiben bestehen. Bei neuen Aufnahmen älterer Helfer ergänzt der Server ausgelassene systemd-Links ausschließlich aus übereinstimmenden Inventarmetadaten und Linknachweisen; Ziele werden nicht gelesen. Unbekannte ursprüngliche Änderungszeiten bleiben ausdrücklich unbekannt. Bestehende Hostregistrierungen und Zugänge bleiben erhalten.

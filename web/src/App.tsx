@@ -355,6 +355,7 @@ export default function App() {
     );
   const backup = status.backups.find((b) => b.id === file);
   const common = {
+    actorID: user.id,
     status,
     notify,
     refresh,

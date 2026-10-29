@@ -109,6 +109,14 @@ Nach jedem Neustart mit `findmnt /srv/anker-sftp/hosts /srv/anker-sftp/plans` re
 
 Archivierte Sicherungen enthalten weiterhin Manifest und `archive.tar.gz`. Für lesbare Einzeldateien kann Anker die Sicherung automatisch wieder öffnen oder ein Administrator das Archiv separat in einen neuen Arbeitsordner entpacken.
 
+## Bekannte Sicherungsprobleme gesammelt bearbeiten
+
+Unter **Hosts** und **Sicherungen** erscheint für bekannte systemd-Pfad-, Lynx- und Powerman-Hinweise die Sammelaktion **„Hosts neu sichern & prüfen“**. Ein Klick reiht neue Konfigurationssicherungen über die vorhandenen Zugänge ein und prüft anschließend deren gespeicherte Bytes. Die Auswahl umfasst die dort erkannten betroffenen Hosts unabhängig von Listenfiltern; ein Lauf ist auf 1000 Hosts begrenzt. Die konfigurierte Parallelität und Wiederholungsgrenze gelten weiterhin.
+
+Hosts mit laufendem Auftrag oder unvollständigem gespeicherten Zugang werden angezeigt und nicht doppelt gestartet. Pausierte Zeitpläne bleiben pausiert; ein gemeinsames Kontrollkästchen kann diese Hosts einmalig einbeziehen. Geänderte Sicherungsstände werden unmittelbar vor dem Einreihen erneut berücksichtigt. Die Aktion ändert keine Hostregistrierung, Pflichtpfade oder Datastore-Inhalte und entfernt keine alten Sicherungen.
+
+Bei verlorener Startantwort **„Start abgleichen“** verwenden. Der gespeicherte Sammellauf wird wiedergefunden, ohne dieselbe Erfassung doppelt zu starten. Die Übersicht trennt vollständig neu gesicherte und verifizierte Stände von weiteren Hinweisen und übersprungenen Hosts. Eine erfolgreiche Integritätsprüfung allein beseitigt keine echte Erfassungslücke. Ergebnisse und Aufträge lassen sich direkt öffnen. Nach einem Wiederherstellungsimport werden ungestartete Sammelaktionen verworfen; sie laufen nicht im Hintergrund wieder an.
+
 ## Zugänge
 
 Sitzungen sind 30 Tage gültig, konfigurierbar von 1 bis 365 Tagen für neue Anmeldungen. Tokens werden nur gehasht im Katalog gespeichert. Passwort- oder Rechteänderungen sowie Sperren und Löschen widerrufen vorhandene Sitzungen; ein Dienstneustart erhält gültige Sitzungen. Benutzerverwaltung und Sitzungswiderruf stehen unter „Einstellungen → Zugriff“. Dort ist auch die Passwort-Mindestlänge einstellbar: standardmäßig acht Zeichen, zulässiger Bereich 8 bis 128. Die Grenze gilt für neue oder neu gesetzte Passwörter, nicht rückwirkend bei der Anmeldung. „Aktionen → Passwort ändern“ erlaubt auch den eigenen Administratorzugang; dieser Passwortwechsel beendet dessen bestehende Sitzungen. Web und Terminal prüfen dieselbe gespeicherte Vorgabe.

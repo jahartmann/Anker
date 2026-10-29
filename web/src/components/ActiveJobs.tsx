@@ -1,3 +1,6 @@
+import { useListPageSize } from "../listPageSize";
+import JobProgress from "./JobProgress";
+import { ArrowUpRight } from "lucide-react";
 import { HostName } from "../hostNames";
 import { useEffect, useId, useState } from "react";
 import { date, labels } from "../api";
@@ -53,7 +56,7 @@ export default function ActiveJobs({
       );
     });
   const running = jobs.filter((job) => job.state === "running").length;
-  const size = Math.max(1, pageSize);
+  const [size, setSize] = useListPageSize("active-jobs", Math.max(1, pageSize));
   const currentPage = Math.min(
     page,
     Math.max(1, Math.ceil(jobs.length / size)),
@@ -131,35 +134,24 @@ export default function ActiveJobs({
                 </>
               )}
             </div>
-            {job.message && (
-              <p
-                className={
-                  "active-job-message" + (job.retry_at ? " retry-wait" : "")
-                }
-                aria-live={job.retry_at ? "polite" : "off"}
-              >
-                {job.message}
-                {job.retry_at && (
-                  <span> Nächster Versuch: {date(job.retry_at)}</span>
-                )}
-              </p>
-            )}
+            <JobProgress job={job} />
             {openJob && (
               <button
-                className="text-button"
+                className="job-open-button"
                 aria-label={`Auftrag ${job.id} ansehen`}
                 onClick={() => openJob(job.id)}
               >
-                Details
+                Ablauf ansehen <ArrowUpRight size={15} aria-hidden="true" />
               </button>
             )}
           </li>
         ))}
       </ul>
-      {jobs.length > size && (
+      {jobs.length > pageSize && (
         <Pagination
           page={currentPage}
           pageSize={size}
+          onPageSizeChange={setSize}
           total={jobs.length}
           onPageChange={setPage}
           label={title}

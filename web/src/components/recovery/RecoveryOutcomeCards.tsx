@@ -1,3 +1,4 @@
+import { useListPageSize } from "../../listPageSize";
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
@@ -146,6 +147,7 @@ export default function RecoveryOutcomeCards({
   disabled: boolean;
   onVerify?: () => Promise<void>;
 }) {
+  const [listSize, setListSize] = useListPageSize("recovery-outcomes", 4);
   const [page, setPage] = useState(1),
     [filter, setFilter] = useState("attention");
   const reports = plan.outcome_checks || [];
@@ -178,7 +180,10 @@ export default function RecoveryOutcomeCards({
       Number(a.state === "passed") - Number(b.state === "passed") ||
       a.path.localeCompare(b.path),
   );
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / 4)));
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(rows.length / listSize)),
+  );
   if (!plan.result && !report) return null;
   return (
     <section
@@ -335,13 +340,16 @@ export default function RecoveryOutcomeCards({
                   </button>
                 )}
               </div>
-              {rows.slice((currentPage - 1) * 4, currentPage * 4).map((f) => (
-                <FileCard key={report.id + f.path} file={f} />
-              ))}
+              {rows
+                .slice((currentPage - 1) * listSize, currentPage * listSize)
+                .map((f) => (
+                  <FileCard key={report.id + f.path} file={f} />
+                ))}
               {rows.length > 4 && (
                 <Pagination
                   page={currentPage}
-                  pageSize={4}
+                  pageSize={listSize}
+                  onPageSizeChange={setListSize}
                   total={rows.length}
                   onPageChange={setPage}
                   label="Geprüfte Dateien"

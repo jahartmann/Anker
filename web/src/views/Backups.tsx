@@ -1,3 +1,5 @@
+import BackupRemediation from "../components/BackupRemediation";
+import { useListPageSize, PageSizeSelect } from "../listPageSize";
 import { ServerRack as Server } from "../components/InfrastructureDetails";
 import BackupFocus from "../components/BackupFocus";
 import BackupIssues from "../components/BackupIssues";
@@ -75,7 +77,10 @@ export function BackupTable({
   referenceHosts?: { id: string; name: string }[];
 }) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(historyMode ? 10 : 25);
+  const [pageSize, setPageSize] = useListPageSize(
+    historyMode ? "backup-history" : "backups",
+    historyMode ? 10 : 25,
+  );
   useEffect(() => setPage(1), [filterKey]);
   const sorted = [...backups].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
@@ -373,18 +378,15 @@ export function BackupTable({
       </div>
       {(!historyMode || sorted.length > 10) && (
         <div className="list-footer">
-          <select
-            aria-label="Sicherungen pro Seite"
+          <PageSizeSelect
             value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
+            initial={historyMode ? 10 : 25}
+            label="Sicherungen pro Seite"
+            onChange={(size) => {
+              setPageSize(size);
               setPage(1);
             }}
-          >
-            {historyMode && <option value={10}>10 pro Seite</option>}
-            <option value={25}>25 pro Seite</option>
-            <option value={50}>50 pro Seite</option>
-          </select>
+          />
           <Pagination
             page={currentPage}
             pageSize={pageSize}
@@ -492,6 +494,10 @@ export function BackupHistory(props: HistoryProps) {
   const [query, setQuery] = useState("");
   const [openMonth, setOpenMonth] = useState("");
   const [page, setPage] = useState(1);
+  const [monthPageSize, setMonthPageSize] = useListPageSize(
+    "backup-months",
+    12,
+  );
   const sorted = [...props.backups].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
   );
@@ -510,7 +516,10 @@ export function BackupHistory(props: HistoryProps) {
     month.backups.push(backup);
     months.set(calendar.monthKey, month);
   }
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(months.size / 12)));
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(months.size / monthPageSize)),
+  );
   const pool = props.comparisonPool || props.backups;
   return (
     <section className="backup-history" aria-label="Sicherungsverlauf">
@@ -568,7 +577,10 @@ export function BackupHistory(props: HistoryProps) {
                 <span>Nach Monat und Tag gebündelt</span>
               </div>
               {[...months]
-                .slice((currentPage - 1) * 6, currentPage * 6)
+                .slice(
+                  (currentPage - 1) * monthPageSize,
+                  currentPage * monthPageSize,
+                )
                 .map(([key, month]) => (
                   <details
                     className="history-month"
@@ -605,10 +617,11 @@ export function BackupHistory(props: HistoryProps) {
                     )}
                   </details>
                 ))}
-              {months.size > 12 && (
+              {months.size > 0 && (
                 <Pagination
                   page={currentPage}
-                  pageSize={12}
+                  pageSize={monthPageSize}
+                  onPageSizeChange={setMonthPageSize}
                   total={months.size}
                   onPageChange={setPage}
                   label="Monate"
@@ -628,6 +641,7 @@ function BackupCollections({
   ...props
 }: HistoryProps & { status: Status }) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useListPageSize("latest-backups", 6);
   const [expanded, setExpanded] = useState("");
   const collections = useMemo(() => {
     const groups = new Map<string, Backup[]>();
@@ -642,7 +656,7 @@ function BackupCollections({
   }, [backups]);
   const currentPage = Math.min(
     page,
-    Math.max(1, Math.ceil(collections.length / 6)),
+    Math.max(1, Math.ceil(collections.length / pageSize)),
   );
   if (!backups.length)
     return (
@@ -668,12 +682,24 @@ function BackupCollections({
     );
   return (
     <div className="backup-collections">
+      <div className="collection-display-options">
+        <span>Letzter Stand je Host · {collections.length} Hosts</span>
+        <PageSizeSelect
+          value={pageSize}
+          initial={6}
+          label="Letzte Sicherungen pro Seite"
+          onChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      </div>
       <div className="collection-label">
         <span>Host & letzter passender Stand</span>
         <span>Verlauf</span>
       </div>
       {collections
-        .slice((currentPage - 1) * 6, currentPage * 6)
+        .slice((currentPage - 1) * pageSize, currentPage * pageSize)
         .map(([hostID, history]) => {
           const latest = history[0];
           const host = status.hosts.find((h) => h.id === hostID);
@@ -759,7 +785,7 @@ function BackupCollections({
         })}
       <Pagination
         page={currentPage}
-        pageSize={6}
+        pageSize={pageSize}
         total={collections.length}
         onPageChange={setPage}
         label="Hosts"
@@ -882,6 +908,14 @@ export default function Backups({
               </button>
             </div>
           }
+        />
+        <BackupRemediation
+          status={status}
+          actorID={user.id}
+          canEdit={props.canEdit}
+          refresh={props.refresh}
+          openJob={openJob}
+          openBackup={props.openBackup}
         />
         {showFocus && (
           <BackupFocus
@@ -1050,7 +1084,7 @@ export function FileBrowser({
     backup.id,
   );
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useListPageSize("backup-files", 25);
   const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState<{
     entry: Entry;
@@ -1252,6 +1286,8 @@ export function FileBrowser({
               >
                 <option value={25}>25 pro Seite</option>
                 <option value={50}>50 pro Seite</option>
+                <option value={100}>100 pro Seite</option>
+                <option value={200}>200 pro Seite</option>
               </select>
               <Pagination
                 page={currentPage}

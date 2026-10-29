@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { Fragment, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { bytes, date } from "../api";
@@ -20,8 +21,11 @@ export default function Inventory({
   const [diskQuery, setDiskQuery] = useState("");
   const [networkPage, setNetworkPage] = useState(1);
   const [diskPage, setDiskPage] = useState(1);
-  const [networkSize, setNetworkSize] = useState(25);
-  const [diskSize, setDiskSize] = useState(25);
+  const [networkSize, setNetworkSize] = useListPageSize(
+    "inventory-network",
+    25,
+  );
+  const [diskSize, setDiskSize] = useListPageSize("inventory-disks", 25);
   const [expanded, setExpanded] = useState<string[]>([]);
   const interfaces = (inventory.interfaces || []).filter((p) =>
     [p.name, p.mac, p.pci]
@@ -375,6 +379,8 @@ export default function Inventory({
           >
             <option value={25}>25 pro Seite</option>
             <option value={50}>50 pro Seite</option>
+            <option value={100}>100 pro Seite</option>
+            <option value={200}>200 pro Seite</option>
           </select>
           <Pagination
             page={currentNetworkPage}
@@ -503,6 +509,8 @@ export default function Inventory({
           >
             <option value={25}>25 pro Seite</option>
             <option value={50}>50 pro Seite</option>
+            <option value={100}>100 pro Seite</option>
+            <option value={200}>200 pro Seite</option>
           </select>
           <Pagination
             page={currentDiskPage}

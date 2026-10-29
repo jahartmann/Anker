@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { useState } from "react";
 import type { RecoveryInspection } from "../api";
 import { Field, Pagination } from "./shared";
@@ -17,6 +18,7 @@ export default function RecoveryMapping({
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [listSize, setListSize] = useListPageSize("recovery-mappings", 8);
   const [portQuery, setPortQuery] = useState("");
   const rows = [
     ...(inspection.ports || []).map((p) => ({
@@ -35,7 +37,10 @@ export default function RecoveryMapping({
   const matches = rows.filter((r) =>
     (r.key + " " + r.reason).toLowerCase().includes(query.toLowerCase()),
   );
-  const current = Math.min(page, Math.max(1, Math.ceil(matches.length / 8)));
+  const current = Math.min(
+    page,
+    Math.max(1, Math.ceil(matches.length / listSize)),
+  );
   if (!rows.length)
     return (
       <p className="field-hint">
@@ -82,99 +87,102 @@ export default function RecoveryMapping({
           />
         </Field>
       )}
-      {matches.slice((current - 1) * 8, current * 8).map((row) => {
-        const ports = row.kind === "port";
-        const value = (ports ? interfaces : storage)[row.key] || "";
-        const candidates = ports
-          ? (inspection.target_ports || [])
-              .filter(
-                (p) =>
-                  p.name === value ||
-                  (p.name + " " + p.mac + " " + (p.pci || ""))
-                    .toLowerCase()
-                    .includes(portQuery.toLowerCase()),
-              )
-              .slice(0, 50)
-              .map((p) => ({
-                id: p.name,
-                label: p.name + (p.mac ? " · " + p.mac : ""),
-              }))
-          : (inspection.target_storage || []).map((s) => ({
-              id: s.id,
-              label: s.id + (s.path ? " · " + s.path : ""),
-            }));
-        const sourceStorage =
-          !ports && inspection.storage.find((s) => s.id === row.key);
-        const targetStorage =
-          !ports && inspection.target_storage.find((s) => s.id === value);
-        const evidence = (s: typeof targetStorage) =>
-          s
-            ? `${s.kind} · ${
-                Object.entries(s.backing || {})
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(" · ") ||
-                s.path ||
-                "Backing unbekannt"
-              } · Inhalte: ${(s.content || []).join(", ") || "unbekannt"}`
-            : "Kein geprüfter Speicherbeleg";
-        // A selected port remains in the bounded list even after a search changes.
-        if (ports && value && !candidates.some((c) => c.id === value)) {
-          const selected = inspection.target_ports.find(
-            (p) => p.name === value,
-          );
-          if (selected)
-            candidates.push({
-              id: value,
-              label: value + (selected.mac ? " · " + selected.mac : ""),
-            });
-        }
-        return (
-          <Field
-            key={row.kind + row.key}
-            label={
-              row.key + (ports ? " → Zielport" : " → Zielspeicher (manuell)")
-            }
-            hint={[
-              row.reason,
-              !ports
-                ? "Quelle: " +
-                  evidence(sourceStorage) +
-                  "; Ziel: " +
-                  evidence(targetStorage) +
-                  ". Konkreten Volumebestand separat prüfen."
-                : "",
-              row.suggested && value === row.suggested
-                ? "Vorschlag aus Zielprüfung"
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          >
-            <select
-              value={value}
-              required
-              onChange={(e) =>
-                ports
-                  ? onInterfaces({ ...interfaces, [row.key]: e.target.value })
-                  : onStorage({ ...storage, [row.key]: e.target.value })
+      {matches
+        .slice((current - 1) * listSize, current * listSize)
+        .map((row) => {
+          const ports = row.kind === "port";
+          const value = (ports ? interfaces : storage)[row.key] || "";
+          const candidates = ports
+            ? (inspection.target_ports || [])
+                .filter(
+                  (p) =>
+                    p.name === value ||
+                    (p.name + " " + p.mac + " " + (p.pci || ""))
+                      .toLowerCase()
+                      .includes(portQuery.toLowerCase()),
+                )
+                .slice(0, 50)
+                .map((p) => ({
+                  id: p.name,
+                  label: p.name + (p.mac ? " · " + p.mac : ""),
+                }))
+            : (inspection.target_storage || []).map((s) => ({
+                id: s.id,
+                label: s.id + (s.path ? " · " + s.path : ""),
+              }));
+          const sourceStorage =
+            !ports && inspection.storage.find((s) => s.id === row.key);
+          const targetStorage =
+            !ports && inspection.target_storage.find((s) => s.id === value);
+          const evidence = (s: typeof targetStorage) =>
+            s
+              ? `${s.kind} · ${
+                  Object.entries(s.backing || {})
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(" · ") ||
+                  s.path ||
+                  "Backing unbekannt"
+                } · Inhalte: ${(s.content || []).join(", ") || "unbekannt"}`
+              : "Kein geprüfter Speicherbeleg";
+          // A selected port remains in the bounded list even after a search changes.
+          if (ports && value && !candidates.some((c) => c.id === value)) {
+            const selected = inspection.target_ports.find(
+              (p) => p.name === value,
+            );
+            if (selected)
+              candidates.push({
+                id: value,
+                label: value + (selected.mac ? " · " + selected.mac : ""),
+              });
+          }
+          return (
+            <Field
+              key={row.kind + row.key}
+              label={
+                row.key + (ports ? " → Zielport" : " → Zielspeicher (manuell)")
               }
+              hint={[
+                row.reason,
+                !ports
+                  ? "Quelle: " +
+                    evidence(sourceStorage) +
+                    "; Ziel: " +
+                    evidence(targetStorage) +
+                    ". Konkreten Volumebestand separat prüfen."
+                  : "",
+                row.suggested && value === row.suggested
+                  ? "Vorschlag aus Zielprüfung"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             >
-              <option value="">Zuordnung auswählen</option>
-              {!ports && <option value="manual">Manuell entscheiden</option>}
-              {candidates.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        );
-      })}
+              <select
+                value={value}
+                required
+                onChange={(e) =>
+                  ports
+                    ? onInterfaces({ ...interfaces, [row.key]: e.target.value })
+                    : onStorage({ ...storage, [row.key]: e.target.value })
+                }
+              >
+                <option value="">Zuordnung auswählen</option>
+                {!ports && <option value="manual">Manuell entscheiden</option>}
+                {candidates.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          );
+        })}
       {!matches.length && <p className="muted">Keine passenden Zuordnungen.</p>}
       {rows.length > 8 && (
         <Pagination
           page={current}
-          pageSize={8}
+          pageSize={listSize}
+          onPageSizeChange={setListSize}
           total={matches.length}
           onPageChange={setPage}
           label="Zuordnungen"

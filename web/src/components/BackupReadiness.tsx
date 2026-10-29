@@ -1,3 +1,4 @@
+import { useListPageSize } from "../listPageSize";
 import { useEffect, useState } from "react";
 import { api, date } from "../api";
 import type { Backup, BackupReadiness } from "../api";
@@ -28,6 +29,10 @@ export default function BackupReadiness({
   const [retry, setRetry] = useState(0);
   const [dependencyQuery, setDependencyQuery] = useState("");
   const [dependencyPage, setDependencyPage] = useState(1);
+  const [dependencySize, setDependencySize] = useListPageSize(
+    "backup-dependencies",
+    20,
+  );
   const sourceKey = JSON.stringify([
     backup?.id,
     backup?.status,
@@ -76,7 +81,7 @@ export default function BackupReadiness({
   );
   const currentDependencyPage = Math.min(
     dependencyPage,
-    Math.max(1, Math.ceil(dependencies.length / 20)),
+    Math.max(1, Math.ceil(dependencies.length / dependencySize)),
   );
   const dependencyState = (state: string) =>
     state === "missing" ? "Nicht enthalten" : stateLabels[state] || "Unbekannt";
@@ -259,8 +264,8 @@ export default function BackupReadiness({
                     <ul>
                       {dependencies
                         .slice(
-                          (currentDependencyPage - 1) * 20,
-                          currentDependencyPage * 20,
+                          (currentDependencyPage - 1) * dependencySize,
+                          currentDependencyPage * dependencySize,
                         )
                         .map((d, i) => (
                           <li key={`${d.path}-${i}`}>
@@ -273,7 +278,8 @@ export default function BackupReadiness({
                     {!dependencies.length && <p>Keine passenden Verweise.</p>}
                     <Pagination
                       page={currentDependencyPage}
-                      pageSize={20}
+                      pageSize={dependencySize}
+                      onPageSizeChange={setDependencySize}
                       total={dependencies.length}
                       onPageChange={setDependencyPage}
                       label="Verweise"
