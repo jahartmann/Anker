@@ -75,6 +75,7 @@ func (s *Service) SaveHost(h Host) error {
 	// Operator forms may be older than the last completed probe/backup.
 	if current, err := s.Host(h.ID); err == nil {
 		h.Inventory, h.LastProbe, h.ProbeError = current.Inventory, current.LastProbe, current.ProbeError
+		h.MaintenanceUntil, h.DriftMinutes = current.MaintenanceUntil, current.DriftMinutes
 		if !sameProbeTarget(current, h) {
 			h.Inventory = nil
 			h.LastProbe = ""
@@ -132,9 +133,18 @@ func (s *Service) saveHost(h Host) error {
 	if err != nil {
 		return err
 	}
+	h.ConfigRevision = ""
 	return s.Store.Put("hosts", h.ID, h)
 }
 func prepareHost(h Host) (Host, error) {
+	if h.MaintenanceUntil != "" {
+		if _, err := time.Parse(time.RFC3339Nano, h.MaintenanceUntil); err != nil {
+			return h, errors.New("Wartungsende ungültig")
+		}
+	}
+	if h.DriftMinutes != 0 && (h.DriftMinutes < 15 || h.DriftMinutes > 1440) {
+		return h, errors.New("Änderungsprüfung benötigt 15 bis 1440 Minuten")
+	}
 	if h.ID == "" {
 		h.ID = ID()
 	}
@@ -189,6 +199,9 @@ func (s *Service) Host(id string) (Host, error) {
 }
 func (s *Service) Hosts() ([]Host, error) {
 	hosts, err := records[Host](s.Store, "hosts")
+	for i := range hosts {
+		hosts[i].ConfigRevision = hostRevision(hosts[i])
+	}
 	sort.Slice(hosts, func(i, j int) bool { return hosts[i].Name < hosts[j].Name })
 	return hosts, err
 }

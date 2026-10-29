@@ -21,24 +21,27 @@ import (
 const FormatVersion = 1
 
 type Host struct {
-	RestoreSSHUser string     `json:"restore_ssh_user,omitempty"`
-	RestoreKeyPath string     `json:"restore_key_path,omitempty"`
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	Address        string     `json:"address"`
-	Group          string     `json:"group"`
-	ClusterID      string     `json:"cluster_id"`
-	SSHUser        string     `json:"ssh_user"`
-	SSHPort        int        `json:"ssh_port"`
-	KeyPath        string     `json:"key_path"`
-	KnownHostsPath string     `json:"known_hosts_path"`
-	Enabled        bool       `json:"enabled"`
-	Schedule       string     `json:"schedule"`
-	ExtraPaths     []string   `json:"extra_paths"`
-	DemoRoot       string     `json:"-"`
-	Inventory      *Inventory `json:"inventory,omitempty"`
-	LastProbe      string     `json:"last_probe,omitempty"`
-	ProbeError     string     `json:"probe_error,omitempty"`
+	MaintenanceUntil string     `json:"maintenance_until,omitempty"`
+	DriftMinutes     int        `json:"drift_minutes,omitempty"`
+	ConfigRevision   string     `json:"config_revision,omitempty"`
+	RestoreSSHUser   string     `json:"restore_ssh_user,omitempty"`
+	RestoreKeyPath   string     `json:"restore_key_path,omitempty"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Address          string     `json:"address"`
+	Group            string     `json:"group"`
+	ClusterID        string     `json:"cluster_id"`
+	SSHUser          string     `json:"ssh_user"`
+	SSHPort          int        `json:"ssh_port"`
+	KeyPath          string     `json:"key_path"`
+	KnownHostsPath   string     `json:"known_hosts_path"`
+	Enabled          bool       `json:"enabled"`
+	Schedule         string     `json:"schedule"`
+	ExtraPaths       []string   `json:"extra_paths"`
+	DemoRoot         string     `json:"-"`
+	Inventory        *Inventory `json:"inventory,omitempty"`
+	LastProbe        string     `json:"last_probe,omitempty"`
+	ProbeError       string     `json:"probe_error,omitempty"`
 }
 type Interface struct {
 	Physical bool   `json:"physical"`
@@ -74,6 +77,8 @@ type PBSJob struct {
 	Disabled bool   `json:"disabled"`
 }
 type Inventory struct {
+	HelperVersion string                         `json:"helper_version,omitempty"`
+	HelperSHA256  string                         `json:"helper_sha256,omitempty"`
 	PBSDatastores []PBSDatastore                 `json:"pbs_datastores,omitempty"`
 	PBSJobs       []PBSJob                       `json:"pbs_jobs,omitempty"`
 	HostType      string                         `json:"host_type,omitempty"`
@@ -362,6 +367,8 @@ type Collector interface {
 	Apply(context.Context, Host, Plan, string) (ApplyResult, error)
 }
 type Service struct {
+	operationsMu          sync.Mutex
+	incidentsMu           sync.Mutex
 	remediationMu         sync.Mutex
 	clusterSetMu          sync.Mutex
 	snapshotMu            sync.Mutex

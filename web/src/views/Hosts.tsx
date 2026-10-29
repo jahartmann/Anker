@@ -1,3 +1,4 @@
+import HostOperations, { HostDrift } from "../components/HostOperations";
 import BackupRemediation from "../components/BackupRemediation";
 import { useListPageSize, PageSizeSelect } from "../listPageSize";
 import {
@@ -711,6 +712,9 @@ export default function Hosts({
   initialStateFilter?: HostStateFilter;
   onInitialStateFilterConsumed?: () => void;
 }) {
+  const [bulkSelection, setBulkSelection] = useState<Record<string, string>>(
+    {},
+  );
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [initialEndpoint, setInitialEndpoint] = useState<{
     address: string;
@@ -1063,7 +1067,9 @@ export default function Hosts({
                             ? "Der Auftrag wartet auf einen neuen Versuch"
                             : activeHostJob.state === "queued"
                               ? "Ein Auftrag wartet"
-                              : activeHostJob.kind === "backup"
+                              : ["backup", "backup_verify"].includes(
+                                    activeHostJob.kind,
+                                  )
                                 ? "Die Sicherung läuft"
                                 : activeHostJob.kind === "probe"
                                   ? "Die Verbindung wird geprüft"
@@ -1199,9 +1205,12 @@ export default function Hosts({
                     <strong>
                       {status.demo
                         ? "In der Demo aus"
-                        : host.enabled
-                          ? host.schedule || "Gemeinsamer Zeitplan"
-                          : "Pausiert"}
+                        : host.maintenance_until &&
+                            Date.parse(host.maintenance_until) > Date.now()
+                          ? "Wartung bis " + date(host.maintenance_until)
+                          : host.enabled
+                            ? host.schedule || "Gemeinsamer Zeitplan"
+                            : "Pausiert"}
                     </strong>
                     <small>
                       {status.demo
@@ -1323,6 +1332,13 @@ export default function Hosts({
                     )}
                   </section>
                 </div>
+                <HostDrift
+                  key={`${host.id}-${latest?.id}-${latest?.status}-${latest?.verified_at}`}
+                  host={host}
+                  canOperate={canOperate}
+                  refresh={refresh}
+                  openJob={openJob}
+                />
                 <details className="host-extra-details" key={host.id}>
                   <summary>Details zum Host und zur letzten Sicherung</summary>
                   <BackupReadiness backup={latest} />
@@ -1587,6 +1603,7 @@ export default function Hosts({
                 )
               }
             />
+
             <BackupRemediation
               status={status}
               actorID={actorID}
@@ -1766,6 +1783,17 @@ export default function Hosts({
                 </p>
               </details>
             </div>
+            <HostOperations
+              hosts={status.hosts}
+              filtered={hosts}
+              selection={bulkSelection}
+              onSelection={setBulkSelection}
+              canManage={canEdit}
+              canOperate={canOperate}
+              refresh={refresh}
+              openJob={openJob}
+              actorID={actorID}
+            />
             {hosts.length ? (
               <div className="host-site-grid">
                 {visibleBuckets.map((bucket) => (
@@ -1840,16 +1868,35 @@ export default function Hosts({
                             return (
                               <tr key={h.id}>
                                 <td>
-                                  <button
-                                    className="name-link"
-                                    aria-label={h.name}
-                                    onClick={() => {
-                                      setSelected(h.id);
-                                      setTab("Übersicht");
-                                    }}
-                                  >
-                                    <HostName name={h.name} />
-                                  </button>
+                                  <div className="host-select-name">
+                                    {canOperate && (
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Host ${h.name} auswählen`}
+                                        checked={!!bulkSelection[h.id]}
+                                        disabled={!h.config_revision}
+                                        onChange={(e) =>
+                                          setBulkSelection((old) => {
+                                            const next = { ...old };
+                                            if (e.target.checked)
+                                              next[h.id] = h.config_revision!;
+                                            else delete next[h.id];
+                                            return next;
+                                          })
+                                        }
+                                      />
+                                    )}
+                                    <button
+                                      className="name-link"
+                                      aria-label={h.name}
+                                      onClick={() => {
+                                        setSelected(h.id);
+                                        setTab("Übersicht");
+                                      }}
+                                    >
+                                      <HostName name={h.name} />
+                                    </button>
+                                  </div>
                                   <div className="host-node-meta">
                                     <span
                                       className={`server-role ${serverType(h)}`}
@@ -1890,7 +1937,9 @@ export default function Hosts({
                                   {status.jobs.some(
                                     (j) =>
                                       j.host_id === h.id &&
-                                      j.kind === "backup" &&
+                                      ["backup", "backup_verify"].includes(
+                                        j.kind,
+                                      ) &&
                                       ["queued", "running"].includes(j.state),
                                   ) && (
                                     <div className="secondary-line">
@@ -1899,7 +1948,10 @@ export default function Hosts({
                                           status.jobs.some(
                                             (j) =>
                                               j.host_id === h.id &&
-                                              j.kind === "backup" &&
+                                              [
+                                                "backup",
+                                                "backup_verify",
+                                              ].includes(j.kind) &&
                                               j.state === "running",
                                           )
                                             ? "running"
@@ -1909,7 +1961,10 @@ export default function Hosts({
                                           status.jobs.some(
                                             (j) =>
                                               j.host_id === h.id &&
-                                              j.kind === "backup" &&
+                                              [
+                                                "backup",
+                                                "backup_verify",
+                                              ].includes(j.kind) &&
                                               j.state === "running",
                                           )
                                             ? "Sicherung läuft"

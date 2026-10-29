@@ -14,6 +14,8 @@ export interface Port {
   kind?: string;
 }
 export interface Inventory {
+  helper_version?: string;
+  helper_sha256?: string;
   query_states?: Record<
     string,
     { state: "ok" | "failed" | "not_applicable" | "unknown" }
@@ -55,6 +57,9 @@ export interface HostIdentity {
   changed: boolean;
 }
 export interface Host {
+  maintenance_until?: string;
+  drift_minutes?: number;
+  config_revision?: string;
   restore_key_path?: string;
   restore_ssh_user?: string;
   id: string;
@@ -617,6 +622,9 @@ export const labels: Record<string, string> = {
   topology: "Topologie ändern",
   backup: "Sicherung",
   probe: "Hostprüfung",
+  drift: "Liveänderungen prüfen",
+  verify: "Sicherung verifizieren",
+  backup_verify: "Sichern und verifizieren",
   restore: "Wiederherstellung",
   rollback: "Rücksetzung",
 };

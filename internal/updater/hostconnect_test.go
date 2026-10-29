@@ -35,14 +35,14 @@ func (f *rootConnectFixture) Enroll(_ context.Context, in hostconnect.EnrollRequ
 	return hostconnect.Enrollment{Address: in.Address, Port: in.Port}, nil
 }
 func TestRootHostConnectionRequiresStrictRequestAndCoordination(t *testing.T) {
-	for _, path := range []string{"inspect", "enroll", "check"} {
+	for _, path := range []string{"inspect", "enroll", "check", "refresh"} {
 		for _, marker := range []string{"busy", "setup-pending.json", "update-maintenance", "pending.json", "malformed", "trailing", "unknown", "origin"} {
 			t.Run(path+marker, func(t *testing.T) {
 				s := configurationFixture(t)
 				f := &rootConnectFixture{server: s}
 				s.hostManager = f
 				body := `{"address":"pve.example","port":22}`
-				if path == "enroll" || path == "check" {
+				if path != "inspect" {
 					body = `{"address":"pve.example","port":22,"username":"root","password":"transient-only","fingerprint":"SHA256:test","confirmed":true}`
 				}
 				expected := 409
@@ -96,5 +96,26 @@ func TestRootHostInspectionAndEnrollmentReleaseBusy(t *testing.T) {
 	}
 	if f.calls != 2 {
 		t.Fatal(f.calls)
+	}
+}
+
+func (f *rootConnectFixture) Refresh(_ context.Context, in hostconnect.EnrollRequest) (hostconnect.RefreshResult, error) {
+	f.calls++
+	if !f.server.snapshot().Busy {
+		return hostconnect.RefreshResult{}, context.Canceled
+	}
+	return hostconnect.RefreshResult{Version: hostconnect.HelperVersion, SHA256: hostconnect.HelperHash()}, nil
+}
+func TestRootHelperRefreshReleasesBusyAndReturnsOnlyIdentity(t *testing.T) {
+	s := configurationFixture(t)
+	f := &rootConnectFixture{server: s}
+	s.hostManager = f
+	w := configurationRequest(s, "POST", "/hosts/refresh", `{"address":"pve.example","port":22,"username":"root","password":"transient-only","fingerprint":"SHA256:test","confirmed":true}`)
+	if w.Code != 200 || s.snapshot().Busy || f.calls != 1 {
+		t.Fatal(w.Code, w.Body.String(), f.calls)
+	}
+	var out hostconnect.RefreshResult
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil || out.SHA256 != hostconnect.HelperHash() || out.Version != hostconnect.HelperVersion || strings.Contains(w.Body.String(), "transient-only") {
+		t.Fatal(w.Body.String())
 	}
 }

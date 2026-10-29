@@ -259,6 +259,9 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	path := strings.Join(parts[1:], "/")
 	method := r.Method
+	if handled, err := s.operationsHTTP(u, w, r); handled {
+		return err
+	}
 	if path == "backup-remediation" || strings.HasPrefix(path, "backup-remediation/") {
 		segments := strings.Split(path, "/")
 		if len(segments) > 2 {

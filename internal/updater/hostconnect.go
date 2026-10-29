@@ -26,7 +26,7 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		json.NewEncoder(w).Encode(map[string]string{"error": message})
 	}
-	if r.Method != "POST" || (r.URL.Path != "/hosts/inspect" && r.URL.Path != "/hosts/enroll" && r.URL.Path != "/hosts/check") {
+	if r.Method != "POST" || (r.URL.Path != "/hosts/inspect" && r.URL.Path != "/hosts/enroll" && r.URL.Path != "/hosts/check" && r.URL.Path != "/hosts/refresh") {
 		reject(405, "Methode nicht unterstützt")
 		return
 	}
@@ -134,6 +134,15 @@ func (s *Server) hostConnectionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result, err = checker.Check(ctx, enrollment)
+	} else if r.URL.Path == "/hosts/refresh" {
+		refresher, ok := connector.(interface {
+			Refresh(context.Context, hostconnect.EnrollRequest) (hostconnect.RefreshResult, error)
+		})
+		if !ok {
+			reject(503, "Helferaktualisierung nicht verfügbar")
+			return
+		}
+		result, err = refresher.Refresh(ctx, enrollment)
 	} else {
 		result, err = connector.Enroll(ctx, enrollment)
 	}

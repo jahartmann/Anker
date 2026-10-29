@@ -70,11 +70,18 @@ func (sc *Scheduler) Tick(at time.Time) (tickErr error) {
 	}
 	var scheduleErr error
 	for _, h := range hosts {
-		if !h.Enabled {
+		if !h.Enabled || hostMaintenance(h, at) {
 			continue
 		}
 		if _, err = sc.s.queueBackup(h.ID, &at); err != nil && !errors.Is(err, errJobNotDue) && !errors.Is(err, errHostJobActive) {
 			scheduleErr = errors.Join(scheduleErr, fmt.Errorf("Host %s: %w", h.ID, err))
+		}
+	}
+	for _, h := range hosts {
+		if h.Enabled && h.DriftMinutes >= 15 && !hostMaintenance(h, at) {
+			if _, err := sc.s.queueDriftDue(h, at); err != nil && !errors.Is(err, errJobNotDue) && !errors.Is(err, errHostJobActive) {
+				scheduleErr = errors.Join(scheduleErr, err)
+			}
 		}
 	}
 	var maintained string
@@ -98,7 +105,8 @@ func (sc *Scheduler) Tick(at time.Time) (tickErr error) {
 			maintenanceErr = errors.Join(maintenanceErr, putErr)
 		}
 	}
-	return errors.Join(scheduleErr, maintenanceErr, sc.s.CheckStaleBackups(at))
+	_, incidentErr := sc.s.Incidents()
+	return errors.Join(scheduleErr, maintenanceErr, sc.s.CheckStaleBackups(at), incidentErr)
 }
 
 func scheduledTime(h Host, settings Settings, local time.Time) (time.Time, error) {

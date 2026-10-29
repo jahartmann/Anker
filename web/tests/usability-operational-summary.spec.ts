@@ -129,7 +129,7 @@ test("incomplete sources cannot produce a reassuring summary", async ({
   expect(calls).toBe(0);
 });
 
-test("a large problem collection exposes three bounded searchable groups without hiding errors", async ({
+test("a large problem collection groups root causes with bounded searchable host lists", async ({
   page,
 }, info) => {
   const { base, host } = await fixture(page);
@@ -148,19 +148,45 @@ test("a large problem collection exposes three bounded searchable groups without
   await page.route("**/api/status", (r) =>
     r.fulfill({ json: { ...base, hosts, backups, jobs: [] } }),
   );
+  await page.route("**/api/operations/incidents", (r) =>
+    r.fulfill({
+      json: [hosts.slice(0, 1), hosts.slice(1, 2), hosts.slice(2, 100)].map(
+        (items, i) => ({
+          id: `cause-${i}`,
+          code: ["integrity", "invalid_path", "backup_missing"][i],
+          title: [
+            "Integritätsfehler",
+            "Pfad konnte nicht verarbeitet werden",
+            "Noch keine Sicherung",
+          ][i],
+          state: "new",
+          detail: "Neue Erfassung erforderlich.",
+          action: "Host prüfen und neu sichern.",
+          first_seen: new Date().toISOString(),
+          last_seen: new Date().toISOString(),
+          reopen_count: 0,
+          hosts: items.map((h) => ({ id: h.id, name: h.name, muted: false })),
+        }),
+      ),
+    }),
+  );
   await page.goto("/");
   await page
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
   const region = page.getByRole("region", { name: "Jetzt wichtig" });
-  await expect(region.locator(".problem-card")).toHaveCount(3);
+  await expect(region.locator(".incident-card")).toHaveCount(3);
   await expect(region.locator(".section-heading .count-badge")).toHaveText(
     "100",
   );
+  for (const summary of await region
+    .getByText("Betroffene Hosts und Nachweise", { exact: true })
+    .all())
+    await summary.click();
   await expect(
     region.getByRole("button", { name: /Host .* prüfen/ }),
-  ).toHaveCount(6);
+  ).toHaveCount(7);
   await region.getByRole("textbox").fill("problem-099");
   await expect(
     region.getByRole("button", { name: /Host .* prüfen/ }),

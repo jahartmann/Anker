@@ -39,6 +39,15 @@ export function assessHost(
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const latest = backups[0];
   const source = recoverySource(backups, at);
+  if (host.maintenance_until && Date.parse(host.maintenance_until) > at)
+    return {
+      text: "Wartung",
+      tone: "muted",
+      backup: source,
+      reason: `Automatische Sicherungen und Liveprüfungen pausieren bis ${new Date(host.maintenance_until).toLocaleString("de-DE")}. Vorhandene Probleme bleiben im Ursachenverlauf sichtbar.`,
+      action: "settings",
+      actionLabel: "Wartung ansehen",
+    };
   if (!host.enabled)
     return {
       text: "Pausiert",

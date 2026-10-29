@@ -1,5 +1,14 @@
 # Änderungen
 
+## v0.2.22 – 29. Oktober 2026
+
+- Ursachen über betroffene Hosts gruppieren; Kenntnisnahme, laufende Arbeit, belegte Erledigung und erneutes Auftreten getrennt anzeigen. Vorhandene Sicherungen behalten ihre Warnungen.
+- Feste Host-Mehrfachauswahl über Seiten und Filter hinweg mit Vorschau und dauerhafter Ergebnisquittung. Gemeinsam sichern und verifizieren, untersuchen, Integrität prüfen sowie Zeitpläne, Gruppen und Automatik verwalten. Veraltete Auswahlen werden erkannt. Wiederholte Anfragen bleiben auch nach Entfernung eines Auftragseintrags ohne zusätzliche Erfassung.
+- Befristete Hostwartung mit automatischem Ablauf ohne Änderung des ursprünglichen Zeitplans. Automatische Sicherungen, Liveprüfungen und Überfälligkeitsmeldungen pausieren; manuelle Aktionen bleiben möglich.
+- Zentrale Übersicht gemeldeter Helferversionen, Dateihashes und Fähigkeiten. Separater, ausdrücklich bestätigter Administratorpfad zum atomaren Austausch der eingebetteten Helferdatei bei bereits vertrauter Hostidentität; Profile, Rollenschlüssel und sudo-Regeln bleiben bestehen.
+- Optionale lesende Liveprüfung von Konfigurationsinhalten gegenüber dem letzten vollständigen Stand; neue, entfernte und geänderte Einträge sowie unbekannte und veraltete Nachweise getrennt darstellen. PBS-Datastores und `.chunks` bleiben ausgeschlossen.
+- Kompakte gemeinsame Bedienung, begrenzte Ursachen-/Helferlisten, mobile Hostauswahl beim Namen und überarbeitete Betriebsdokumentation.
+
 ## v0.2.21 – 29. Oktober 2026
 
 - Sammelaktion für bekannte systemd-Pfad-, optionale Lynx- und Powerman-Verweishinweise direkt bei Hosts und Sicherungen: vorhandene Zugänge verwenden, neue Konfigurationssicherungen einreihen und anschließend automatisch Integrität prüfen. Ergebnisse unterscheiden vollständig bestätigte neue Stände, weitere Hinweise und übersprungene Hosts. Pausierte Zeitpläne werden nur nach ausdrücklicher Auswahl einmalig einbezogen und nicht aktiviert. Dauerhaft gespeicherte Sammelläufe und feste Auftragskennungen verhindern doppelte Erfassung beim Abgleichen einer verlorenen Antwort; vor Start werden aktueller Stand und aktive Aufträge nochmals geprüft. Alte Sicherungen, Hostprofile und Datastore-Inhalte bleiben erhalten.

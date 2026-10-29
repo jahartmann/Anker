@@ -1003,7 +1003,9 @@ export default function Backups({
           status={{
             hosts: status.hosts,
             jobs: status.jobs.filter(
-              (j) => j.kind === "backup" && (!host || j.host_id === host),
+              (j) =>
+                ["backup", "backup_verify"].includes(j.kind) &&
+                (!host || j.host_id === host),
             ),
           }}
           openJob={openJob}

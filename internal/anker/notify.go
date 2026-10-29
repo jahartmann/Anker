@@ -16,7 +16,7 @@ import (
 
 func decodeJSON(b []byte, v any) error { return json.Unmarshal(b, v) }
 func (s *Service) notifyJob(j Job) {
-	if j.Kind != "backup" {
+	if j.Kind != "backup" && j.Kind != "backup_verify" {
 		return
 	}
 	settings, err := s.Settings()
@@ -29,7 +29,7 @@ func (s *Service) notifyJob(j Job) {
 	jobs, _ := s.Jobs()
 	var previous *Job
 	for _, v := range jobs {
-		if v.ID != j.ID && v.HostID == j.HostID && v.Kind == "backup" && v.FinishedAt != "" && v.CreatedAt < j.CreatedAt && (previous == nil || v.CreatedAt > previous.CreatedAt) {
+		if v.ID != j.ID && v.HostID == j.HostID && (v.Kind == "backup" || v.Kind == "backup_verify") && v.FinishedAt != "" && v.CreatedAt < j.CreatedAt && (previous == nil || v.CreatedAt > previous.CreatedAt) {
 			x := v
 			previous = &x
 		}
@@ -63,7 +63,7 @@ func (s *Service) CheckStaleBackups(at time.Time) error {
 		return err
 	}
 	for _, h := range hosts {
-		if !h.Enabled {
+		if !h.Enabled || hostMaintenance(h, at) {
 			continue
 		}
 		backups, err := s.ListBackups(h.ID)

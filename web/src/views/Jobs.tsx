@@ -203,7 +203,7 @@ export default function Jobs({
   }
   function resultAction(job: Job) {
     if (
-      job.kind === "backup" &&
+      ["backup", "backup_verify", "verify"].includes(job.kind) &&
       ["successful", "failed"].includes(job.state) &&
       job.result_id &&
       status.backups.some((backup) => backup.id === job.result_id)
@@ -680,12 +680,12 @@ export default function Jobs({
                 {selected.error &&
                   selected.error !== selected.message &&
                   !(
-                    selected.kind === "backup" &&
+                    ["backup", "backup_verify"].includes(selected.kind) &&
                     (selected.issues?.length ||
                       status.backups.find((b) => b.id === selected.result_id)
                         ?.issues?.length)
                   ) && <p className="notice warning">{selected.error}</p>}
-                {selected.kind === "backup" && (
+                {["backup", "backup_verify"].includes(selected.kind) && (
                   <BackupIssues
                     backup={status.backups.find(
                       (b) => b.id === selected.result_id,
@@ -715,7 +715,9 @@ export default function Jobs({
                     </button>
                   )}
                 {selected.result_id &&
-                  selected.kind === "backup" &&
+                  ["backup", "backup_verify", "verify"].includes(
+                    selected.kind,
+                  ) &&
                   (status.backups.some((b) => b.id === selected.result_id) ? (
                     <button
                       className="secondary"
@@ -794,7 +796,13 @@ export default function Jobs({
                       </button>
                     )}
                     {canEdit &&
-                      ["backup", "probe"].includes(selected.kind) &&
+                      [
+                        "backup",
+                        "backup_verify",
+                        "probe",
+                        "drift",
+                        "verify",
+                      ].includes(selected.kind) &&
                       ["failed", "cancelled", "interrupted"].includes(
                         selected.state,
                       ) && (

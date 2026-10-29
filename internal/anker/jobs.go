@@ -2,6 +2,7 @@ package anker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -55,7 +56,20 @@ func (s *Service) DeleteJob(id string) error {
 	if !finishedJob(j) || worker {
 		return fail(409, "Aktive Aufträge können nicht entfernt werden; erst Abschluss oder Abbruch abwarten")
 	}
-	return s.Store.Delete("jobs", id)
+	// Keep a minimal admission tombstone: deleting history must not authorize
+	// replaying a still-pending durable batch after a lost response.
+	tx, err := s.Store.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = txPut(tx, "deleted-job-requests", j.ID, map[string]string{"host_id": j.HostID, "kind": j.Kind}); err != nil {
+		return err
+	}
+	if _, err = tx.Exec("DELETE FROM records WHERE bucket='jobs' AND id=?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (s *Service) RetryJob(id string) (Job, error) {
 	j, err := s.Job(id)
@@ -68,8 +82,17 @@ func (s *Service) RetryJob(id string) (Job, error) {
 	switch j.Kind {
 	case "backup":
 		return s.queueAtForSetRetry(j.HostID, "backup", nil, "", j.ID, s.backupRunner(j.HostID))
+	case "backup_verify":
+		return s.queueAtForSetRetry(j.HostID, j.Kind, nil, "", j.ID, s.remediationRunner(j.HostID))
+	case "verify":
+		if j.ResultID == "" {
+			return Job{}, fail(409, "Sicherung aus der Hostauswahl erneut prüfen")
+		}
+		return s.queueAtForSetRetry(j.HostID, j.Kind, nil, "", j.ID, s.verificationRunner(j.ResultID))
+	case "drift":
+		return s.queueAtForSetRetry(j.HostID, j.Kind, nil, "", j.ID, s.driftRunner(j.HostID))
 	case "probe":
-		return s.queueAtForSetRetry(j.HostID, "probe", nil, "", j.ID, s.probeRunner(j.HostID))
+		return s.queueAtForSetRetry(j.HostID, j.Kind, nil, "", j.ID, s.probeRunner(j.HostID))
 	default:
 		return Job{}, fail(409, "Wiederherstellung über einen frisch geprüften Plan mit neuer Bestätigung starten")
 	}
@@ -84,7 +107,7 @@ func (s *Service) RecoverJobs() error {
 			previousState := j.State
 			j.State = "interrupted"
 			finishJobStage(&j, "interrupted")
-			if j.Kind == "backup" || j.Kind == "probe" {
+			if j.Kind == "backup" || j.Kind == "backup_verify" || j.Kind == "probe" || j.Kind == "drift" || j.Kind == "verify" {
 				if previousState == "queued" {
 					j.Message = "Nach Dienstneustart beendet: Auftrag war noch in der Warteschlange. Bei Bedarf gezielt erneut starten."
 				} else {
@@ -202,6 +225,7 @@ func (s *Service) queue(hostID, kind string, run func(context.Context) (string, 
 
 var errJobNotDue = errors.New("Zeitplan ist nicht fällig oder wurde heute bereits gestartet")
 var errHostJobActive = errors.New("Host hat bereits einen aktiven Auftrag")
+var errJobRequestConsumed = errors.New("Auftrag bereits verbucht; Historieneintrag wurde entfernt")
 
 func (s *Service) queueAt(hostID, kind string, at *time.Time, run func(context.Context) (string, error)) (Job, error) {
 	return s.queueAtForSet(hostID, kind, at, "", run)
@@ -214,6 +238,9 @@ func (s *Service) queueAtForSetRetry(hostID, kind string, at *time.Time, setID, 
 	return s.queueOperation(hostID, kind, at, setID, retryOf, "", run)
 }
 func (s *Service) queueOperation(hostID, kind string, at *time.Time, setID, retryOf, requestedID string, run func(context.Context) (string, error), checks ...func() error) (Job, error) {
+	return s.queueTriggeredOperation(hostID, kind, at, setID, retryOf, requestedID, "manual", run, checks...)
+}
+func (s *Service) queueTriggeredOperation(hostID, kind string, at *time.Time, setID, retryOf, requestedID, trigger string, run func(context.Context) (string, error), checks ...func() error) (Job, error) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	jobs, err := s.Jobs()
@@ -231,6 +258,19 @@ func (s *Service) queueOperation(hostID, kind string, at *time.Time, setID, retr
 				}
 				return previous, nil
 			}
+		}
+	}
+	if requestedID != "" {
+		var marker map[string]string
+		err := s.Store.Get("deleted-job-requests", requestedID, &marker)
+		if err == nil {
+			if marker["host_id"] != hostID || marker["kind"] != kind {
+				return Job{}, fail(409, "Auftragszuordnung widersprüchlich")
+			}
+			return Job{}, errJobRequestConsumed
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return Job{}, err
 		}
 	}
 	if retryOf != "" {
@@ -271,7 +311,7 @@ func (s *Service) queueOperation(hostID, kind string, at *time.Time, setID, retr
 		if err != nil {
 			return Job{}, err
 		}
-		if !h.Enabled || local.Before(due) {
+		if !h.Enabled || hostMaintenance(h, *at) || local.Before(due) {
 			return Job{}, errJobNotDue
 		}
 		day = local.Format("2006-01-02")
@@ -291,7 +331,7 @@ func (s *Service) queueOperation(hostID, kind string, at *time.Time, setID, retr
 		jobID = ID()
 	}
 	j := Job{ID: jobID, Revision: 1, RetryOf: retryOf, Message: "Wartet auf einen freien Ausführungsplatz.", SourceSetID: setID, HostID: hostID, Kind: kind, State: "queued", CreatedAt: now(), Trigger: "manual", ScheduledDay: day}
-	if day != "" {
+	if day != "" || trigger == "scheduled" {
 		j.Trigger = "scheduled"
 	}
 	if err = s.Store.insertJob(j); err != nil {
@@ -348,9 +388,24 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 				s.jobMu.Unlock()
 				continue
 			}
+			if j.Trigger == "scheduled" {
+				h, e := s.Host(j.HostID)
+				if e != nil {
+					s.jobMu.Unlock()
+					j.State, j.FinishedAt, j.Error = "failed", now(), "Hosteinstellungen nicht lesbar"
+					s.persistJob(j)
+					return
+				}
+				if !h.Enabled || hostMaintenance(h, time.Now()) || (j.Kind == "drift" && h.DriftMinutes < 15) {
+					s.jobMu.Unlock()
+					j.State, j.FinishedAt, j.Message = "cancelled", now(), "Automatische Ausführung vor dem Start wegen Hostwartung oder pausierter Automatik beendet."
+					s.persistJob(j)
+					return
+				}
+			}
 			j.State, j.StartedAt, j.Attempts = "running", now(), 1
 			j.MaxAttempts = 1
-			if j.Kind == "backup" || j.Kind == "probe" {
+			if j.Kind == "backup" || j.Kind == "backup_verify" || j.Kind == "probe" || j.Kind == "drift" {
 				j.MaxAttempts += settings.Retries
 			}
 			j.Message = "Hostoperation läuft."
@@ -375,7 +430,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		}
 	}
 	retries := 0
-	if j.Kind == "backup" || j.Kind == "probe" {
+	if j.Kind == "backup" || j.Kind == "backup_verify" || j.Kind == "probe" || j.Kind == "drift" {
 		retries = settings.Retries
 	}
 	var err error
@@ -420,7 +475,7 @@ func (s *Service) executeJob(ctx context.Context, j Job, run func(context.Contex
 		j.Message = "Beendet: Fehler benötigt eine Prüfung; keine automatische Wiederholung."
 		if j.ResultID != "" {
 			j.Message = "Ergebnis bereits vorhanden; Abschluss nicht vollständig bestätigt. Vor weiteren Sicherungen das Ergebnis prüfen."
-		} else if (j.Kind == "backup" || j.Kind == "probe") && transientConnection(err) {
+		} else if (j.Kind == "backup" || j.Kind == "backup_verify" || j.Kind == "probe" || j.Kind == "drift") && transientConnection(err) {
 			j.Message = fmt.Sprintf("Verbindung nach %d Versuchen weiterhin gestört. Wiederholungslimit erreicht.", j.Attempts)
 		}
 	}

@@ -41,6 +41,12 @@ class PBSTests(unittest.TestCase):
   with patch.object(helper.subprocess,'run',side_effect=self.command_run):
    out=self.root/'out';out.mkdir()
    return helper.collect(self.root,out,paths or ['/etc','/usr/local'])
+ def test_helper_identity_is_exact_source_hash_and_not_a_path(self):
+  import hashlib
+  inv=self.probe()
+  self.assertEqual(inv['helper_version'],'2.1')
+  self.assertEqual(inv['helper_sha256'],hashlib.sha256(pathlib.Path(helper.__file__).read_bytes()).hexdigest())
+  self.assertNotIn(str(self.root),inv['helper_sha256'])
  def test_detection_and_inventory_exclude_pve_commands_and_data(self):
   inv=self.probe()
   self.assertEqual(inv['host_type'],'pbs')

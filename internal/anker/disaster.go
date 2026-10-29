@@ -659,7 +659,7 @@ func disasterValidate(p *disasterPackage) error {
 		}
 		rows[key] = true
 		switch r.Bucket {
-		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "recovery-recipes", "users", "credentials", "settings", "backup_remediation":
+		case "hosts", "jobs", "backups", "plans", "recovery-inspections", "recovery-recipes", "users", "credentials", "settings", "backup_remediation", "host_operations":
 			var object map[string]json.RawMessage
 			if err := json.Unmarshal(r.Value, &object); err != nil || object == nil {
 				return errors.New("Katalogobjekt fehlt oder ist ungültig")
@@ -669,6 +669,12 @@ func disasterValidate(p *disasterPackage) error {
 				if json.Unmarshal(object["id"], &id) != nil || id != r.ID {
 					return errors.New("Katalogobjekt-ID widerspricht Inventar")
 				}
+			}
+		}
+		if r.Bucket == "host_operations" {
+			var run HostOperationRun
+			if json.Unmarshal(r.Value, &run) != nil || run.ID != r.ID || !validHostOperation(run) {
+				return errors.New("Ungültiger Sammelauftrag")
 			}
 		}
 		if r.Bucket == "backup_remediation" {
@@ -1232,6 +1238,20 @@ func disasterIsolate(p *disasterPackage, root, target string) error {
 				return err
 			}
 			if _, err = tx.Exec("UPDATE records SET value=? WHERE bucket=? AND id=?", data, r.Bucket, r.ID); err != nil {
+				return err
+			}
+		case "host_operations":
+			var run HostOperationRun
+			if json.Unmarshal(r.Value, &run) != nil || !validHostOperation(run) {
+				return errors.New("Ungültiger Sammelauftrag")
+			}
+			for i := range run.Targets {
+				if run.Targets[i].State == "pending" {
+					run.Targets[i].State = "skipped"
+					run.Targets[i].Message = "Disaster-Import: neue Auswahl erforderlich"
+				}
+			}
+			if err = txPut(tx, r.Bucket, r.ID, run); err != nil {
 				return err
 			}
 		case "backup_remediation":

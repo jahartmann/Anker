@@ -1,5 +1,11 @@
 # Implementierung
 
+## Aktueller Ausbau nach v0.2.21 · 29. Oktober 2026
+
+Ursachenbezogener Problemverlauf mit Kenntnisnahme und Nachweisen, transaktionale Host-Sammelaktionen, befristete Wartung, zentrale Helferidentität und ein separater Administratorpfad zum atomaren Dateiaustausch sowie optionale lesende Liveänderungsprüfungen sind ergänzt. Bestehende Hostprofile und Zugänge bleiben erhalten. Die Oberfläche nutzt feste Auswahlen über mehrere Seiten, Ergebnisquittungen, begrenzte Ursachenlisten und eigene unbekannte/veraltete Prüfzustände. Betriebsanleitung und README beschreiben Rollen, Wiederholbarkeit und Grenzen.
+
+Die reale Wiederherstellungsabnahme auf PVE/PBS-Hardware ist ausdrücklich nicht Teil dieses Ausbaus. Die folgenden älteren Tabellen und Prüfstände sind historische Einordnungen; insbesondere ist die dortige Aussage zum fehlenden zentralen Helferpfad durch den aktuellen Ausbau überholt. Ein automatisches, unbeaufsichtigtes Helfer-OTA gibt es weiterhin nicht.
+
 ## Abgleich nach Recovery-/UI-Integration vom 9. Oktober 2026
 
 Die Grundlage für den täglichen Betrieb ist umgesetzt. Die ursprünglich geplante umfassende Wiederherstellung ist noch nicht vollständig umgesetzt oder an echten Proxmox-Hosts abgenommen. Die folgende Tabelle trennt vorhandene Funktionen von offenen Arbeitspaketen; die späteren Abschnitte dokumentieren frühere Prüfstände.

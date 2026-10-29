@@ -261,7 +261,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
  details['command_results']=results
  pbs_datastores=[{'name':x['name'],'path':x.get('path','')} for x in details.get('pbs_datastores',[])]
  pbs_jobs=[{'kind':kind,'name':x['name'],'store':x.get('store',''),'schedule':x.get('schedule',''),'disabled':x.get('disable') in ('true','1')} for kind,key in (('Sync','pbs_sync_jobs'),('Prune','pbs_prune_jobs'),('Verify','pbs_verify_jobs')) for x in details.get(key,[])]
- return {'hostname':socket.gethostname(),'pbs_datastores':pbs_datastores,'pbs_jobs':pbs_jobs,'host_type':platform,'pve_version':version if platform=='pve' else '', 'pbs_version':version if platform=='pbs' else '', 'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+ return {'helper_version':'2.1','helper_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'hostname':socket.gethostname(),'pbs_datastores':pbs_datastores,'pbs_jobs':pbs_jobs,'host_type':platform,'pve_version':version if platform=='pve' else '', 'pbs_version':version if platform=='pbs' else '', 'debian':debian,'kernel':os.uname().release,'boot_mode':'UEFI' if (root/'sys/firmware/efi').exists() else 'BIOS','cluster_id':cluster_id,'quorate':quorate,'interfaces':net,'disks':disks,'details':details,'captured_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
 
 def relative(path):
  if not isinstance(path,str) or not path:raise ValueError('invalid path: empty or non-text path')

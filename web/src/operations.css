@@ -1,0 +1,230 @@
+.operations-card,
+.incident-card {
+  background: var(--paper, #fffdf8);
+  border: 1px solid var(--line, #d6d5ce);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 3px 3px 0 #293e3720;
+  margin: 18px 0;
+  min-width: 0;
+}
+.operations-card {
+  border-top: 3px solid #56736c;
+}
+.operations-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.operations-heading > svg {
+  color: #476b61;
+  flex-shrink: 0;
+}
+.operations-heading h3,
+.operations-heading h4 {
+  margin: 0;
+}
+.operations-heading p {
+  margin: 5px 0;
+  color: #62665f;
+  font-size: 0.86rem;
+}
+.operations-heading > div {
+  flex: 1;
+  min-width: 190px;
+}
+.operations-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.operations-controls input,
+.operations-controls select {
+  max-width: 100%;
+  width: auto;
+}
+.operation-results {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 55vh;
+  overflow: auto;
+}
+.operation-results > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: #f4f4ed;
+  border: 1px solid #deded5;
+  border-radius: 7px;
+}
+.operation-results small {
+  flex-basis: 100%;
+  color: #62665f;
+}
+.operation-results details {
+  flex-basis: 100%;
+}
+.operation-receipt summary {
+  margin-top: 15px;
+  font-weight: 600;
+}
+.selection-review {
+  max-height: 32vh;
+  overflow: auto;
+  columns: 2;
+}
+.helper-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px;
+  background: #e6eee8;
+  border-radius: 8px;
+}
+.helper-summary span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.helper-update {
+  border-top: 1px solid #d5d9d1;
+  padding-top: 18px;
+  margin-top: 20px;
+}
+.hash-line {
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+.drift-files {
+  margin-top: 16px;
+}
+.drift-files > div {
+  display: flex;
+  gap: 14px;
+  padding: 8px;
+  border-bottom: 1px solid #deded5;
+}
+.drift-files code,
+.incident-card code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  min-width: 0;
+}
+.incident-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+.incident-card {
+  margin: 0;
+  border-top: 3px solid #b58a44;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.incident-card p {
+  margin: 0;
+  font-size: 0.88rem;
+}
+.incident-card[data-state="resolved"] {
+  border-top-color: #5d8067;
+}
+.incident-card[data-state="in_progress"] {
+  border-top-color: #63829a;
+}
+.incident-action {
+  padding: 10px;
+  background: #f3f0e6;
+  border-radius: 6px;
+}
+.incident-hosts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.incident-hosts button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+}
+.incident-center {
+  margin: 24px 0;
+}
+.incident-clear {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 16px;
+  background: #edf2eb;
+  border-radius: 8px;
+}
+.host-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #45695e;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.check input {
+  width: auto;
+  flex-shrink: 0;
+}
+@media (max-width: 650px) {
+  .operations-card,
+  .incident-card {
+    padding: 15px;
+  }
+  .operations-controls > * {
+    flex: 1 1 100%;
+  }
+  .operations-heading > button {
+    width: 100%;
+  }
+  .selection-review {
+    columns: 1;
+  }
+  .operation-results > div {
+    align-items: flex-start;
+  }
+  .incident-center .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .drift-files > div {
+    align-items: start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+.host-select-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.host-select-name input[type="checkbox"] {
+  flex: 0 0 18px;
+  margin: 0;
+}
+.host-select-name .name-link {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.incident-card > .state {
+  align-self: flex-start;
+}
+.incident-clear h4 {
+  margin: 0 0 5px;
+}

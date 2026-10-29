@@ -157,6 +157,17 @@ func (f *sshFixture) serve(c net.Conn) {
 				}
 				status := uint32(0)
 				switch {
+				case strings.Contains(cmd.Command, "import os,stat,fcntl,base64,hashlib,tempfile"):
+					b, _ := io.ReadAll(ch)
+					f.mu.Lock()
+					f.uploads = append(f.uploads, b)
+					f.mu.Unlock()
+					if failInstall {
+						status = 1
+						io.WriteString(ch.Stderr(), "top-secret MALICIOUS BANNER")
+					} else {
+						io.WriteString(ch, HelperHash()+"\n")
+					}
 				case cmd.Command == "id -u":
 					if uid != "" {
 						io.WriteString(ch, uid+"\n")

@@ -1,3 +1,4 @@
+import IncidentCenter from "./components/IncidentCenter";
 import { ServerRack as Server } from "./components/InfrastructureDetails";
 import AnkerCompass, { CompassEntrypoints } from "./components/AnkerCompass";
 import type {
@@ -8,7 +9,6 @@ import type {
 import { recoverySource } from "./hostHealth";
 import { ChangeRecoveryContext } from "./components/recovery/ChangeRecoveryIntent";
 import type { ChangeRecoveryIntent } from "./components/recovery/ChangeRecoveryIntent";
-import ProblemOverview from "./components/ProblemOverview";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -830,13 +830,31 @@ export default function App() {
                       )}
                     </p>
                   </section>
-                  <ProblemOverview
-                    status={status}
+                  <IncidentCenter
+                    hosts={status.hosts}
+                    openJob={common.openJob}
+                    refresh={refresh}
+                    allHosts={() => navigate("Hosts")}
+                    revision={JSON.stringify([
+                      status.backups.map((b) => [
+                        b.id,
+                        b.status,
+                        b.verified_at,
+                      ]),
+                      status.jobs.map((j) => [j.id, j.state]),
+                      status.hosts.map((h) => [
+                        h.id,
+                        h.last_probe,
+                        h.maintenance_until,
+                        h.enabled,
+                        h.config_revision,
+                      ]),
+                    ])}
+                    canOperate={user.role !== "reader"}
                     openHost={(id) => {
                       setSelectedHost(id);
                       navigate("Hosts");
                     }}
-                    allHosts={() => navigate("Hosts")}
                   />
                   <ActiveJobs status={status} openJob={common.openJob} />
                   <details className="detail-section overview-evidence">
