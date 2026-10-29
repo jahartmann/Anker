@@ -16,6 +16,8 @@ Dieses Paket enthält Konfigurationen und Systeminventar. Datastore-Inhalte sind
 
 Vor Verwendung im Exportwurzelverzeichnis sha256sum -c checksums.sha256 ausführen. manifest.json dokumentiert Originalrechte, UID/GID, Links und xattrs. files/ enthält Links als Zieltext; original-files/ im tar-Export enthält echte Links und Originalmodi. Das Archiv nicht pauschal nach / entpacken.
 
+Bei aus dem Inventar ergänzten Links kennzeichnet capture_origin=inventory_symlink die Herkunft. mtime_unknown im Manifest und ANKER.mtime_unknown im tar-PAX-Eintrag bedeuten: Die ursprüngliche Änderungszeit ist unbekannt; der Zeitwert 0 ist ein Platzhalter und darf nicht als Originalzeit zurückgesetzt werden.
+
 Geführte PBS-Konfigurationswiederherstellung erfolgt als Dateiauswahl mit Zielaufnahme, Vorschau, Plan-ID-Bestätigung und Rücksetzjournal. Beide PBS-Dienste vor Zielprüfung, Übernahme und Rücksetzung stoppen. Datastore-Anbindungen werden aus dem Ziel erhalten und zurückgespielte Jobs in der aufbereiteten Fassung deaktiviert. Anker startet keine Dienste und keine Jobs. Alle bestehenden Jobregeln vor späterem manuellem Dienststart separat prüfen. Eine passende PBS-Version frisch installieren, Datastore-Mounts und vorhandene Daten unabhängig prüfen und nur gezielt Konfigurationen aus /etc/proxmox-backup und dem Systemprofil übernehmen. Zugangsdaten, Zertifikate und Dateieigentümer gesondert prüfen. Vor Änderungen Zielkonfiguration sichern und laufende Jobs anhalten.
 
 Die Live-Erfassung ist kein global atomarer Zustand. Für einen finalen Stand Konfigurationsänderungen pausieren.
@@ -32,6 +34,8 @@ Status: %s. Erfassung: %s bis %s.
 ## Dateien und Prüfung
 
 Dieses Paket ist ohne Anker lesbar. Prüfen Sie vor Verwendung im Exportwurzelverzeichnis mit sha256sum -c checksums.sha256. manifest.json enthält Originalrechte, numerische UID/GID, Symlinkziele, verfügbare xattrs und Warnungen. files/ ist eine geschützte Ansicht; Symlinks sind dort als Linkzieltext abgelegt. Das tar-Exportpaket enthält zusätzlich original-files/ mit ursprünglichen Modi und echten Links. Nur ausgewählte Inhalte auf ein geprüftes Ziel kopieren; nicht das gesamte Archiv direkt nach / entpacken.
+
+Bei aus dem Inventar ergänzten Links kennzeichnet capture_origin=inventory_symlink die Herkunft. mtime_unknown im Manifest und ANKER.mtime_unknown im tar-PAX-Eintrag bedeuten: Die ursprüngliche Änderungszeit ist unbekannt; der Zeitwert 0 ist ein Platzhalter und darf nicht als Originalzeit zurückgesetzt werden.
 
 ## Wiederaufbau
 

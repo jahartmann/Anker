@@ -251,6 +251,9 @@ func comparisonMetadata(a, b *Entry) []MetadataChange {
 			a, b any
 		}{{"type", a.Type, b.Type}, {"mode", a.Mode, b.Mode}, {"uid", a.UID, b.UID}, {"gid", a.GID, b.GID}, {"mtime", a.MTime, b.MTime}, {"link", a.Link, b.Link}}
 		for _, f := range fields {
+			if f.name == "mtime" && (a.MTimeUnknown || b.MTimeUnknown) {
+				continue
+			}
 			if !reflect.DeepEqual(f.a, f.b) {
 				changes = append(changes, MetadataChange{f.name, f.a, f.b})
 			}

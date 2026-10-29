@@ -61,6 +61,13 @@ test("host overview exposes causes and remedies before opening files; profile ac
     name: "Ursachen der unvollständigen Sicherung",
   });
   await expect(issues).toBeVisible();
+  await expect(page.locator(".host-next-step")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", {
+      name: "Pfad konnte nicht verarbeitet werden",
+      exact: true,
+    }),
+  ).toHaveCount(1);
   await expect(
     issues.getByText("/opt/application/settings.conf", { exact: true }),
   ).toBeVisible();
@@ -73,7 +80,9 @@ test("host overview exposes causes and remedies before opening files; profile ac
   await expect(
     issues.getByText(/kein Nachweis, dass die Datei fehlt/),
   ).toBeVisible();
-  await expect(issues.getByText(/bleiben geschützt/)).toBeVisible();
+  await expect(
+    issues.getByText(/keinen sicher darstellbaren Pfad/),
+  ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const panelColors = await page
     .locator(".host-workspaces > [data-topic]")
@@ -179,4 +188,79 @@ test("failed backup jobs expose their cause and link directly to the retained pa
   await expect(
     dialog.getByText("/opt/application/settings.conf", { exact: true }),
   ).toBeVisible();
+});
+
+test("a new complete capture clears current host diagnostics while retaining the older stand", async ({
+  page,
+}) => {
+  const { host, backup, base } = await partialHost(page);
+  const next = {
+    ...backup,
+    id: "new-complete-capture",
+    created_at: new Date(Date.now() + 1000).toISOString(),
+    status: "successful",
+    warnings: [],
+    issues: [],
+  };
+  await page.route("**/api/status", (route) =>
+    route.fulfill({
+      json: {
+        ...base,
+        hosts: [host],
+        backups: [next, backup],
+        jobs: [],
+        references: {},
+      },
+    }),
+  );
+  await page.reload();
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await expect(
+    page.getByRole("region", {
+      name: "Ursachen der unvollständigen Sicherung",
+    }),
+  ).toHaveCount(0);
+  await expect(page.locator(".host-next-step")).toContainText(
+    "Die letzte Sicherung ist aktuell",
+  );
+});
+
+test("dependency details distinguish backup scope from missing host files and remain bounded", async ({
+  page,
+}) => {
+  await page.route("**/api/backups/*/readiness", (route) =>
+    route.fulfill({
+      json: {
+        version: 1,
+        backup_id: new URL(route.request().url()).pathname.split("/").at(-2),
+        items: [],
+        coverage: [],
+        dependencies: Array.from({ length: 602 }, (_, i) => ({
+          path: `/usr/bin/program-${i}`,
+          source: `etc/alternatives/program-${i}`,
+          state: "missing",
+          reason: "link_target_uncaptured",
+        })),
+      },
+    }),
+  );
+  await partialHost(page);
+  await page
+    .getByText("Details zum Host und zur letzten Sicherung", { exact: true })
+    .click();
+  const dependencies = page.getByRole("region", {
+    name: "Abhängigkeiten",
+    exact: true,
+  });
+  await expect(dependencies.locator("li")).toHaveCount(20);
+  await expect(
+    dependencies.getByText(/keine nachgewiesen fehlende Datei/),
+  ).toBeVisible();
+  await expect(dependencies.locator("li").first()).toContainText(
+    "Nicht enthalten",
+  );
+  await expect(dependencies.locator("li").first()).not.toContainText("Fehlt");
+  await dependencies.getByLabel("Verweise durchsuchen").fill("program-601");
+  await expect(dependencies.locator("li")).toHaveCount(1);
+  await expect(dependencies.locator("li")).toContainText("program-601");
 });

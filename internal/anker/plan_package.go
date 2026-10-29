@@ -168,7 +168,7 @@ func writePackageFile(w tarEntryWriter, name string, b []byte) error {
 	return err
 }
 func validPackagePath(n string) bool {
-	return n != "" && len(n) <= 4096 && strings.Count(n, "/") <= 100 && path.Clean(n) == n && !strings.HasPrefix(n, "/") && n != "." && n != ".." && !strings.HasPrefix(n, "../") && !strings.ContainsAny(n, "\\:") && !strings.ContainsFunc(n, unicode.IsControl)
+	return n != "" && len(n) <= 4096 && strings.Count(n, "/") <= 100 && path.Clean(n) == n && !strings.HasPrefix(n, "/") && n != "." && n != ".." && !strings.HasPrefix(n, "../") && !strings.Contains(n, ":") && (!strings.Contains(n, "\\") || storedSystemdEscapedPath(n)) && !strings.ContainsFunc(n, unicode.IsControl)
 }
 func validatePackageHeader(h *tar.Header, seen map[string]byte, parents map[string]bool) error {
 	if !validPackagePath(h.Name) || h.Size < 0 {

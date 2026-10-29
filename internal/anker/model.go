@@ -108,17 +108,19 @@ func (i Inventory) VersionQuery() string {
 }
 
 type Entry struct {
-	Path   string            `json:"path"`
-	Type   string            `json:"type"`
-	Mode   uint32            `json:"mode"`
-	UID    int               `json:"uid"`
-	GID    int               `json:"gid"`
-	Size   int64             `json:"size"`
-	MTime  int64             `json:"mtime"`
-	Link   string            `json:"link,omitempty"`
-	SHA256 string            `json:"sha256,omitempty"`
-	XAttrs map[string]string `json:"xattrs,omitempty"`
-	Secret bool              `json:"secret"`
+	Path          string            `json:"path"`
+	Type          string            `json:"type"`
+	Mode          uint32            `json:"mode"`
+	UID           int               `json:"uid"`
+	GID           int               `json:"gid"`
+	Size          int64             `json:"size"`
+	MTime         int64             `json:"mtime"`
+	MTimeUnknown  bool              `json:"mtime_unknown,omitempty"`
+	CaptureOrigin string            `json:"capture_origin,omitempty"`
+	Link          string            `json:"link,omitempty"`
+	SHA256        string            `json:"sha256,omitempty"`
+	XAttrs        map[string]string `json:"xattrs,omitempty"`
+	Secret        bool              `json:"secret"`
 }
 type Collection struct {
 	Inventory    Inventory            `json:"inventory"`
@@ -397,8 +399,28 @@ func ID() string {
 }
 func now() string          { return time.Now().UTC().Format(time.RFC3339Nano) }
 func Hash(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+// systemd uses literal \xHH escapes in unit filenames. Never decode them.
+var systemdPathEscape = regexp.MustCompile(`\\x[0-9a-fA-F]{2}`)
+
+func systemdEscapedPath(p string) bool {
+	return filepath.Separator == '/' && (strings.HasPrefix(p, "etc/systemd/system/") || strings.HasPrefix(p, "etc/systemd/user/")) && strings.Contains(p, "\\") && !strings.Contains(systemdPathEscape.ReplaceAllString(p, ""), "\\")
+}
+
+// Stored backup and recovery trees add one fixed namespace to host paths.
+func storedSystemdEscapedPath(p string) bool {
+	if systemdEscapedPath(p) {
+		return true
+	}
+	for _, prefix := range []string{"files/", "original/files/", "original-files/", "original/original-files/", "prepared-files/", "target-files/", "target-before/"} {
+		if strings.HasPrefix(p, prefix) && systemdEscapedPath(strings.TrimPrefix(p, prefix)) {
+			return true
+		}
+	}
+	return false
+}
 func ValidPath(p string) error {
-	if p == "" || filepath.IsAbs(p) || strings.Contains(p, "\\") || strings.ContainsRune(p, 0) || filepath.ToSlash(filepath.Clean(p)) != p || p == "." || p == ".." || strings.HasPrefix(p, "../") {
+	if p == "" || filepath.IsAbs(p) || (strings.Contains(p, "\\") && !storedSystemdEscapedPath(p)) || strings.ContainsRune(p, 0) || filepath.ToSlash(filepath.Clean(p)) != p || p == "." || p == ".." || strings.HasPrefix(p, "../") {
 		return fmt.Errorf("ungültiger relativer Pfad %q", p)
 	}
 	return nil

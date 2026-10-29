@@ -15,6 +15,15 @@ const host = (id: string, name: string, address: string, group = "") =>
 test("names preserve acronyms, deliberate casing and original catalog values", () => {
   for (const [raw, label] of [
     ["pve-cp-01", "PVE · CP 01"],
+    ["cpmusterort", "CP Musterort"],
+    ["Cpmusterort", "CP Musterort"],
+    ["gsbeispielstadt", "GS Beispielstadt"],
+    ["gstestdorf-Backup", "GS Testdorf · Backup"],
+    ["fzbeispiel-backup", "FZ Beispiel · Backup"],
+    ["fzbeispielstadt", "FZ Beispielstadt"],
+    ["zp01", "ZP01"],
+    ["gymnasium", "Gymnasium"],
+    ["rsync", "Rsync"],
     ["pbs-rs", "PBS · RS"],
     ["gs_fz_gym", "GS FZ Gym"],
     ["PVE-cp-RS", "PVE · CP RS"],
@@ -132,7 +141,7 @@ test("host overview keeps roles, filtering and persisted grouping usable on desk
     );
   expect(new Set(colors).size).toBe(2);
   const shadow = await cp.evaluate((el) => getComputedStyle(el).boxShadow);
-  expect(shadow).toContain("5px 5px");
+  expect(shadow).toContain("3px 3px");
   await page.getByLabel("Hosts durchsuchen").fill("pbs");
   await expect(
     cp.getByRole("button", { name: "pbs-cp-02", exact: true }),

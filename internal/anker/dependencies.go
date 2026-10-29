@@ -20,7 +20,7 @@ var vimEnd = regexp.MustCompile(`^endif\b`)
 
 // Old installed helpers over-report runtime RNG devices and optional Vim sources.
 // Reconcile only newly collected, validated files; stored backups remain immutable.
-func reconcileDependencyWarnings(stage string, c Collection) []string {
+func reconcileDependencyWarnings(stage string, c *Collection) []string {
 	entries := make(map[string]Entry, len(c.Entries))
 	for _, e := range c.Entries {
 		entries[e.Path] = e
@@ -41,8 +41,10 @@ func reconcileDependencyWarnings(stage string, c Collection) []string {
 		device := strings.SplitN(candidate, ",", 2)[0]
 		rng := pveVMConfig.MatchString(config) && (device == "/dev/urandom" || device == "/dev/random")
 		vim := config == "etc/vim/vimrc" && candidate == "/etc/vim/vimrc.local"
+		lynx := config == "etc/lynx/lynx.cfg" && candidate == "/etc/lynx/local.cfg"
+		powerman := strings.HasPrefix(config, "etc/powerman/") && strings.HasSuffix(config, ".dev") && !strings.Contains(strings.TrimPrefix(config, "etc/powerman/"), "/")
 		e, captured := entries[config]
-		if (!rng && !vim) || !captured || e.Type != "file" || e.Size > 1<<20 {
+		if (!rng && !vim && !lynx && !powerman) || !captured || e.Type != "file" || e.Size > 1<<20 {
 			filtered = append(filtered, warning)
 			continue
 		}
@@ -55,7 +57,14 @@ func reconcileDependencyWarnings(stage string, c Collection) []string {
 			}
 			contents[config] = data
 		}
-		if data == nil || bytes.IndexByte(data, 0) >= 0 || Hash(data) != e.SHA256 || !onlyOptionalReferences(string(data), candidate, vim) {
+		confirmed := onlyOptionalReferences(string(data), candidate, vim)
+		if lynx {
+			confirmed = onlyLynxOptionalOverride(string(data), candidate)
+		}
+		if powerman {
+			confirmed = onlyPowermanRemoteReferences(string(data), candidate)
+		}
+		if data == nil || bytes.IndexByte(data, 0) >= 0 || Hash(data) != e.SHA256 || !confirmed {
 			filtered = append(filtered, warning)
 			continue
 		}
@@ -68,6 +77,27 @@ func reconcileDependencyWarnings(stage string, c Collection) []string {
 				filtered = append(filtered, warning)
 				continue
 			}
+		}
+		if lynx {
+			var queries map[string]struct {
+				State string `json:"state"`
+			}
+			_ = json.Unmarshal(c.Inventory.Details["command_results"], &queries)
+			_, present := hashes["etc/lynx/local.cfg"]
+			_, captured := entries["etc/lynx/local.cfg"]
+			if queries["file_inventory"].State != "ok" || hashes[config] != e.SHA256 || present || captured || failedDependencyCapture(c.Warnings, "etc/lynx/local.cfg") {
+				filtered = append(filtered, warning)
+				continue
+			}
+		}
+		if powerman || lynx {
+			deps := make([]DependencyEvidence, 0, len(c.Dependencies))
+			for _, dep := range c.Dependencies {
+				if dep.Path != candidate || dep.Source != config {
+					deps = append(deps, dep)
+				}
+			}
+			c.Dependencies = deps
 		}
 	}
 	return filtered
@@ -135,4 +165,46 @@ func failedDependencyCapture(warnings []string, path string) bool {
 		}
 	}
 	return false
+}
+
+// Reconcile only references proven to occur in Powerman's quoted send commands.
+// An actual include or any other occurrence keeps the warning.
+func onlyPowermanRemoteReferences(content, candidate string) bool {
+	found := false
+	for _, raw := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		for _, match := range dependencyReference.FindAllStringSubmatch(line, -1) {
+			if match[2] != candidate {
+				continue
+			}
+			found = true
+			if !strings.HasPrefix(line, `send "`) || !strings.HasSuffix(line, `"`) || !strings.EqualFold(match[1], "script") || !strings.Contains(line, "-script "+candidate) {
+				return false
+			}
+		}
+	}
+	return found
+}
+
+func onlyLynxOptionalOverride(content, candidate string) bool {
+	found := false
+	for _, raw := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		for _, match := range dependencyReference.FindAllStringSubmatch(line, -1) {
+			if match[2] != candidate {
+				continue
+			}
+			found = true
+			if !strings.EqualFold(line, "INCLUDE:"+candidate) {
+				return false
+			}
+		}
+	}
+	return found
 }

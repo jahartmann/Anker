@@ -165,6 +165,8 @@ export interface BackupReadiness {
   }[];
 }
 export interface Entry {
+  mtime_unknown?: boolean;
+  capture_origin?: string;
   path: string;
   type: string;
   mode: number;

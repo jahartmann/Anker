@@ -266,7 +266,7 @@ def probe(root=pathlib.Path('/'),test_mode=False):
 def relative(path):
  if not isinstance(path,str) or not path:raise ValueError('invalid path: empty or non-text path')
  if path.startswith('/'):raise ValueError('invalid path: expected a relative path')
- if '\\' in path:raise ValueError('invalid path: backslash is not supported')
+ if '\\' in path and not (os.sep=='/' and path.startswith(('etc/systemd/system/','etc/systemd/user/')) and '\\' not in re.sub(r'\\x[0-9a-fA-F]{2}','',path)):raise ValueError('invalid path: backslash is not supported')
  if '\x00' in path:raise ValueError('invalid path: NUL character is not supported')
  if any(x in ('','..','.') for x in path.split('/')):raise ValueError('invalid path: empty, dot or parent component is not allowed')
  return pathlib.PurePosixPath(path)
@@ -610,6 +610,15 @@ def dependency_scan(out,entries,root=None):
    if match:
     directive=match.group(1).lower();candidate=match.group(2)
     if '*' in candidate or '?' in candidate:continue
+    # Powerman device scripts contain remote ILOM commands such as
+    # send "start -script /SYS\\n", not local script filenames.
+    if re.fullmatch(r'etc/powerman/[^/]+\.dev',e['path']) and directive=='script' and re.match(r'^send\s+"',line) and line.endswith('"') and '-script '+candidate in line:continue
+    # Debian's Lynx configuration names a local override even when none exists.
+    # Only proven absence is optional; unreadable files and broken links warn.
+    if e['path']=='etc/lynx/lynx.cfg' and directive=='include' and candidate=='/etc/lynx/local.cfg' and re.fullmatch(r'(?i)INCLUDE:/etc/lynx/local\.cfg\s*',line) and root is not None:
+     try:(root/'etc/lynx/local.cfg').lstat()
+     except FileNotFoundError:continue
+     except OSError:pass
     # RNG source selects a runtime device, not a restorable config file.
     if vm_config and directive=='source' and re.fullmatch(r'rng0\s*:\s*source=/dev/(?:urandom|random|hwrng)(?:,(?:max_bytes|period)=\d+)*',line):continue
     # Only absence proven on the source host makes a guarded Vim source optional.

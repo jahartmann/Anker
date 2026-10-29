@@ -177,3 +177,44 @@ class DurableRestoreTests(unittest.TestCase):
    with patch.object(helper.os,'fsync',side_effect=sync),patch.object(helper.os,'replace',side_effect=replace):
     helper.apply_files(root,[{'path':'etc/test','before_sha':helper.digest(b'old'),'content':'bmV3','mode':420,'uid':0,'gid':0}],test_mode=True)
    self.assertEqual(target.read_bytes(),b'new')
+
+class DependencyNoiseTests(unittest.TestCase):
+ def scan(self, directory, content, extra=None):
+  root=pathlib.Path(directory);config=root/'etc/lynx/lynx.cfg';config.parent.mkdir(parents=True,exist_ok=True);config.write_text(content)
+  out=root/'snapshot';(out/'files/etc/lynx').mkdir(parents=True);(out/'files/etc/lynx/lynx.cfg').write_text(content)
+  if extra:extra(root)
+  return helper.dependency_scan(out,[{'path':'etc/lynx/lynx.cfg','type':'file','size':len(content)}],root)
+ def test_absent_lynx_local_override_is_optional(self):
+  with tempfile.TemporaryDirectory() as directory:
+   warnings,deps,complete=self.scan(directory,'INCLUDE:/etc/lynx/local.cfg\n')
+   self.assertEqual(warnings,[]);self.assertEqual(deps,[]);self.assertTrue(complete)
+ def test_existing_or_broken_lynx_override_remains_a_gap(self):
+  for broken in (False,True):
+   with tempfile.TemporaryDirectory() as directory:
+    def target(root):
+     path=root/'etc/lynx/local.cfg'
+     if broken:path.symlink_to('missing.cfg')
+     else:path.write_text('CUSTOM:VALUE\n')
+    warnings,deps,_=self.scan(directory,'INCLUDE:/etc/lynx/local.cfg\n',target)
+    self.assertTrue(warnings);self.assertEqual(deps[0]['state'],'missing')
+ def test_unreadable_optional_lynx_override_is_not_suppressed(self):
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as directory:
+   original=pathlib.Path.lstat
+   def denied(path,*args,**kwargs):
+    if str(path).endswith('/etc/lynx/local.cfg'):raise PermissionError('denied')
+    return original(path,*args,**kwargs)
+   with patch.object(pathlib.Path,'lstat',denied):
+    warnings,_,_=self.scan(directory,'INCLUDE:/etc/lynx/local.cfg\n')
+   self.assertTrue(warnings)
+ def test_required_lynx_reference_is_not_optional(self):
+  with tempfile.TemporaryDirectory() as directory:
+   warnings,_,_=self.scan(directory,'keyfile=/etc/lynx/local.cfg\n')
+   self.assertTrue(warnings)
+ def test_powerman_remote_commands_are_not_local_script_dependencies(self):
+  with tempfile.TemporaryDirectory() as directory:
+   out=pathlib.Path(directory);path=out/'files/etc/powerman/ilom.dev';path.parent.mkdir(parents=True)
+   content='script on {\n send "start -script /SYS\\n"\n}\ninclude /opt/powerman/required.dev\n'
+   path.write_text(content)
+   warnings,deps,_=helper.dependency_scan(out,[{'path':'etc/powerman/ilom.dev','type':'file','size':len(content)}])
+   self.assertEqual(len(warnings),1);self.assertIn('/opt/powerman/required.dev',warnings[0]);self.assertEqual(len(deps),1)

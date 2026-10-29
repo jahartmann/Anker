@@ -2,6 +2,8 @@
 export function displayHostName(name: string) {
   const canonical: Record<string, string> = {
     cp: "CP",
+    zp: "ZP",
+    cpu: "CPU",
     rs: "RS",
     gs: "GS",
     fz: "FZ",
@@ -29,6 +31,19 @@ export function displayHostName(name: string) {
       ? canonical[key]
       : undefined;
     if (abbreviation) return abbreviation + parts![2];
+    // Site abbreviations in this inventory also occur without separators.
+    // Known ordinary words must not become invented site abbreviations.
+    if (!/^(rsync|gymnasium|gymnastik)\d*$/i.test(word)) {
+      const site = word.match(
+        /^(cp|rs|gs|fz|zp|gym)([a-zäöüß][a-zäöüß0-9]*)$/i,
+      );
+      if (site) {
+        const prefix = canonical[site[1].toLocaleLowerCase("de")];
+        const location =
+          site[2].charAt(0).toLocaleUpperCase("de") + site[2].slice(1);
+        return `${prefix} ${location}`;
+      }
+    }
     // Preserve deliberate casing, including acronyms unknown to Anker.
     if (word !== word.toLocaleLowerCase("de")) return word;
     return word.charAt(0).toLocaleUpperCase("de") + word.slice(1);
@@ -38,7 +53,11 @@ export function displayHostName(name: string) {
     prefix && formatted.length > 1
       ? `${formatted[0]} · ${formatted.slice(1).join(" ")}`
       : formatted.join(" ");
-  return label + domain;
+  const withRole =
+    !prefix && words.length > 1 && /^backup$/i.test(words[words.length - 1])
+      ? `${formatted.slice(0, -1).join(" ")} · Backup`
+      : label;
+  return withRole + domain;
 }
 export function HostName({ name }: { name: string }) {
   return (

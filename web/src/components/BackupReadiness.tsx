@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, date } from "../api";
 import type { Backup, BackupReadiness } from "../api";
-import { LoadError } from "./shared";
+import { LoadError, Pagination } from "./shared";
 
 const stateLabels: Record<string, string> = {
   ok: "Vorhanden",
@@ -26,6 +26,8 @@ export default function BackupReadiness({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [dependencyQuery, setDependencyQuery] = useState("");
+  const [dependencyPage, setDependencyPage] = useState(1);
   const sourceKey = JSON.stringify([
     backup?.id,
     backup?.status,
@@ -41,6 +43,8 @@ export default function BackupReadiness({
   useEffect(() => {
     let active = true;
     setReadiness(null);
+    setDependencyQuery("");
+    setDependencyPage(1);
     setError("");
     if (!backup) {
       setLoading(false);
@@ -64,6 +68,33 @@ export default function BackupReadiness({
       active = false;
     };
   }, [sourceKey, retry]);
+  const dependencies = (currentReadiness?.dependencies || []).filter(
+    (dependency) =>
+      `${dependency.path} ${dependency.source}`
+        .toLocaleLowerCase("de")
+        .includes(dependencyQuery.toLocaleLowerCase("de")),
+  );
+  const currentDependencyPage = Math.min(
+    dependencyPage,
+    Math.max(1, Math.ceil(dependencies.length / 20)),
+  );
+  const dependencyState = (state: string) =>
+    state === "missing" ? "Nicht enthalten" : stateLabels[state] || "Unbekannt";
+  const dependencyReason = (reason: string) =>
+    (
+      ({
+        captured: "In der Sicherung enthalten",
+        outside_capture:
+          "Verweisziel nicht im Sicherungsumfang; Existenz auf dem Host nicht belegt",
+        unresolved_reference: "Verweis konnte nicht aufgelöst werden",
+        link_target_uncaptured:
+          "Link gesichert; Ziel liegt außerhalb dieses Konfigurationsbackups",
+        link_target_chain:
+          "Link gesichert; weitere Verknüpfung nicht vollständig aufgelöst",
+        link_target_unresolved: "Link-Ziel nicht sicher auflösbar",
+        link_target_captured: "Link und Ziel in der Sicherung enthalten",
+      }) as Record<string, string>
+    )[reason] || "Einordnung nicht belegt";
   if (!backup)
     return (
       <section className="readiness" aria-label="Prüfergebnisse">
@@ -94,7 +125,9 @@ export default function BackupReadiness({
                 <div>
                   <strong>{item.title}</strong>
                   <span className={`readiness-state ${item.state}`}>
-                    {stateLabels[item.state] || item.state}
+                    {item.id === "capture" && item.state === "missing"
+                      ? "Unvollständig"
+                      : stateLabels[item.state] || item.state}
                   </span>
                 </div>
                 <p>{item.detail}</p>
@@ -157,7 +190,7 @@ export default function BackupReadiness({
                           (d) => d.state === "missing",
                         ).length
                       }{" "}
-                      fehlende ·{" "}
+                      nicht enthaltene ·{" "}
                       {
                         currentReadiness.dependencies.filter(
                           (d) => d.state === "unknown",
@@ -171,7 +204,7 @@ export default function BackupReadiness({
                         .slice(0, 3)
                         .map((d, i) => (
                           <li key={`${d.path}-${i}`}>
-                            <code>{d.path}</code> · {stateLabels[d.state]}
+                            <code>{d.path}</code> · {dependencyState(d.state)}
                           </li>
                         ))}
                     </ul>
@@ -207,15 +240,45 @@ export default function BackupReadiness({
               <section aria-label="Abhängigkeiten">
                 <h4>Abhängigkeiten</h4>
                 {currentReadiness.dependencies.length ? (
-                  <ul>
-                    {currentReadiness.dependencies.map((d, i) => (
-                      <li key={`${d.path}-${i}`}>
-                        <code>{d.path}</code> · {stateLabels[d.state]}
-                        {d.source ? ` · Verweis aus ${d.source}` : ""}
-                        {d.reason ? ` · ${d.reason}` : ""}
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <p className="field-hint">
+                      „Nicht enthalten“ beschreibt den Sicherungsumfang, keine
+                      nachgewiesen fehlende Datei auf dem Host. Programm-,
+                      Paket- und Laufzeitziele werden durch ein
+                      Konfigurationsbackup nicht automatisch mitgesichert.
+                    </p>
+                    <input
+                      aria-label="Verweise durchsuchen"
+                      placeholder="Pfad oder Quelle suchen"
+                      value={dependencyQuery}
+                      onChange={(event) => {
+                        setDependencyQuery(event.target.value);
+                        setDependencyPage(1);
+                      }}
+                    />
+                    <ul>
+                      {dependencies
+                        .slice(
+                          (currentDependencyPage - 1) * 20,
+                          currentDependencyPage * 20,
+                        )
+                        .map((d, i) => (
+                          <li key={`${d.path}-${i}`}>
+                            <code>{d.path}</code> · {dependencyState(d.state)}
+                            {d.source ? ` · Verweis aus ${d.source}` : ""}
+                            {d.reason ? ` · ${dependencyReason(d.reason)}` : ""}
+                          </li>
+                        ))}
+                    </ul>
+                    {!dependencies.length && <p>Keine passenden Verweise.</p>}
+                    <Pagination
+                      page={currentDependencyPage}
+                      pageSize={20}
+                      total={dependencies.length}
+                      onPageChange={setDependencyPage}
+                      label="Verweise"
+                    />
+                  </>
                 ) : (
                   <p className="muted">
                     Keine gespeicherten Abhängigkeitsangaben. Abhängigkeiten

@@ -2,6 +2,7 @@ package anker
 
 import (
 	"encoding/json"
+	"fmt"
 	"path"
 	"sort"
 	"strconv"
@@ -58,6 +59,23 @@ func (s *Service) BackupReadiness(id string) (BackupReadiness, error) {
 			r.Items[0].State = "unknown"
 			r.Items[0].Detail = "Erfassungsstatus in Manifest und Katalog weicht ab."
 			r.Items[0].NextAction = "Katalog und Sicherung prüfen"
+		}
+	}
+	if manifestErr == nil {
+		compat, unknownTime := 0, 0
+		for _, entry := range m.Entries {
+			if entry.CaptureOrigin == "inventory_symlink" {
+				compat++
+				if entry.MTimeUnknown {
+					unknownTime++
+				}
+			}
+		}
+		if compat > 0 {
+			add("systemd_compatibility", "ok", "systemd-Links ergänzt", fmt.Sprintf("%d Links anhand übereinstimmender Inventarmetadaten ergänzt. Ziele wurden nicht verfolgt; vorhandene Hostzugänge genügen.", compat), m.CompletedAt, "")
+		}
+		if unknownTime > 0 {
+			add("systemd_link_time", "unknown", "Änderungszeit ergänzter Links", "Der ältere Helfer lieferte keine ursprüngliche Link-Änderungszeit. Linkziel, Rechte, Eigentümer und Attribute sind erfasst; die Zeit wird nicht als gemessen ausgegeben.", m.CompletedAt, "Optional Hosthelfer aktualisieren; Hosteinträge bleiben erhalten")
 		}
 	}
 	verification := "unknown"

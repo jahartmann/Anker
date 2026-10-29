@@ -858,6 +858,10 @@ export default function Hosts({
   const activeHostJob = status.jobs.find(
     (j) => j.host_id === selected && ["queued", "running"].includes(j.state),
   );
+  const diagnosticFocus =
+    !activeHostJob &&
+    latest?.status === "partial" &&
+    !!(latest.issues?.length || latest.warnings?.length);
   async function action(path: string, message: string) {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
@@ -999,147 +1003,156 @@ export default function Hosts({
               />
             )}
             {tab === "Übersicht" && (
-              <div className="detail-section host-overview-detail">
-                <section
-                  className={
-                    "host-next-step host-focus-card " +
-                    (activeHostJob
-                      ? "is-running"
-                      : selectedState?.tone === "success" && host.probe_error
-                        ? "warning"
-                        : selectedState?.tone || "")
-                  }
-                  aria-label="Für diesen Host"
-                >
-                  <span
+              <div
+                className={`detail-section host-overview-detail${diagnosticFocus ? " has-backup-diagnosis" : ""}`}
+              >
+                {!diagnosticFocus && (
+                  <section
                     className={
-                      "object-icon " +
+                      "host-next-step host-focus-card " +
                       (activeHostJob
-                        ? "blue"
-                        : selectedState?.tone === "success" && !host.probe_error
-                          ? "sage"
-                          : "ochre")
+                        ? "is-running"
+                        : selectedState?.tone === "success" && host.probe_error
+                          ? "warning"
+                          : selectedState?.tone || "")
                     }
+                    aria-label="Für diesen Host"
                   >
-                    {selectedState?.tone === "success" &&
-                    !host.probe_error &&
-                    !activeHostJob ? (
-                      <ShieldCheck
-                        size={19}
-                        strokeWidth={1.6}
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <CircleAlert
-                        size={19}
-                        strokeWidth={1.6}
-                        aria-hidden="true"
-                      />
-                    )}
-                  </span>
-                  <div>
-                    <span className="eyebrow">
-                      {activeHostJob ? "Gerade aktiv" : "Auf einen Blick"}
-                    </span>
-                    <h2>
-                      {activeHostJob
-                        ? activeHostJob.retry_at
-                          ? "Der Auftrag wartet auf einen neuen Versuch"
-                          : activeHostJob.state === "queued"
-                            ? "Ein Auftrag wartet"
-                            : activeHostJob.kind === "backup"
-                              ? "Die Sicherung läuft"
-                              : activeHostJob.kind === "probe"
-                                ? "Die Verbindung wird geprüft"
-                                : "Ein Auftrag läuft"
-                        : selectedState?.tone === "success" && host.probe_error
-                          ? "Die letzte Verbindungsprüfung ist fehlgeschlagen"
-                          : selectedState?.tone === "success"
-                            ? "Die letzte Sicherung ist aktuell"
-                            : selectedState?.text}
-                    </h2>
-                    <p>
-                      {activeHostJob
-                        ? "Für diesen Host ist bereits ein Auftrag offen. Den Fortschritt und mögliche Fehler findest du im Auftrag."
-                        : selectedState?.tone === "success" && host.probe_error
-                          ? "Die Sicherung ist aktuell. Prüfe die Verbindung, bevor du die nächste Sicherung startest."
-                          : selectedState?.reason}
-                    </p>
-                    {host.probe_error && (
-                      <details className="host-connection-error">
-                        <summary>Verbindungsfehler ansehen</summary>
-                        <p>{host.probe_error}</p>
-                      </details>
-                    )}
-                  </div>
-                  {selectedState && (
-                    <button
-                      className="host-focus-action"
-                      disabled={startingAction || (!!activeHostJob && !openJob)}
-                      onClick={() => {
-                        if (activeHostJob && openJob) {
-                          openJob(activeHostJob.id);
-                          return;
-                        }
-                        if (
-                          selectedState.tone === "success" &&
-                          host.probe_error &&
-                          canOperate
-                        ) {
-                          void action(
-                            "hosts/" + host.id + "/probe",
-                            "Hostprüfung gestartet",
-                          );
-                          return;
-                        }
-                        if (selectedState.action === "files") {
-                          setTab("Sicherungen");
-                          return;
-                        }
-                        if (
-                          selectedState.action === "job" &&
-                          selectedState.jobID &&
-                          openJob
-                        ) {
-                          openJob(selectedState.jobID);
-                          return;
-                        }
-                        if (selectedState.action === "settings") {
-                          setTab("Einstellungen");
-                          return;
-                        }
-                        if (!canOperate) {
-                          setTab("Sicherungen");
-                          return;
-                        }
-                        if (
-                          selectedState.action === "probe" ||
-                          selectedState.action === "backup"
-                        )
-                          void action(
-                            "hosts/" + host.id + "/" + selectedState.action,
-                            selectedState.action === "probe"
-                              ? "Hostprüfung gestartet"
-                              : "Sicherung gestartet",
-                          );
-                        else setTab("Sicherungen");
-                      }}
+                    <span
+                      className={
+                        "object-icon " +
+                        (activeHostJob
+                          ? "blue"
+                          : selectedState?.tone === "success" &&
+                              !host.probe_error
+                            ? "sage"
+                            : "ochre")
+                      }
                     >
-                      {activeHostJob
-                        ? "Laufenden Auftrag ansehen"
-                        : selectedState.tone === "success" &&
+                      {selectedState?.tone === "success" &&
+                      !host.probe_error &&
+                      !activeHostJob ? (
+                        <ShieldCheck
+                          size={19}
+                          strokeWidth={1.6}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <CircleAlert
+                          size={19}
+                          strokeWidth={1.6}
+                          aria-hidden="true"
+                        />
+                      )}
+                    </span>
+                    <div>
+                      <span className="eyebrow">
+                        {activeHostJob ? "Gerade aktiv" : "Auf einen Blick"}
+                      </span>
+                      <h2>
+                        {activeHostJob
+                          ? activeHostJob.retry_at
+                            ? "Der Auftrag wartet auf einen neuen Versuch"
+                            : activeHostJob.state === "queued"
+                              ? "Ein Auftrag wartet"
+                              : activeHostJob.kind === "backup"
+                                ? "Die Sicherung läuft"
+                                : activeHostJob.kind === "probe"
+                                  ? "Die Verbindung wird geprüft"
+                                  : "Ein Auftrag läuft"
+                          : selectedState?.tone === "success" &&
+                              host.probe_error
+                            ? "Die letzte Verbindungsprüfung ist fehlgeschlagen"
+                            : selectedState?.tone === "success"
+                              ? "Die letzte Sicherung ist aktuell"
+                              : selectedState?.text}
+                      </h2>
+                      <p>
+                        {activeHostJob
+                          ? "Für diesen Host ist bereits ein Auftrag offen. Den Fortschritt und mögliche Fehler findest du im Auftrag."
+                          : selectedState?.tone === "success" &&
+                              host.probe_error
+                            ? "Die Sicherung ist aktuell. Prüfe die Verbindung, bevor du die nächste Sicherung startest."
+                            : selectedState?.reason}
+                      </p>
+                      {host.probe_error && (
+                        <details className="host-connection-error">
+                          <summary>Verbindungsfehler ansehen</summary>
+                          <p>{host.probe_error}</p>
+                        </details>
+                      )}
+                    </div>
+                    {selectedState && (
+                      <button
+                        className="host-focus-action"
+                        disabled={
+                          startingAction || (!!activeHostJob && !openJob)
+                        }
+                        onClick={() => {
+                          if (activeHostJob && openJob) {
+                            openJob(activeHostJob.id);
+                            return;
+                          }
+                          if (
+                            selectedState.tone === "success" &&
                             host.probe_error &&
                             canOperate
-                          ? "Verbindung erneut prüfen"
-                          : ["probe", "backup"].includes(
-                                selectedState.action,
-                              ) && !canOperate
-                            ? "Verlauf ansehen"
-                            : selectedState.actionLabel}
-                      <ChevronRight size={14} aria-hidden="true" />
-                    </button>
-                  )}
-                </section>
+                          ) {
+                            void action(
+                              "hosts/" + host.id + "/probe",
+                              "Hostprüfung gestartet",
+                            );
+                            return;
+                          }
+                          if (selectedState.action === "files") {
+                            setTab("Sicherungen");
+                            return;
+                          }
+                          if (
+                            selectedState.action === "job" &&
+                            selectedState.jobID &&
+                            openJob
+                          ) {
+                            openJob(selectedState.jobID);
+                            return;
+                          }
+                          if (selectedState.action === "settings") {
+                            setTab("Einstellungen");
+                            return;
+                          }
+                          if (!canOperate) {
+                            setTab("Sicherungen");
+                            return;
+                          }
+                          if (
+                            selectedState.action === "probe" ||
+                            selectedState.action === "backup"
+                          )
+                            void action(
+                              "hosts/" + host.id + "/" + selectedState.action,
+                              selectedState.action === "probe"
+                                ? "Hostprüfung gestartet"
+                                : "Sicherung gestartet",
+                            );
+                          else setTab("Sicherungen");
+                        }}
+                      >
+                        {activeHostJob
+                          ? "Laufenden Auftrag ansehen"
+                          : selectedState.tone === "success" &&
+                              host.probe_error &&
+                              canOperate
+                            ? "Verbindung erneut prüfen"
+                            : ["probe", "backup"].includes(
+                                  selectedState.action,
+                                ) && !canOperate
+                              ? "Verlauf ansehen"
+                              : selectedState.actionLabel}
+                        <ChevronRight size={14} aria-hidden="true" />
+                      </button>
+                    )}
+                  </section>
+                )}
                 <BackupIssues
                   backup={latest}
                   onSettings={
@@ -1718,12 +1731,15 @@ export default function Hosts({
                   ))}
                 </select>
               </label>
-              <p>
-                Manuelle Hostgruppen haben Vorrang. Automatische Standorte sind
-                Vorschläge aus Namen oder IPv4-Netzen. Über die Gruppe in den
-                Hosteinstellungen kannst du sie korrigieren. Diese Ansicht wird
-                in diesem Browser gespeichert.
-              </p>
+              <details>
+                <summary>Wie werden Standorte zugeordnet?</summary>{" "}
+                <p>
+                  Manuelle Hostgruppen haben Vorrang. Automatische Standorte
+                  sind Vorschläge aus Namen oder IPv4-Netzen. Über die Gruppe in
+                  den Hosteinstellungen kannst du sie korrigieren. Diese Ansicht
+                  wird in diesem Browser gespeichert.
+                </p>
+              </details>
             </div>
             {hosts.length ? (
               <div className="host-site-grid">

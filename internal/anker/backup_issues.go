@@ -26,6 +26,11 @@ func backupIssues(warnings []string) []BackupIssue {
 			i.Detail = "Eine Konfiguration verweist auf eine weitere Datei. Diese wurde nicht mitgesichert; ob sie auf dem Host existiert, ist damit noch nicht geklärt."
 			i.Action = "Verweis auf dem Host prüfen. Wird die Datei benötigt, im Hostprofil /etc/anker-host.json aufnehmen und erneut sichern. Einen veralteten Verweis an seiner Quelle korrigieren."
 			candidate = strings.SplitN(strings.SplitN(warning, ": ", 2)[1], " (", 2)[0]
+			if candidate == "/etc/lynx/local.cfg" && strings.HasSuffix(warning, " (etc/lynx/lynx.cfg)") {
+				i.Title = "Lokale Lynx-Erweiterung prüfen"
+				i.Detail = "Die Lynx-Standardkonfiguration verweist auf lokale Ergänzungen. Ein älterer Helfer kann deren Abwesenheit als Sicherungslücke melden. Ob die Datei auf diesem Host fehlt oder nicht erfasst wurde, ist noch zu prüfen."
+				i.Action = "Mit aktualisiertem Anker-Server neu sichern. Ein vollständiges Inventar kann die Abwesenheit ohne neue Hosteinrichtung bestätigen. Fehlt dieser Nachweis, Hosthelfer aktualisieren oder die Datei auf dem Host prüfen. Keine leere Ersatzdatei anlegen."
+			}
 		case strings.Contains(lower, "required path missing"), strings.Contains(lower, "pflichtpfad"), strings.Contains(lower, "required pbs configuration directory missing"):
 			i.Code, i.Title = "required_path_missing", "Pflichtpfad fehlt"
 			i.Detail = "Ein als erforderlich eingestufter Pfad wurde nicht erfasst. Ein falscher Pfad oder ein abweichendes Hostprofil kann die Ursache sein."
@@ -102,6 +107,11 @@ func backupIssues(warnings []string) []BackupIssue {
 		}
 		if candidate != "" {
 			rel := strings.TrimPrefix(candidate, "/")
+			if i.Code == "invalid_path" && systemdEscapedPath(rel) && ValidPath(rel) == nil {
+				i.Code, i.Title = "legacy_systemd_path", "Älterer Helfer hat einen gültigen systemd-Pfad abgelehnt"
+				i.Detail = "systemd verwendet wörtliche \\xHH-Sequenzen in Dateinamen. Der alte Helfer hat diese fälschlich als ungültigen Pfad behandelt."
+				i.Action = "Mit aktualisiertem Anker-Server neu sichern. Übereinstimmende Link-Metadaten können ohne neue Hosteinrichtung ergänzt werden. Ohne ausreichenden Nachweis bleibt der Stand unvollständig."
+			}
 			// A pathname is metadata, not file content. The existing file browser
 			// exposes names too; unknown/secret file contents remain protected.
 			if len(candidate) <= 4096 && ValidPath(rel) == nil && !publicSecretText(candidate) && !strings.ContainsAny(candidate, "\r\n\t") {

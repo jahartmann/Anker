@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CircleAlert, FileWarning, Wrench } from "lucide-react";
 import type { Backup, BackupIssue } from "../api";
+import { date } from "../api";
 import { Pagination } from "./shared";
 
 export default function BackupIssues({
@@ -53,7 +54,11 @@ export default function BackupIssues({
             {issues.length}{" "}
             {issues.length === 1 ? "konkreter Hinweis" : "konkrete Hinweise"}
           </h3>
-          <p>Was fehlt, was unklar ist und wie du weiterkommst.</p>
+          <p>
+            {backup
+              ? `Betrifft den Stand vom ${date(backup.created_at)}.`
+              : "Ursachen und nächste Schritte für diesen Auftrag."}
+          </p>
         </div>
       </header>
       <div className="backup-issues-list">
@@ -70,8 +75,9 @@ export default function BackupIssues({
               <p>{issue.detail}</p>
               {issue.path_protected && (
                 <p className="issue-privacy">
-                  Pfad oder technische Angaben bleiben geschützt; die Ursache
-                  und Abhilfe stehen hier separat.
+                  {issue.code === "invalid_path"
+                    ? "Dieser Hinweis enthält keinen sicher darstellbaren Pfad. Ohne detaillierte neue Aufnahme ist die betroffene Datei nicht eindeutig bestimmbar."
+                    : "Pfad oder technische Angaben bleiben geschützt; die Ursache und Abhilfe stehen hier separat."}
                 </p>
               )}
               <div className="issue-remedy">
@@ -102,9 +108,9 @@ export default function BackupIssues({
         </footer>
       )}
       <p className="issue-boundary">
-        Fehlende Konfigurationsdateien werden nicht automatisch angelegt und
-        Pflichtpfade nicht stillschweigend entfernt. Eine neue Sicherung prüft
-        den korrigierten Zustand.
+        Nach einer neuen vollständigen Sicherung verschwindet der Hinweis aus
+        der Hostübersicht. Bei diesem älteren Stand bleibt er als Nachweis
+        erhalten.
       </p>
     </section>
   );

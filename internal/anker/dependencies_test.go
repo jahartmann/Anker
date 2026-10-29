@@ -188,3 +188,92 @@ func TestBackupPreservesVimWarningWithInvalidInventoryScan(t *testing.T) {
 		t.Fatalf("invalid inventory evidence suppressed warning: %+v", b)
 	}
 }
+
+func TestBackupReconcilesOnlyProvenPowermanRemoteCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name, config, content string
+		partial               bool
+	}{
+		{"remote command", "etc/powerman/ilom.dev", "script on {\n send \"start -script /SYS\\n\"\n}\n", false},
+		{"required include beside remote", "etc/powerman/ilom.dev", "send \"start -script /SYS\\n\"\ninclude /SYS\\n\n", true},
+		{"local script", "etc/powerman/ilom.dev", "script /SYS\\n\n", true},
+		{"other configuration", "etc/application.conf", "send \"start -script /SYS\\n\"\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := testService(t)
+			warning := "Referenced config/secret is not captured: /SYS\\n (" + tc.config + ")"
+			service.Collector = legacyDependencyCollector{files: map[string]string{tc.config: tc.content}, warnings: []string{warning}}
+			backup, err := service.CreateBackup(context.Background(), "host1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (backup.Status == "partial") != tc.partial {
+				t.Fatalf("status=%s warnings=%v", backup.Status, backup.Warnings)
+			}
+		})
+	}
+}
+
+func TestPowermanReconciliationRemovesOnlyConfirmedFalseDependencyEvidence(t *testing.T) {
+	stage := t.TempDir()
+	config := "etc/powerman/ilom.dev"
+	content := []byte("send \"start -script /SYS\\n\"\n")
+	file := filepath.Join(stage, "files", config)
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	genuine := DependencyEvidence{Path: "/opt/required.dev", Source: config, State: "missing", Reason: "outside_capture"}
+	collection := Collection{
+		Entries:      []Entry{{Path: config, Type: "file", Size: int64(len(content)), SHA256: Hash(content)}},
+		Warnings:     []string{"Referenced config/secret is not captured: /SYS\\n (" + config + ")"},
+		Dependencies: []DependencyEvidence{{Path: "/SYS\\n", Source: config, State: "missing", Reason: "outside_capture"}, genuine},
+	}
+	if warnings := reconcileDependencyWarnings(stage, &collection); len(warnings) != 0 {
+		t.Fatal(warnings)
+	}
+	if !reflect.DeepEqual(collection.Dependencies, []DependencyEvidence{genuine}) {
+		t.Fatal(collection.Dependencies)
+	}
+}
+
+func TestLynxLegacyWarningRequiresCompleteMatchingInventory(t *testing.T) {
+	config := "etc/lynx/lynx.cfg"
+	content := []byte("INCLUDE:/etc/lynx/local.cfg\n")
+	warning := "Referenced config/secret is not captured: /etc/lynx/local.cfg (etc/lynx/lynx.cfg)"
+	for _, variant := range []string{"complete", "unknown scan", "failed scan", "present target", "unreadable target", "required reference"} {
+		t.Run(variant, func(t *testing.T) {
+			stage := t.TempDir()
+			file := filepath.Join(stage, "files", config)
+			os.MkdirAll(filepath.Dir(file), 0700)
+			current := content
+			if variant == "required reference" {
+				current = append(append([]byte{}, content...), []byte("keyfile=/etc/lynx/local.cfg\n")...)
+			}
+			os.WriteFile(file, current, 0600)
+			hashes := map[string]string{config: Hash(current)}
+			state := "ok"
+			if variant == "unknown scan" {
+				state = ""
+			}
+			if variant == "failed scan" {
+				state = "failed"
+			}
+			if variant == "present target" {
+				hashes["etc/lynx/local.cfg"] = Hash([]byte("settings"))
+			}
+			if variant == "unreadable target" {
+				hashes["etc/lynx/local.cfg"] = "unreadable"
+			}
+			hashJSON, _ := json.Marshal(hashes)
+			queryJSON, _ := json.Marshal(map[string]any{"file_inventory": map[string]string{"state": state}})
+			collection := Collection{Entries: []Entry{{Path: config, Type: "file", Size: int64(len(current)), SHA256: Hash(current)}}, Inventory: Inventory{Details: map[string]json.RawMessage{"file_hashes": hashJSON, "command_results": queryJSON}}, Warnings: []string{warning}}
+			warnings := reconcileDependencyWarnings(stage, &collection)
+			if (len(warnings) == 0) != (variant == "complete") {
+				t.Fatalf("incorrect absence decision: %s: %v", variant, warnings)
+			}
+		})
+	}
+}

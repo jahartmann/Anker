@@ -1299,3 +1299,157 @@
 .content .jump-nav .secondary[data-surface-topic] small {
   color: #3e5360;
 }
+
+/* Balance: colour identifies a topic; white paper carries the content. */
+.content .page-heading {
+  background: linear-gradient(
+    105deg,
+    #fff 62%,
+    color-mix(in srgb, var(--paper-wash) 55%, #fff)
+  );
+  border-top-width: 3px;
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+.page-heading h1 {
+  color: #25333e;
+}
+.content .settings-context[data-surface-topic] {
+  background: color-mix(in srgb, var(--paper-wash) 40%, #fff);
+  border-top-width: 3px;
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+.content .settings-nav-group[data-surface-topic] {
+  background: #fff;
+  border-top-width: 3px;
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+.paper-panel > .section-heading,
+.inventory-section > .section-heading,
+.job-detail-group > .topic-heading,
+.readiness > h3,
+.cluster-set-list > h3,
+.cluster-set-detail > h3,
+.journey-value-heading,
+.outcome-heading,
+.active-jobs-heading,
+.backup-reference-head,
+.host-settings-card > .topic-heading,
+.inventory-section > .topic-heading,
+.storage-volume > .section-heading,
+.diagnosis-check > h4,
+.timeline-card-heading,
+.setting-trace-heading,
+.recovery-section-title,
+.outcome-file-heading {
+  background: color-mix(in srgb, var(--paper-wash) 40%, #fff);
+  border: 0;
+  border-left: 3px solid var(--paper-accent);
+}
+.backup-collection > .collection-row {
+  background: #fff;
+  border-top: 0;
+  border-left: 3px solid var(--paper-accent);
+}
+.content .compass-intent[data-surface-topic] {
+  background: #fff;
+  border-top-width: 3px;
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+.content .compass-intent[data-surface-topic]:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--paper-wash) 45%, #fff);
+}
+.host-workspace[data-topic] > .eyebrow {
+  background: color-mix(in srgb, var(--panel-tint) 45%, #fff);
+  border: 0;
+  border-left: 3px solid var(--panel-edge);
+}
+.host-workspace[data-topic],
+.backup-focus-grid > .host-workspace[data-topic],
+.host-overview-detail .host-workspaces > [data-topic="recovery"] {
+  background: #fff;
+  box-shadow: 3px 3px 0 var(--panel-shadow);
+}
+.host-site {
+  border-top-width: 3px;
+  box-shadow: 3px 3px 0 var(--site-shadow);
+}
+.host-site-header {
+  background: color-mix(in srgb, var(--site-wash) 35%, #fff);
+}
+.host-site-services {
+  background: #fff;
+}
+.host-organization {
+  background: #fff;
+  border-left-width: 3px;
+  box-shadow: 3px 3px 0 #bfd0da;
+}
+.host-organization > details {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.host-organization > details > summary {
+  cursor: pointer;
+  color: #3e5360;
+}
+.host-organization > details p {
+  margin-top: 10px;
+}
+.settings-group legend {
+  background: color-mix(in srgb, var(--paper-wash) 40%, #fff);
+}
+.dialog .dialog-title {
+  background: color-mix(in srgb, var(--paper-wash) 40%, #fff);
+}
+.backup-issues {
+  background: #fff;
+  border: 1px solid #c7b7a0;
+  border-left: 3px solid #a66c2e;
+  box-shadow: 3px 3px 0 #deccb5;
+  padding: 20px;
+}
+.backup-issues-heading {
+  align-items: flex-start;
+}
+.backup-issues-heading h3 {
+  font-size: 18px;
+}
+.backup-issues .diagnostic-symbol {
+  width: 32px;
+  height: 32px;
+}
+.backup-issue {
+  box-shadow: none;
+  border: 0;
+  border-top: 1px solid #e0d8cc;
+  border-radius: 0;
+  padding: 14px 0;
+}
+.backup-issue h4 {
+  font-size: 14px;
+}
+.backup-issue .issue-path {
+  background: #f5f2ed;
+}
+.host-overview-detail.has-backup-diagnosis > .backup-issues {
+  grid-column: 1 / 9;
+  grid-row: 1;
+  margin: 0;
+  align-self: start;
+}
+.readiness-lists input[aria-label="Verweise durchsuchen"] {
+  width: 100%;
+  max-width: 420px;
+  margin: 10px 0;
+}
+@media (max-width: 1050px) {
+  .host-overview-detail.has-backup-diagnosis > .backup-issues {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+@media (max-width: 700px) {
+  .backup-issues {
+    padding: 15px;
+  }
+}

@@ -144,6 +144,9 @@ func (s *Service) ExportBackup(id string, w io.Writer) error {
 func (s *Service) tarOriginalFiles(tw tarEntryWriter, b Backup, m Manifest, prefix string) error {
 	for _, e := range m.Entries {
 		h := &tar.Header{Name: prefix + "original-files/" + e.Path, Mode: int64(e.Mode), Uid: e.UID, Gid: e.GID, ModTime: unixTime(e.MTime)}
+		if e.MTimeUnknown {
+			h.PAXRecords = map[string]string{"ANKER.mtime_unknown": "1"}
+		}
 		h.Xattrs = map[string]string{}
 		for name, encoded := range e.XAttrs {
 			value, err := base64.StdEncoding.DecodeString(encoded)

@@ -58,13 +58,11 @@ test("all six workspaces keep the paper hierarchy on desktop and phones", async 
             edge: parseFloat(style.borderTopWidth),
           };
         });
-      const channels = headingPaint.background
-        .match(/\d+/g)!
-        .slice(0, 3)
-        .map(Number);
+      // Large headings stay paper-white; topic colour lives in the edge and small details.
       expect(
-        Math.max(...channels) - Math.min(...channels),
-      ).toBeGreaterThanOrEqual(18);
+        headingPaint.background === "rgba(0, 0, 0, 0)" ||
+          headingPaint.background === "rgb(255, 255, 255)",
+      ).toBe(true);
       expect(headingPaint.shadow).not.toBe("none");
       expect(headingPaint.edge).toBeGreaterThanOrEqual(3);
       if (name === "Sicherungen") {
@@ -137,18 +135,12 @@ test("all host tabs and seven settings areas use the same readable surfaces", as
         .click();
       await expect(page.locator(".settings-context")).toBeVisible();
       if (["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(name)) {
-        const legend = page.locator(".settings-group legend").first();
-        if (await legend.count()) {
-          expect(
-            await legend.evaluate(
-              (element) => getComputedStyle(element).backgroundColor,
-            ),
-          ).toBe(
-            await page
-              .locator(".settings-context")
-              .evaluate((element) => getComputedStyle(element).backgroundColor),
-          );
-        }
+        const contextTopic = await page
+          .locator(".settings-context")
+          .getAttribute("data-surface-topic");
+        await expect(
+          page.locator(".settings-form[data-surface-topic]").first(),
+        ).toHaveAttribute("data-surface-topic", contextTopic!);
       }
       if (["Zugriff", "Zertifikate", "Updates", "Betrieb"].includes(name))
         await expect(

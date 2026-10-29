@@ -1290,6 +1290,14 @@ export function FileBrowser({
                   {preview.entry.gid}
                 </span>
               </div>
+              {preview.entry.capture_origin === "inventory_symlink" && (
+                <p className="field-hint">
+                  Link anhand übereinstimmender Inventarangaben ergänzt; sein
+                  Ziel wurde nicht gelesen.
+                  {preview.entry.mtime_unknown &&
+                    " Die ursprüngliche Änderungszeit ist nicht bekannt."}
+                </p>
+              )}
               {preview.masked ? (
                 <div className="empty">
                   <h3>Geschützter Inhalt</h3>

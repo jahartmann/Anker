@@ -7,7 +7,14 @@ async function contrastIssues(target: ReturnType<Page["locator"]>) {
   return target.evaluate((root) => {
     const rgba = (value: string) => {
       const values = value.match(/[\d.]+/g)!.map(Number);
-      return [values[0], values[1], values[2], values[3] ?? 1];
+      // CSS color-mix serializes as color(srgb ...) with normalized channels.
+      const scale = value.startsWith("color(srgb ") ? 255 : 1;
+      return [
+        values[0] * scale,
+        values[1] * scale,
+        values[2] * scale,
+        values[3] ?? 1,
+      ];
     };
     const blend = (front: number[], back: number[]) =>
       front

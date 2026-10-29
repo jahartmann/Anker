@@ -79,3 +79,17 @@ class PBSTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'symlink'):self.collect(['/etc/alias/vm'])
  def test_pve_without_pbs_directory_keeps_legacy_detection(self):
   self.assertEqual(helper.host_type(self.root/'missing'),'pve')
+ def test_systemd_escaped_mount_link_is_captured_without_following_target(self):
+  relative=r'etc/systemd/system/local-fs.target.wants/run-proxmox\x2dbackup.mount'
+  link=self.root/relative;link.parent.mkdir(parents=True)
+  link.symlink_to(r'/usr/lib/systemd/system/run-proxmox\x2dbackup.mount')
+  collection=self.collect()
+  entry=next(e for e in collection['entries'] if e['path']==relative)
+  self.assertEqual(entry['type'],'symlink')
+  self.assertEqual(entry['link'],r'/usr/lib/systemd/system/run-proxmox\x2dbackup.mount')
+  self.assertFalse(any('invalid path' in warning for warning in collection['warnings']))
+  self.assertFalse(any('.chunks' in e['path'] for e in collection['entries']))
+ def test_systemd_escape_exception_does_not_allow_traversal_or_windows_paths(self):
+  for path in (r'etc\systemd\system\unit.mount',r'etc/systemd/system/..\escape',r'etc/systemd/system/../secret',r'etc/systemd/system/name\xGG.mount',r'etc/app/name\x2d.conf'):
+   with self.subTest(path=path):
+    with self.assertRaises(ValueError):helper.relative(path)

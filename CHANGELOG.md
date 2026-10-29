@@ -1,6 +1,14 @@
 # Änderungen
 
-## Unveröffentlicht
+## v0.2.20 – 29. Oktober 2026
+
+- Gültige systemd-Dateinamen mit wörtlichen `\xHH`-Sequenzen werden unter `/etc/systemd/system` und `/etc/systemd/user` unterstützt, ohne diese Sequenzen zu dekodieren. Die übrigen Pfad- und Traversalprüfungen bleiben bestehen. Bei neuen Aufnahmen älterer Helfer ergänzt der Server ausgelassene systemd-Links ausschließlich aus übereinstimmenden Inventarmetadaten und Linknachweisen; Ziele werden nicht gelesen. Unbekannte ursprüngliche Änderungszeiten bleiben ausdrücklich unbekannt. Bestehende Hostregistrierungen und Zugänge bleiben erhalten.
+- Die optionale lokale Lynx-Erweiterung wird auch bei älteren Helfern nur dann als nachweislich abwesend eingeordnet, wenn die vollständige Dateiinventarisierung und der Hash der gesicherten Quelldatei übereinstimmen. Bei fehlendem Nachweis oder Lesefehlern bleibt der Hinweis erhalten.
+- Zusammengeschriebene Standortkürzel werden lesbar dargestellt, etwa `cpmusterort` als „CP Musterort“ und `gstestdorf-backup` als „GS Testdorf · Backup“. Bekannte Wörter wie `rsync` und `gymnasium` werden nicht künstlich zerlegt. Originalnamen, SSH-Ziele und IDs bleiben unverändert.
+
+- Ruhigere Gewichtung der Themenfarben: weiße Inhaltskarten, zurückgenommene Flächen, konsistente Akzente und kleinere Schatten. Erklärung der Standortgruppierung bei Bedarf aufklappbar. Hostübersicht zeigt die konkreten Sicherungsdiagnosen statt einer zusätzlichen großen Meldung mit derselben Ursache.
+- Powerman-Gerätebefehle wie `send "start -script /SYS\n"` werden nicht mehr als lokale Script-Abhängigkeit behandelt. Neu eingehende Meldungen älterer Helfer werden nur bei passendem, validiertem Quelldateiinhalt korrigiert; echte Includes bleiben erhalten. Der Hosthelfer prüft die bekannte lokale Lynx-Erweiterung auf Existenz; nur nachgewiesene Abwesenheit ist optional. Lesefehler, vorhandene nicht erfasste Dateien und kaputte Links bleiben meldepflichtig.
+- Abhängigkeitsdetails unterscheiden „nicht enthalten“ von nachgewiesen fehlenden Dateien auf dem Host, erklären Link-Ziele und zeigen durchsuchbare Seiten statt hunderter Einträge auf einmal. Diagnosen nennen ihren Sicherungsstand; eine neue vollständige Aufnahme entlastet die aktuelle Hostübersicht, ohne alte Teilstände umzuschreiben.
 
 ## v0.2.19 – 28. Oktober 2026
 

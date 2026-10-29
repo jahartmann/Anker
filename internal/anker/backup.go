@@ -267,6 +267,9 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 	if err = ctx.Err(); err != nil {
 		return b, err
 	}
+	if err := reconcileSystemdSymlinks(stage, &c); err != nil {
+		return b, err
+	}
 	b.HostType = c.Inventory.Platform()
 	// Collectors place the raw tree under stage/files.
 	seen := map[string]bool{}
@@ -311,7 +314,7 @@ func (s *Service) createBackup(ctx context.Context, hostID string) (Backup, erro
 		}
 		b.Size += e.Size
 	}
-	c.Warnings = reconcileDependencyWarnings(stage, c)
+	c.Warnings = reconcileDependencyWarnings(stage, &c)
 	for _, required := range h.ExtraPaths {
 		rel := strings.TrimPrefix(required, "/")
 		if !seen[rel] {
