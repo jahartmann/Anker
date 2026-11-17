@@ -1,6 +1,6 @@
 import HostOperations, { HostDrift } from "../components/HostOperations";
 import BackupRemediation from "../components/BackupRemediation";
-import { useListPageSize, PageSizeSelect } from "../listPageSize";
+import { useListPageSize } from "../listPageSize";
 import {
   groupHosts,
   groupingOptions,
@@ -11,11 +11,7 @@ import {
   type HostGrouping,
 } from "../hostGrouping";
 import HostDiscovery from "./HostDiscovery";
-import {
-  ServerRack as Server,
-  HostEndpoint,
-  TopicSymbol,
-} from "../components/InfrastructureDetails";
+import { HostEndpoint, TopicSymbol } from "../components/InfrastructureDetails";
 import type { HostVisit } from "../components/AnkerCompass";
 import ConfigurationJourney from "../components/ConfigurationJourney";
 import SettingHistory from "../components/SettingHistory";
@@ -24,15 +20,12 @@ import { displayHostName, HostName } from "../hostNames";
 import ChangeTimeline from "../components/ChangeTimeline";
 import ChangeSummary from "../components/ChangeSummary";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
 import {
   ArrowLeft,
-  ChevronDown,
   Search,
   ChevronRight,
   ShieldCheck,
   Network,
-  History,
   GitCompareArrows,
   Plus,
   FolderOpen,
@@ -41,603 +34,22 @@ import {
 } from "lucide-react";
 import { recoverySource } from "../hostHealth";
 import { api, date, hostState } from "../api";
-import type { Host, HostIdentity, Status } from "../api";
+import type { Host, Status } from "../api";
 import {
   Dialog,
   Empty,
   Field,
   Heading,
-  PageEmblem,
   Pagination,
   State,
 } from "../components/shared";
 import type { Notify } from "../components/shared";
-import { BackupHistory } from "./Backups";
+import { BackupHistory } from "../components/BackupHistory";
 import BackupReadiness from "../components/BackupReadiness";
 import BackupIssues from "../components/BackupIssues";
 import Inventory from "../components/Inventory";
 import ActiveJobs from "../components/ActiveJobs";
-export function HostForm({
-  host,
-  automatic = !host,
-  initialEndpoint,
-  onClose,
-  onSaved,
-  notify,
-}: {
-  host?: Host;
-  automatic?: boolean;
-  initialEndpoint?: { address: string; port: number };
-  onClose: () => void;
-  onSaved: () => void;
-  notify: Notify;
-}) {
-  const [method, setMethod] = useState(automatic ? "automatic" : "manual");
-  const props = { host, onClose, onSaved, notify };
-  return method === "automatic" ? (
-    <HostConnection
-      {...props}
-      initialEndpoint={initialEndpoint}
-      onManual={() => setMethod("manual")}
-    />
-  ) : (
-    <ManualHostForm {...props} onAutomatic={() => setMethod("automatic")} />
-  );
-}
-
-function HostConnection({
-  host,
-  initialEndpoint,
-  onClose,
-  onSaved,
-  notify,
-  onManual,
-}: {
-  host?: Host;
-  initialEndpoint?: { address: string; port: number };
-  onClose: () => void;
-  onSaved: () => void;
-  notify: Notify;
-  onManual: () => void;
-}) {
-  const [value, setValue] = useState<Host>(() => ({
-    id: "",
-    name: "",
-    address: initialEndpoint?.address || "",
-    group: "",
-    cluster_id: "",
-    enabled: true,
-    schedule: "",
-    extra_paths: [],
-    ...host,
-    ssh_user: "anker",
-    restore_ssh_user: "anker-restore",
-    ssh_port: host?.ssh_port || initialEndpoint?.port || 22,
-    key_path: "/etc/anker/keys/backup",
-    restore_key_path: "/etc/anker/keys/restore",
-    known_hosts_path: "/etc/anker/known_hosts",
-  }));
-  const [username, setUsername] = useState("root");
-  const [password, setPassword] = useState("");
-  const [identity, setIdentity] = useState<HostIdentity | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [advanced, setAdvanced] = useState(false);
-  const [busy, setBusy] = useState<"inspect" | "enroll" | null>(null);
-  const [error, setError] = useState("");
-  const pending = useRef(false);
-  const invalidate = () => {
-    setIdentity(null);
-    setConfirmed(false);
-  };
-  const set = (key: keyof Host, v: unknown) => {
-    invalidate();
-    setValue((old) => ({ ...old, [key]: v }));
-  };
-  const close = () => {
-    if (pending.current) return;
-    setPassword("");
-    onClose();
-  };
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (pending.current || (identity && (!confirmed || identity.changed)))
-      return;
-    pending.current = true;
-    setBusy(identity ? "enroll" : "inspect");
-    setError("");
-    try {
-      if (!identity) {
-        const result = await api<HostIdentity>(
-          "hosts/connection/inspect",
-          "POST",
-          {
-            address: value.address.trim(),
-            port: value.ssh_port,
-          },
-        );
-        setIdentity(result);
-        setConfirmed(false);
-      } else {
-        await api<Host>("hosts/connection/enroll", "POST", {
-          host: {
-            id: value.id,
-            name: value.name,
-            address: identity.address,
-            group: value.group,
-            cluster_id: value.cluster_id,
-            ssh_user: value.ssh_user,
-            ssh_port: identity.port,
-            key_path: value.key_path,
-            restore_ssh_user: value.restore_ssh_user,
-            restore_key_path: value.restore_key_path,
-            known_hosts_path: value.known_hosts_path,
-            enabled: value.enabled,
-            schedule: value.schedule,
-            extra_paths: value.extra_paths,
-          },
-          username: username.trim(),
-          password,
-          fingerprint: identity.fingerprint,
-          confirmed: true,
-        });
-        setPassword("");
-        notify("Host angebunden");
-        onSaved();
-        onClose();
-      }
-    } catch (e) {
-      const message = (e as Error).message;
-      setError(password ? message.split(password).join("[entfernt]") : message);
-      if (identity) {
-        setPassword("");
-        invalidate();
-      }
-    } finally {
-      pending.current = false;
-      setBusy(null);
-    }
-  }
-  return (
-    <Dialog
-      topic="server"
-      title={host ? "Verbindung einrichten" : "Host hinzufügen"}
-      onClose={close}
-      busy={!!busy}
-    >
-      <form onSubmit={submit}>
-        <p className="dialog-intro">
-          Anker richtet die SSH-Schlüssel und Hosthelfer automatisch ein. Das
-          Passwort wird einmalig zur Einrichtung verwendet und nicht
-          gespeichert.
-        </p>
-        {identity ? (
-          <section className="host-identity" aria-label="SSH-Identität">
-            <h3>Hostidentität bestätigen</h3>
-            <dl>
-              <dt>Adresse</dt>
-              <dd className="mono">
-                {identity.address}:{identity.port}
-              </dd>
-              <dt>Schlüsseltyp</dt>
-              <dd className="mono">{identity.key_type}</dd>
-              <dt>Fingerprint</dt>
-              <dd className="mono">{identity.fingerprint}</dd>
-            </dl>
-            {identity.changed ? (
-              <p className="notice warning" role="alert">
-                Der Hostschlüssel hat sich geändert. Die Anbindung ist gesperrt.
-                Identität am Host prüfen und die Änderung über die vorhandene
-                Hostschlüsselprüfung ausdrücklich übernehmen.
-              </p>
-            ) : (
-              <>
-                <p className="muted">
-                  {identity.known
-                    ? "Bekannter Hostschlüssel stimmt überein."
-                    : "Noch nicht bekannt. Die Identität wurde noch nicht verifiziert."}
-                </p>
-                <p className="notice">
-                  Vergleiche den Fingerprint über einen vertrauenswürdigen
-                  Zugang, zum Beispiel die Proxmox-Konsole. Erst nach deiner
-                  Bestätigung wird das Passwort an diesen Host gesendet.
-                </p>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={confirmed}
-                    disabled={!!busy}
-                    onChange={(e) => setConfirmed(e.target.checked)}
-                  />
-                  Fingerprint geprüft und bestätigt
-                </label>
-              </>
-            )}
-            <button
-              type="button"
-              className="text-button"
-              disabled={!!busy}
-              onClick={invalidate}
-            >
-              Angaben ändern
-            </button>
-          </section>
-        ) : (
-          <>
-            <Field label="Adresse">
-              <input
-                required
-                autoComplete="off"
-                disabled={!!busy}
-                value={value.address}
-                onChange={(e) => set("address", e.target.value)}
-                placeholder="IP-Adresse oder DNS-Name"
-              />
-            </Field>
-            <div className="form-grid">
-              <Field
-                label="SSH-Benutzer"
-                hint="root oder ein Benutzer mit sudo-Rechten."
-              >
-                <input
-                  required
-                  autoComplete="off"
-                  disabled={!!busy}
-                  value={username}
-                  onChange={(e) => {
-                    invalidate();
-                    setUsername(e.target.value);
-                  }}
-                />
-              </Field>
-              <Field label="SSH-Passwort">
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  disabled={!!busy}
-                  value={password}
-                  onChange={(e) => {
-                    invalidate();
-                    setPassword(e.target.value);
-                  }}
-                />
-              </Field>
-            </div>
-            <button
-              type="button"
-              className="disclosure"
-              aria-expanded={advanced}
-              disabled={!!busy}
-              onClick={() => setAdvanced(!advanced)}
-            >
-              <ChevronDown size={14} className={advanced ? "rotated" : ""} />
-              Weitere Angaben
-            </button>
-            {advanced && (
-              <div className="advanced">
-                <div className="form-grid">
-                  <Field
-                    label="Hostname"
-                    hint="Optional; wird vom Host übernommen."
-                  >
-                    <input
-                      disabled={!!busy}
-                      value={value.name}
-                      onChange={(e) => set("name", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="SSH-Port">
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      max={65535}
-                      disabled={!!busy}
-                      value={value.ssh_port}
-                      onChange={(e) => set("ssh_port", +e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Gruppe">
-                    <input
-                      disabled={!!busy}
-                      value={value.group}
-                      onChange={(e) => set("group", e.target.value)}
-                    />
-                  </Field>
-                  <Field
-                    label="Cluster"
-                    hint="Für Standalone-Hosts leer lassen."
-                  >
-                    <input
-                      disabled={!!busy}
-                      value={value.cluster_id}
-                      onChange={(e) => set("cluster_id", e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <Field
-                  label="Startzeit"
-                  hint="Leer übernimmt den gemeinsamen Zeitplan."
-                >
-                  <input
-                    type="time"
-                    disabled={!!busy}
-                    value={value.schedule}
-                    onChange={(e) => set("schedule", e.target.value)}
-                  />
-                </Field>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    disabled={!!busy}
-                    checked={value.enabled}
-                    onChange={(e) => set("enabled", e.target.checked)}
-                  />
-                  Automatisch sichern
-                </label>
-              </div>
-            )}
-            <button
-              type="button"
-              className="text-button host-method"
-              disabled={!!busy}
-              onClick={() => {
-                setPassword("");
-                onManual();
-              }}
-            >
-              Manuell einrichten
-            </button>
-          </>
-        )}
-        {error && (
-          <p className="notice warning" role="alert">
-            {error}
-          </p>
-        )}
-        {busy && (
-          <p className="muted" role="status">
-            {busy === "inspect"
-              ? "SSH-Identität wird ohne Passwort geprüft …"
-              : "Schlüssel und Hosthelfer werden eingerichtet und beide Zugänge geprüft. Das kann einen Moment dauern …"}
-          </p>
-        )}
-        <footer className="dialog-footer">
-          <button
-            type="button"
-            className="secondary"
-            disabled={!!busy}
-            onClick={close}
-          >
-            Abbrechen
-          </button>
-          <button
-            disabled={
-              !!busy || (!!identity && (identity.changed || !confirmed))
-            }
-          >
-            {busy
-              ? busy === "inspect"
-                ? "Prüft …"
-                : "Bindet an …"
-              : identity
-                ? "Host anbinden"
-                : "Identität prüfen"}
-          </button>
-        </footer>
-      </form>
-    </Dialog>
-  );
-}
-
-function ManualHostForm({
-  host,
-  onClose,
-  onSaved,
-  notify,
-  onAutomatic,
-}: {
-  host?: Host;
-  onClose: () => void;
-  onSaved: () => void;
-  notify: Notify;
-  onAutomatic: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [advanced, setAdvanced] = useState(!!host);
-  const [value, setValue] = useState<Host>(
-    host || {
-      id: "",
-      name: "",
-      address: "",
-      group: "",
-      cluster_id: "",
-      ssh_user: "anker",
-      ssh_port: 22,
-      key_path: "/etc/anker/keys/backup",
-      known_hosts_path: "/etc/anker/known_hosts",
-      enabled: true,
-      schedule: "",
-      extra_paths: [],
-    },
-  );
-  const set = (key: keyof Host, v: unknown) =>
-    setValue((old) => ({ ...old, [key]: v }));
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api("hosts", "POST", value);
-      notify("Host gespeichert");
-      onSaved();
-      onClose();
-    } catch (e) {
-      notify((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog
-      topic="server"
-      title={host ? "Host bearbeiten" : "Host hinzufügen"}
-      onClose={onClose}
-      busy={busy}
-    >
-      <form onSubmit={submit}>
-        <p className="dialog-intro">
-          Anker verbindet sich über SSH. Der verifizierte Hostschlüssel und das
-          Sicherungsprofil bestimmen den Zugriff.
-        </p>
-        <button
-          type="button"
-          className="text-button host-method"
-          disabled={busy}
-          onClick={onAutomatic}
-        >
-          Automatisch einrichten
-        </button>
-        <div className="form-grid">
-          <Field label="Hostname">
-            <input
-              required
-              autoComplete="off"
-              value={value.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="Hostname des PVE- oder PBS-Hosts"
-            />
-          </Field>
-          <Field label="Adresse">
-            <input
-              required
-              value={value.address}
-              onChange={(e) => set("address", e.target.value)}
-              placeholder="IP-Adresse oder DNS-Name"
-            />
-          </Field>
-          <Field label="Gruppe">
-            <input
-              value={value.group}
-              onChange={(e) => set("group", e.target.value)}
-              placeholder="Standort oder Gruppe"
-            />
-          </Field>
-          <Field label="Cluster" hint="Für Standalone-Hosts leer lassen.">
-            <input
-              value={value.cluster_id}
-              onChange={(e) => set("cluster_id", e.target.value)}
-            />
-          </Field>
-        </div>
-        <button
-          className="disclosure"
-          type="button"
-          onClick={() => setAdvanced(!advanced)}
-        >
-          <ChevronDown size={14} className={advanced ? "rotated" : ""} />
-          SSH und Sicherungsprofil
-        </button>
-        {advanced && (
-          <div className="advanced">
-            <div className="form-grid">
-              <Field label="SSH-Benutzer">
-                <input
-                  value={value.ssh_user}
-                  onChange={(e) => set("ssh_user", e.target.value)}
-                />
-              </Field>
-              <Field label="SSH-Port">
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={value.ssh_port}
-                  onChange={(e) => set("ssh_port", +e.target.value)}
-                />
-              </Field>
-            </div>
-            <Field
-              label="Privater SSH-Schlüssel"
-              hint="Geschützter Dateipfad auf dem Anker-Server."
-            >
-              <input
-                value={value.key_path}
-                onChange={(e) => set("key_path", e.target.value)}
-                placeholder="/etc/anker/keys/backup"
-              />
-            </Field>
-            <Field
-              label="Wiederherstellungsschlüssel"
-              hint="Optionaler, separat berechtigter SSH-Schlüssel. Der Sicherungsschlüssel kann nur lesen."
-            >
-              <input
-                value={value.restore_key_path || ""}
-                onChange={(e) => set("restore_key_path", e.target.value)}
-                placeholder="/etc/anker/keys/restore"
-              />
-            </Field>
-            <Field label="Wiederherstellungsbenutzer">
-              <input
-                value={value.restore_ssh_user || "anker-restore"}
-                onChange={(e) => set("restore_ssh_user", e.target.value)}
-              />
-            </Field>
-            <Field label="Verifizierte Hostschlüssel">
-              <input
-                value={value.known_hosts_path}
-                onChange={(e) => set("known_hosts_path", e.target.value)}
-                placeholder="/etc/anker/known_hosts"
-              />
-            </Field>
-            <Field
-              label="Zusätzliche Pflichtpfade"
-              hint="Eine Zeile je Pfad. Diese Pfade müssen im Profil auf dem Host zugelassen sein."
-            >
-              <textarea
-                rows={3}
-                value={(value.extra_paths || []).join("\n")}
-                onChange={(e) =>
-                  set("extra_paths", e.target.value.split("\n").filter(Boolean))
-                }
-              />
-            </Field>
-            <Field
-              label="Startzeit"
-              hint="Leer übernimmt den gemeinsamen Zeitplan."
-            >
-              <input
-                type="time"
-                value={value.schedule}
-                onChange={(e) => set("schedule", e.target.value)}
-              />
-            </Field>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={value.enabled}
-                onChange={(e) => set("enabled", e.target.checked)}
-              />
-              Automatisch sichern
-            </label>
-          </div>
-        )}
-        <footer className="dialog-footer">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={onClose}
-          >
-            Abbrechen
-          </button>
-          <button disabled={busy}>
-            {busy ? "Speichert …" : "Host speichern"}
-          </button>
-        </footer>
-      </form>
-    </Dialog>
-  );
-}
+import { HostForm } from "../components/HostForm";
 export type HostStateFilter = "" | "active" | "saved" | "attention" | "paused";
 
 function BackupAge({ createdAt }: { createdAt?: string }) {
@@ -874,6 +286,14 @@ export default function Hosts({
     !activeHostJob &&
     latest?.status === "partial" &&
     !!(latest.issues?.length || latest.warnings?.length);
+  // The focus card only appears when something needs doing; a healthy host
+  // is fully described by the status strip.
+  const showFocus =
+    !diagnosticFocus &&
+    !!host &&
+    (!!activeHostJob ||
+      !!host.probe_error ||
+      (!!selectedState && selectedState.tone !== "success"));
   async function action(path: string, message: string) {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
@@ -911,15 +331,6 @@ export default function Hosts({
               <ArrowLeft size={14} />
               Alle Hosts
             </button>
-            <div className="page-kicker">
-              <PageEmblem tone="blue">
-                <Server size={20} strokeWidth={1.6} aria-hidden="true" />
-              </PageEmblem>
-              <span>
-                {host.inventory?.cluster_id || host.cluster_id || "Standalone"}{" "}
-                <span className="kicker-separator">/</span> Hostkonfiguration
-              </span>
-            </div>
             <Heading
               title={displayHostName(host.name)}
               accessibleTitle={host.name}
@@ -1016,9 +427,9 @@ export default function Hosts({
             )}
             {tab === "Übersicht" && (
               <div
-                className={`detail-section host-overview-detail${diagnosticFocus ? " has-backup-diagnosis" : ""}`}
+                className={`detail-section host-overview-detail${diagnosticFocus ? " has-backup-diagnosis" : ""}${showFocus ? "" : " without-focus"}`}
               >
-                {!diagnosticFocus && (
+                {showFocus && (
                   <section
                     className={
                       "host-next-step host-focus-card " +
@@ -1299,7 +710,7 @@ export default function Hosts({
                     <h3>Älteren Stand wiederherstellen</h3>
                     <p>
                       {host.inventory?.host_type === "pbs" ? (
-                        "PBS-Konfigurationen geführt wiederherstellen: Ziel-Datastores erhalten, PBS-Dienste vor der Zielprüfung stoppen und zurückgespielte Jobs deaktiviert prüfen."
+                        "Stellt die PBS-Konfiguration wieder her. Vorher die PBS-Dienste stoppen; Datastore-Inhalte bleiben unberührt."
                       ) : restoreSource ? (
                         <>
                           Vorgeschlagene Quelle:{" "}
@@ -1335,6 +746,8 @@ export default function Hosts({
                 <HostDrift
                   key={`${host.id}-${latest?.id}-${latest?.status}-${latest?.verified_at}`}
                   host={host}
+                  backups={hostBackups}
+                  openBackup={openBackup}
                   canOperate={canOperate}
                   refresh={refresh}
                   openJob={openJob}
@@ -1414,38 +827,11 @@ export default function Hosts({
             )}
             {tab === "Änderungen" &&
               (hostBackups.length > 1 ? (
-                <div className="host-changes">
-                  <div className="history-heading">
-                    <div>
-                      <span className="eyebrow">
-                        <GitCompareArrows size={14} aria-hidden="true" />{" "}
-                        Konfigurationsänderungen
-                      </span>
-                      <h3>Was hat sich verändert?</h3>
-                      <p className="muted">
-                        Dateiinhalte und Metadaten zwischen zwei Ständen dieses
-                        Hosts.
-                      </p>
-                    </div>
-                  </div>
-                  <ChangeTimeline
-                    key={"changes-" + host.id}
-                    backups={hostBackups}
-                    onCompare={openChangeDetail}
-                  />
-                  <button
-                    className="secondary"
-                    disabled={!previous || !latest}
-                    onClick={() =>
-                      previous &&
-                      latest &&
-                      openChangeDetail(previous.id, latest.id)
-                    }
-                  >
-                    <GitCompareArrows size={16} aria-hidden="true" /> Letzte
-                    zwei Stände im Detail vergleichen
-                  </button>
-                </div>
+                <ChangeTimeline
+                  key={"changes-" + host.id}
+                  backups={hostBackups}
+                  onCompare={openChangeDetail}
+                />
               ) : (
                 <Empty title="Noch kein Vergleich möglich">
                   Für einen Vergleich werden zwei Sicherungsstände dieses Hosts
@@ -1568,18 +954,8 @@ export default function Hosts({
           </>
         ) : (
           <>
-            <div className="page-kicker">
-              <PageEmblem tone="blue">
-                <Server size={20} strokeWidth={1.6} aria-hidden="true" />
-              </PageEmblem>
-              <span>
-                Infrastruktur <span className="kicker-separator">/</span> Hosts
-                verwalten
-              </span>
-            </div>
             <Heading
               title="Hosts"
-              count={hosts.length}
               description="Konfigurationen sichern und wiederherstellen."
               action={
                 canEdit && (
@@ -1612,57 +988,6 @@ export default function Hosts({
               openJob={openJob}
               openBackup={openBackup}
             />
-            {status.hosts.length > 0 && (
-              <section
-                className="host-list-focus"
-                aria-label="Hosts im Überblick"
-              >
-                <span className="compass-emblem">
-                  {attention ? (
-                    <CircleAlert size={20} aria-hidden="true" />
-                  ) : (
-                    <ShieldCheck size={20} aria-hidden="true" />
-                  )}
-                </span>
-                <div>
-                  <h2>
-                    {attention
-                      ? `${attention} ${attention === 1 ? "Host braucht" : "Hosts brauchen"} Aufmerksamkeit`
-                      : paused === status.hosts.length
-                        ? "Automatische Sicherungen sind pausiert"
-                        : "Die Sicherungen sind aktuell"}
-                  </h2>
-                  <p>
-                    {attention
-                      ? "Sieh dir zuerst fehlende, ältere oder fehlerhafte Sicherungen an."
-                      : paused === status.hosts.length
-                        ? "Vorhandene Sicherungen kannst du weiterhin öffnen."
-                        : "Dateien, Änderungen und Prüfungen findest du beim jeweiligen Host."}
-                  </p>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setStateFilter(
-                      attention
-                        ? "attention"
-                        : paused === status.hosts.length
-                          ? "paused"
-                          : "saved",
-                    );
-                    setQuery("");
-                    setGroup("");
-                    setPage(1);
-                  }}
-                >
-                  {attention
-                    ? "Betroffene Hosts anzeigen"
-                    : paused === status.hosts.length
-                      ? "Pausierte Hosts anzeigen"
-                      : "Gesicherte Hosts anzeigen"}
-                </button>
-              </section>
-            )}
             <div
               className="host-filter-chips"
               role="group"
@@ -1675,7 +1000,17 @@ export default function Hosts({
                   label: "Handlungsbedarf",
                   count: attention,
                 },
+                { value: "saved", label: "Gesichert", count: saved },
                 { value: "paused", label: "Pausiert", count: paused },
+                ...(stateFilter === "active"
+                  ? [
+                      {
+                        value: "active",
+                        label: "Aktiv",
+                        count: status.hosts.filter((h) => h.enabled).length,
+                      },
+                    ]
+                  : []),
               ].map((filter) => (
                 <button
                   key={filter.value}
@@ -1721,67 +1056,19 @@ export default function Hosts({
                 ))}
               </select>
               <select
-                aria-label="Hoststatus filtern"
-                value={stateFilter}
-                onChange={(e) => {
-                  setStateFilter(e.target.value as HostStateFilter);
-                  setPage(1);
-                }}
+                aria-label="Ansicht gruppieren"
+                title="Manuelle Hostgruppen haben Vorrang. Automatische Standorte sind Vorschläge aus Namen oder IPv4-Netzen. Die Ansicht wird in diesem Browser gespeichert."
+                value={grouping}
+                onChange={(event) =>
+                  changeGrouping(event.target.value as HostGrouping)
+                }
               >
-                <option value="">Alle Status</option>
-                <option value="active">Aktive Hosts</option>
-                <option value="attention">Handlungsbedarf</option>
-                <option value="saved">Aktuell gesichert</option>
-                <option value="paused">Pausiert</option>
+                {groupingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
-            <PageSizeSelect
-              value={hostPageSize}
-              initial={8}
-              label="Hosts pro Seite"
-              onChange={(size) => {
-                setHostPageSize(size);
-                setPage(1);
-              }}
-            />
-            <div className="host-organization">
-              <div>
-                <Network size={19} aria-hidden="true" />
-                <strong>Deine Infrastruktur</strong>
-                <span>
-                  {inventoryBuckets.length}{" "}
-                  {grouping === "type"
-                    ? "Servertypen"
-                    : grouping === "none"
-                      ? "Ansicht"
-                      : "Bereiche"}
-                </span>
-              </div>
-              <label>
-                Ansicht gruppieren
-                <select
-                  aria-label="Ansicht gruppieren"
-                  value={grouping}
-                  onChange={(event) =>
-                    changeGrouping(event.target.value as HostGrouping)
-                  }
-                >
-                  {groupingOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <details>
-                <summary>Wie werden Standorte zugeordnet?</summary>{" "}
-                <p>
-                  Manuelle Hostgruppen haben Vorrang. Automatische Standorte
-                  sind Vorschläge aus Namen oder IPv4-Netzen. Über die Gruppe in
-                  den Hosteinstellungen kannst du sie korrigieren. Diese Ansicht
-                  wird in diesem Browser gespeichert.
-                </p>
-              </details>
             </div>
             <HostOperations
               hosts={status.hosts}
@@ -1793,6 +1080,7 @@ export default function Hosts({
               refresh={refresh}
               openJob={openJob}
               actorID={actorID}
+              jobs={status.jobs}
             />
             {hosts.length ? (
               <div className="host-site-grid">
@@ -1829,28 +1117,6 @@ export default function Hosts({
                         </span>
                       </header>
                     )}
-                    <div
-                      className="host-site-services"
-                      aria-label="Serverrollen im Bereich"
-                    >
-                      {(["pve", "pbs", "unknown"] as const).map((type) => {
-                        const count = bucket.matching.filter(
-                          (host) => serverType(host) === type,
-                        ).length;
-                        return (
-                          count > 0 && (
-                            <span key={type} className={`server-role ${type}`}>
-                              {type === "pve"
-                                ? "PVE · Virtualisierung"
-                                : type === "pbs"
-                                  ? "PBS · Backupserver"
-                                  : "Servertyp offen"}
-                              <b>{count}</b>
-                            </span>
-                          )
-                        );
-                      })}
-                    </div>
                     <div className="table-scroll data-surface">
                       <table className="host-table">
                         <thead>
@@ -2015,20 +1281,13 @@ export default function Hosts({
               <Pagination
                 page={currentPage}
                 pageSize={hostPageSize}
+                initialPageSize={8}
+                onPageSizeChange={setHostPageSize}
                 total={hosts.length}
                 onPageChange={setPage}
                 label="Hosts"
               />
             )}
-            <p className="table-footnote">
-              {status.hosts.length} Hosts · {saved} gesichert ·{" "}
-              {status.hosts.filter((h) => h.enabled).length - saved} mit
-              Handlungsbedarf
-              {status.hosts.some((h) => !h.enabled) &&
-                " · " +
-                  status.hosts.filter((h) => !h.enabled).length +
-                  " pausiert"}
-            </p>
           </>
         )}
         {removing && host && (

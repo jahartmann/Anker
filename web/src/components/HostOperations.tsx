@@ -1,11 +1,11 @@
+import HelperOverview from "./HelperOverview";
+export { default as HostDrift } from "./HostDrift";
 import { useEffect, useRef, useState } from "react";
-import { api, date } from "../api";
-import type { Host, HostIdentity } from "../api";
-import { displayHostName, HostName } from "../hostNames";
-import { Dialog, Field } from "./shared";
-import { CheckSquare, ScanLine, Wrench, ShieldCheck } from "lucide-react";
-import { Pagination } from "./shared";
-import { useListPageSize } from "../listPageSize";
+import { api, date, plural, interval } from "../api";
+import type { Host, Job } from "../api";
+import { HostName } from "../hostNames";
+import { Dialog, State } from "./shared";
+import { CheckSquare, Wrench } from "lucide-react";
 
 type Target = {
   host_id: string;
@@ -29,6 +29,31 @@ const actions: Record<string, string> = {
   group: "Standort / Gruppe setzen",
   drift_schedule: "Automatische Liveprüfung",
 };
+const actionHelp: Record<string, string> = {
+  backup:
+    "Erstellt eine neue Konfigurationssicherung und prüft anschließend deren Integrität.",
+  probe:
+    "Prüft die Verbindung und aktualisiert das Hostinventar. Dabei entsteht keine neue Sicherung.",
+  verify:
+    "Prüft die gespeicherten Dateien der jeweils letzten Sicherung. Erfasst keine neuen Konfigurationen vom Host.",
+  drift:
+    "Liest den aktuellen Konfigurationszustand und vergleicht Inhalte mit der letzten vollständigen Sicherung.",
+  maintenance:
+    "Pausiert automatische Sicherungen, Liveprüfungen und Überfälligkeitsmeldungen bis zum Endzeitpunkt. Von Hand geht weiterhin alles.",
+  maintenance_end:
+    "Beendet die befristete Wartung. Der bisherige Zeitplan gilt wieder; eine dauerhaft pausierte Automatik bleibt pausiert.",
+  pause:
+    "Pausiert die Automatik dauerhaft, bis du sie ausdrücklich wieder aktivierst. Manuelle Aktionen bleiben möglich.",
+  resume:
+    "Aktiviert die reguläre Automatik. Eine noch laufende befristete Wartung gilt weiter bis zu ihrem Ende.",
+  schedule:
+    "Setzt die tägliche Startzeit. Ein leeres Feld übernimmt den gemeinsamen Zeitplan aus den Einstellungen.",
+  group:
+    "Setzt die manuelle Standortgruppe. Ein leerer Wert entfernt diese Zuordnung; technische Hostnamen und Zugänge bleiben bestehen.",
+  drift_schedule:
+    "Aktiviert oder deaktiviert regelmäßige lesende Liveprüfungen. Diese erstellen keine Sicherung und berücksichtigen Wartung und pausierte Hosts.",
+};
+const readActions = ["backup", "probe", "verify", "drift"];
 export default function HostOperations({
   hosts,
   filtered,
@@ -39,6 +64,7 @@ export default function HostOperations({
   refresh,
   openJob,
   actorID,
+  jobs = [],
 }: {
   hosts: Host[];
   filtered: Host[];
@@ -49,6 +75,7 @@ export default function HostOperations({
   refresh: () => void;
   openJob?: (id: string) => void;
   actorID: string;
+  jobs?: Job[];
 }) {
   const [action, setAction] = useState("backup");
   const [value, setValue] = useState("");
@@ -72,6 +99,10 @@ export default function HostOperations({
     until: string;
   }>();
   const activeRequest = useRef("");
+  const filteredIDs = new Set(filtered.map((h) => h.id));
+  const hiddenSelected = targets.filter(
+    (t) => !filteredIDs.has(t.host_id),
+  ).length;
   const key = `anker.host-operation.${actorID}`;
   useEffect(() => {
     setRun(undefined);
@@ -149,22 +180,23 @@ export default function HostOperations({
     }
   }
   return (
-    <section className="operations-card" aria-label="Sammelaktionen">
-      <div className="operations-heading">
-        <CheckSquare size={20} />
-        <div>
-          <h3>
-            {canOperate ? "Gemeinsam verwalten" : "Hosthelfer im Überblick"}
-          </h3>
-          <p>
-            Feste Auswahl über alle Seiten. Geänderte Hosts werden vor der
-            Ausführung erkannt.
-          </p>
-        </div>
-        {canOperate && (
+    <section
+      className={`operations-card${targets.length ? "" : " operations-idle"}`}
+      aria-label="Sammelaktionen"
+    >
+      {targets.length > 0 && (
+        <div className="operations-heading">
+          <CheckSquare size={20} />
+          <div>
+            <h3>Gemeinsam verwalten</h3>
+            <p>
+              Die Auswahl gilt über alle Seiten. Geänderte Hosts werden vor der
+              Ausführung erkannt.
+            </p>
+          </div>
           <span className="count-badge">{targets.length} ausgewählt</span>
-        )}
-      </div>
+        </div>
+      )}
       <div className="operations-controls">
         {canOperate && (
           <>
@@ -239,7 +271,7 @@ export default function HostOperations({
                   >
                     {[1, 4, 24, 72].map((h) => (
                       <option key={h} value={h}>
-                        {h} Stunden
+                        {plural(h, "Stunde", "Stunden")}
                       </option>
                     ))}
                   </select>
@@ -252,7 +284,9 @@ export default function HostOperations({
                   >
                     {[0, 15, 30, 60, 240, 1440].map((m) => (
                       <option key={m} value={m}>
-                        {m ? `Alle ${m} Minuten` : "Ausgeschaltet"}
+                        {m
+                          ? interval(m).replace(/^./, (c) => c.toUpperCase())
+                          : "Ausgeschaltet"}
                       </option>
                     ))}
                   </select>
@@ -270,6 +304,39 @@ export default function HostOperations({
           <Wrench size={15} /> Helferübersicht
         </button>
       </div>
+      {targets.length > 0 && (
+        <div className="operation-guidance" data-action={action}>
+          <p>{actionHelp[action]}</p>
+          {hiddenSelected > 0 && (
+            <p className="selection-hidden" role="status">
+              {hiddenSelected} ausgewählte{" "}
+              {hiddenSelected === 1 ? "Host liegt" : "Hosts liegen"} außerhalb
+              der aktuellen Filter. Die Aktion gilt für die gesamte feste
+              Auswahl.
+            </p>
+          )}
+          <details>
+            <summary>{targets.length} ausgewählte Hosts ansehen</summary>
+            <ul className="selection-review">
+              {targets.map((t) => {
+                const h = hosts.find((h) => h.id === t.host_id);
+                return (
+                  <li key={t.host_id}>
+                    <strong>
+                      <HostName name={h?.name || t.host_id} />
+                    </strong>
+                    <small>
+                      {h?.address || "Host nicht mehr vorhanden"}
+                      {h?.config_revision !== t.revision &&
+                        " · Einstellungen geändert"}
+                    </small>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        </div>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -302,7 +369,7 @@ export default function HostOperations({
         </button>
       )}
       {run && (
-        <details className="operation-receipt" open>
+        <details className="operation-receipt" open key={run.id}>
           <summary>
             Ergebnis:{" "}
             {
@@ -324,17 +391,30 @@ export default function HostOperations({
                     }
                   />
                 </strong>
-                <span
-                  className={`state ${t.state === "skipped" ? "warning" : "muted"}`}
-                >
-                  {t.state === "queued"
-                    ? "Auftrag gestartet"
-                    : t.state === "applied"
-                      ? "Übernommen"
-                      : t.state === "pending"
-                        ? "Noch offen"
-                        : "Übersprungen"}
-                </span>
+                {t.state === "queued" ? (
+                  <State
+                    value={
+                      jobs.find((j) => j.id === t.job_id)?.state || "queued"
+                    }
+                    label={
+                      jobs.some((j) => j.id === t.job_id)
+                        ? undefined
+                        : "Auftrag angenommen"
+                    }
+                  />
+                ) : (
+                  <span
+                    className={`state ${t.state === "skipped" ? "warning" : "muted"}`}
+                  >
+                    {t.state === "queued"
+                      ? "Auftrag gestartet"
+                      : t.state === "applied"
+                        ? "Übernommen"
+                        : t.state === "pending"
+                          ? "Noch offen"
+                          : "Übersprungen"}
+                  </span>
+                )}
                 <span>{t.message}</span>
                 {t.job_id && openJob && (
                   <button
@@ -352,17 +432,29 @@ export default function HostOperations({
       {review && request && (
         <Dialog
           title="Sammelaktion prüfen"
+          busy={busy}
           onClose={() => {
             if (!busy) setReview(false);
           }}
         >
           <p>
             <strong>{actions[request.action]}</strong> für{" "}
-            {request.targets.length} ausdrücklich ausgewählte Hosts.
+            {request.targets.length} ausdrücklich{" "}
+            {request.targets.length === 1
+              ? "ausgewählten Host"
+              : "ausgewählte Hosts"}
+            .
           </p>
+          <p className="operation-help">{actionHelp[request.action]}</p>
           {["schedule", "group"].includes(request.action) && (
             <p>
-              Neuer Wert: <strong>{request.value || "Leeren"}</strong>
+              Neuer Wert:{" "}
+              <strong>
+                {request.value ||
+                  (request.action === "schedule"
+                    ? "Gemeinsamen Zeitplan übernehmen"
+                    : "Manuelle Gruppe entfernen")}
+              </strong>
             </p>
           )}
           {request.action === "maintenance" && (
@@ -388,13 +480,17 @@ export default function HostOperations({
                     hosts.find((h) => h.id === t.host_id)?.name || t.host_id
                   }
                 />
+                <small>
+                  {hosts.find((h) => h.id === t.host_id)?.address ||
+                    "Host nicht mehr vorhanden"}
+                </small>
               </li>
             ))}
           </ul>
           <p className="muted">
-            Belegte oder inzwischen bearbeitete Hosts werden mit Begründung
-            übersprungen. Manuelle Prüfungen sind auch während einer Wartung
-            möglich.
+            {readActions.includes(request.action)
+              ? "Belegte oder inzwischen bearbeitete Hosts werden mit Begründung übersprungen."
+              : "Inzwischen bearbeitete Hosts werden mit Begründung übersprungen. Laufende Aufträge werden durch diese Einstellung nicht abgebrochen."}
           </p>
           {error && <p role="alert">{error}</p>}
           <button disabled={busy} onClick={execute}>
@@ -411,426 +507,6 @@ export default function HostOperations({
           onClose={() => setHelper(false)}
           refresh={refresh}
         />
-      )}
-    </section>
-  );
-}
-
-type Helper = {
-  host_id: string;
-  name: string;
-  state: string;
-  installed_version?: string;
-  installed_hash?: string;
-  desired_version: string;
-  desired_hash: string;
-  last_probe?: string;
-  capabilities?: Record<string, unknown>;
-};
-function HelperOverview({
-  hosts,
-  canManage,
-  canOperate,
-  openJob,
-  onClose,
-  refresh,
-}: {
-  hosts: Host[];
-  canManage: boolean;
-  canOperate: boolean;
-  openJob?: (id: string) => void;
-  onClose: () => void;
-  refresh: () => void;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [list, setList] = useState<Helper[]>([]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [target, setTarget] = useState<Host>();
-  const [identity, setIdentity] = useState<HostIdentity>();
-  const [username, setUsername] = useState("root");
-  const [password, setPassword] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [done, setDone] = useState("");
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useListPageSize("helpers", 10);
-  const observationRevision = JSON.stringify(
-    hosts.map((h) => [h.id, h.last_probe]),
-  );
-  useEffect(() => {
-    let valid = true;
-    setLoading(true);
-    api<Helper[]>("operations/helpers")
-      .then((v) => {
-        if (valid) {
-          setList(v);
-          setLoading(false);
-          setError("");
-        }
-      })
-      .catch((e) => {
-        if (valid) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      valid = false;
-    };
-  }, [observationRevision]);
-  async function probe(id: string) {
-    setBusy(true);
-    setError("");
-    try {
-      const job = await api<{ id: string }>(`hosts/${id}/probe`, "POST");
-      setDone(
-        "Hostprüfung gestartet. Version und Fähigkeiten werden nach Abschluss neu eingelesen.",
-      );
-      refresh();
-      openJob?.(job.id);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function inspect(h: Host) {
-    setBusy(true);
-    setError("");
-    setDone("");
-    setTarget(h);
-    setIdentity(undefined);
-    setConfirmed(false);
-    setPassword("");
-    try {
-      setIdentity(
-        await api<HostIdentity>("hosts/connection/inspect", "POST", {
-          address: h.address,
-          port: h.ssh_port,
-        }),
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function update() {
-    if (!target || !identity) return;
-    setBusy(true);
-    setError("");
-    try {
-      await api("operations/helpers/refresh", "POST", {
-        host_id: target.id,
-        revision: target.config_revision,
-        username,
-        password,
-        fingerprint: identity.fingerprint,
-        confirmed,
-      });
-      setDone(
-        `${displayHostName(target.name)}: Helferdatei aktualisiert. Jetzt Host prüfen, um Version und Fähigkeiten neu einzulesen.`,
-      );
-      setPassword("");
-      setTarget(undefined);
-      refresh();
-    } catch (e) {
-      setError((e as Error).message);
-      setPassword("");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog
-      title="Hosthelfer · Versionen und Fähigkeiten"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-    >
-      <p>
-        Installierter Stand aus der letzten Hostprüfung. Ältere Helfer ohne
-        Selbstkennung bleiben „Unbekannt“.
-      </p>
-      {loading && <p role="status">Helferstände werden geladen …</p>}
-      {!loading && !error && list.length === 0 && (
-        <p>Noch keine Hosts eingerichtet.</p>
-      )}
-      <div className="helper-summary" aria-busy={loading}>
-        <span>
-          <ShieldCheck size={16} />{" "}
-          {list.filter((v) => v.state === "current").length} passend
-        </span>
-        <span>
-          {list.filter((v) => v.state === "different").length} abweichend
-        </span>
-        <span>
-          {list.filter((v) => v.state === "unknown").length} unbekannt
-        </span>
-      </div>
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-      {done && <p role="status">{done}</p>}
-      <div className="operation-results">
-        {list.slice((page - 1) * size, page * size).map((v) => (
-          <div key={v.host_id}>
-            <strong>
-              <HostName name={v.name} />
-            </strong>
-            <span
-              className={`state ${v.state === "current" ? "success" : "muted"}`}
-            >
-              {v.state === "current"
-                ? "Passend"
-                : v.state === "different"
-                  ? "Abweichend"
-                  : "Unbekannt"}
-            </span>
-            <small>
-              Installiert: {v.installed_version || "unbekannt"} · Ziel:{" "}
-              {v.desired_version} · {date(v.last_probe)}
-            </small>
-            <details>
-              <summary>Technische Identität und Fähigkeiten</summary>
-              <p className="hash-line">
-                Installiert: {v.installed_hash || "Kein Hash gemeldet"}
-                <br />
-                Ziel: {v.desired_hash}
-              </p>
-              <p>
-                {v.capabilities && Object.keys(v.capabilities).length > 0
-                  ? Object.entries(v.capabilities)
-                      .map(([k, value]) => `${k}: ${String(value)}`)
-                      .join(" · ")
-                  : "Für Fähigkeiten Host mit aktuellem Helfer prüfen."}
-              </p>
-            </details>
-            {canOperate && (
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => probe(v.host_id)}
-              >
-                Version und Fähigkeiten prüfen
-              </button>
-            )}
-            {canManage && (
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => {
-                  const h = hosts.find((h) => h.id === v.host_id);
-                  if (h) void inspect(h);
-                }}
-              >
-                Helfer aktualisieren
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      <Pagination
-        page={page}
-        pageSize={size}
-        total={list.length}
-        onPageChange={setPage}
-        onPageSizeChange={setSize}
-        label="Hosthelfer"
-      />
-      {target && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void update();
-          }}
-          className="helper-update"
-        >
-          <h3>
-            <HostName name={target.name} /> · Helferdatei ersetzen
-          </h3>
-          <p>
-            Hostprofil, Zeitpläne und Rollenschlüssel bleiben bestehen.
-            Administratorzugang wird nur für diese Übertragung verwendet.
-          </p>
-          {identity && (
-            <>
-              <p className="mono hash-line">{identity.fingerprint}</p>
-              {!identity.known || identity.changed ? (
-                <p role="alert">
-                  Keine unveränderte, bereits vertraute Hostidentität.
-                  Aktualisierung gesperrt.
-                </p>
-              ) : (
-                <>
-                  <Field label="Administrator">
-                    <input
-                      autoComplete="username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Passwort">
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </Field>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={confirmed}
-                      onChange={(e) => setConfirmed(e.target.checked)}
-                    />
-                    Diese Hostidentität bestätigen und nur die Helferdatei
-                    ersetzen
-                  </label>
-                  <button disabled={busy || !password || !confirmed}>
-                    {busy ? "Wird aktualisiert …" : "Aktualisierung ausführen"}
-                  </button>
-                </>
-              )}
-            </>
-          )}
-        </form>
-      )}
-    </Dialog>
-  );
-}
-
-export function HostDrift({
-  host,
-  canOperate,
-  refresh,
-  openJob,
-}: {
-  host: Host;
-  canOperate: boolean;
-  refresh: () => void;
-  openJob?: (id: string) => void;
-}) {
-  type Report = {
-    state: string;
-    detail: string;
-    at?: string;
-    backup_id?: string;
-    unknown: number;
-    files: { path: string; state: string }[];
-  };
-  const [report, setReport] = useState<Report>();
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useListPageSize("live-drift", 10);
-  useEffect(() => {
-    let valid = true;
-    setReport(undefined);
-    setError("");
-    setPage(1);
-    api<Report>(`operations/drift/${host.id}`)
-      .then((value) => {
-        if (valid) setReport(value);
-      })
-      .catch((e) => {
-        if (valid) setError(e.message);
-      });
-    return () => {
-      valid = false;
-    };
-  }, [host.id, host.last_probe]);
-  async function check() {
-    setBusy(true);
-    try {
-      const r = await api<Run>("operations/hosts", "POST", {
-        request_id: crypto.randomUUID(),
-        action: "drift",
-        targets: [{ host_id: host.id, revision: host.config_revision }],
-      });
-      const target = r.targets[0];
-      if (target.job_id) openJob?.(target.job_id);
-      else setError(target.message || "Prüfung nicht gestartet");
-      refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const titles: Record<string, string> = {
-    unknown: "Noch kein belastbarer Vergleich",
-    stale: "Liveprüfung veraltet",
-    unchanged: "Keine Inhaltsänderung beobachtet",
-    changed: "Ungesicherte Änderungen erkannt",
-    partial: "Vergleich unvollständig",
-  };
-  return (
-    <section className="operations-card drift-card">
-      <div className="operations-heading">
-        <ScanLine size={20} />
-        <div>
-          <h3>Livezustand gegenüber Sicherung</h3>
-          <p>
-            Lesender Vergleich im Konfigurationsumfang. Datastore-Inhalte
-            bleiben ausgeschlossen.
-          </p>
-        </div>
-        {canOperate && (
-          <button className="secondary" disabled={busy} onClick={check}>
-            Jetzt live prüfen
-          </button>
-        )}
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {!report && !error && <p role="status">Livevergleich wird geladen …</p>}
-      {report && (
-        <>
-          <strong
-            className={`state ${report.state === "changed" || report.state === "partial" ? "warning" : "muted"}`}
-          >
-            {titles[report.state] || report.state}
-          </strong>
-          <p>{report.detail}</p>
-          <p className="muted">
-            Automatik:{" "}
-            {host.drift_minutes
-              ? `alle ${host.drift_minutes} Minuten`
-              : "ausgeschaltet"}{" "}
-            · Referenz: {report.backup_id || "fehlt"} · Beobachtung:{" "}
-            {date(report.at)}
-          </p>
-          {report.files.length > 0 && (
-            <>
-              <div className="drift-files">
-                {report.files.slice((page - 1) * size, page * size).map((f) => (
-                  <div key={f.path}>
-                    <span className="state muted">
-                      {
-                        {
-                          added: "Neu",
-                          removed: "Entfernt",
-                          changed: "Geändert",
-                        }[f.state]
-                      }
-                    </span>
-                    <code>{f.path}</code>
-                  </div>
-                ))}
-              </div>
-              <Pagination
-                page={page}
-                pageSize={size}
-                total={report.files.length}
-                onPageChange={setPage}
-                onPageSizeChange={setSize}
-                label="Liveänderungen"
-              />
-            </>
-          )}
-        </>
       )}
     </section>
   );

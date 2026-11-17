@@ -133,10 +133,10 @@ test("all host tabs and seven settings areas use the same readable surfaces", as
         .locator(".settings-tabs")
         .getByRole("button", { name, exact: true })
         .click();
-      await expect(page.locator(".settings-context")).toBeVisible();
+      await expect(page.locator(".settings-intro")).toBeVisible();
       if (["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(name)) {
         const contextTopic = await page
-          .locator(".settings-context")
+          .locator(".settings-intro")
           .getAttribute("data-surface-topic");
         await expect(
           page.locator(".settings-form[data-surface-topic]").first(),

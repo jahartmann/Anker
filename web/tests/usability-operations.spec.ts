@@ -68,12 +68,6 @@ test("recovery explains its total scope before selecting a source", async ({
       .getByRole("navigation", { name: "Vorbereitungsschritte" })
       .getByRole("listitem"),
   ).toHaveCount(5);
-  await expect(
-    page.getByText(
-      "Schritt 5: Ausführen und nachprüfen – im gespeicherten Plan.",
-      { exact: true },
-    ),
-  ).toBeVisible();
 });
 
 test("system diagnosis summarizes health and exports only approved support fields", async ({

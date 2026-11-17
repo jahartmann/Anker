@@ -183,7 +183,7 @@ test("node selector compares only its latest two captures and area cards filter 
     .getByRole("button", { name: "Stände vergleichen", exact: true })
     .click();
   await page
-    .getByLabel("Node im Vergleich", { exact: true })
+    .getByLabel("Host im Vergleich", { exact: true })
     .selectOption(host.id);
   await expect(page.getByLabel("Vergleich von", { exact: true })).toHaveValue(
     "node-stand-1",

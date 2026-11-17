@@ -45,3 +45,45 @@ export function visibleEntries(
         a.path.localeCompare(b.path, undefined, { numeric: true }),
     );
 }
+
+/** Maps each directory ("" is the root) to every file below it, at any depth. */
+export function filesByDirectory(entries: Entry[]): Map<string, string[]> {
+  const result = new Map<string, string[]>([["", []]]);
+  for (const entry of entries) {
+    if (entry.type === "directory") continue;
+    for (
+      let directory = parentPath(entry.path);
+      ;
+      directory = parentPath(directory)
+    ) {
+      const files = result.get(directory);
+      if (files) files.push(entry.path);
+      else result.set(directory, [entry.path]);
+      if (!directory) break;
+    }
+  }
+  return result;
+}
+
+export type GroupSelection = "none" | "some" | "all";
+
+export function groupSelection(
+  selected: Set<string>,
+  group: string[],
+): GroupSelection {
+  const count = group.filter((path) => selected.has(path)).length;
+  return !count ? "none" : count === group.length ? "all" : "some";
+}
+
+/**
+ * One click on a folder or "select all" box. A partly selected group becomes
+ * fully selected; only a fully selected group is cleared.
+ */
+export function toggleGroup(selected: string[], group: string[]): string[] {
+  const current = new Set(selected);
+  if (groupSelection(current, group) === "all") {
+    const remove = new Set(group);
+    return selected.filter((path) => !remove.has(path));
+  }
+  return [...selected, ...group.filter((path) => !current.has(path))];
+}

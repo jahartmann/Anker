@@ -148,11 +148,10 @@ export default function Access({
         </div>
       )}
       <p className="table-footnote">
-        Die Rolle bestimmt die Aktionen; „Geschützte Inhalte“ gibt Dateiinhalte
-        und Exporte separat frei. Lesen erlaubt keine Hoständerungen.
-        Wiederherstellung erlaubt Planaktionen. Administratoren verwalten Hosts
-        und Zugänge. Mindestens ein aktiver Administrator bleibt erhalten. Der
-        eigene Administratorzugang lässt sich nicht sperren oder löschen.
+        Lesen: ansehen. Wiederherstellung: zusätzlich Pläne anlegen und
+        anwenden. Administrator: zusätzlich Hosts und Zugänge verwalten.
+        „Geschützte Inhalte“ gibt Dateiinhalte und Exporte frei. Der letzte
+        Administrator und der eigene Zugang lassen sich nicht sperren.
       </p>
       {dialog && (
         <UserDialog

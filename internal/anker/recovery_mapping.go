@@ -42,25 +42,27 @@ type RecoveryStorage struct {
 	Suggested string                 `json:"suggested"`
 }
 type RecoveryInspection struct {
-	ManifestSHA           string                          `json:"manifest_sha,omitempty"`
-	NetworkStanzas        []RecoveryNetworkStanza         `json:"network_stanzas"`
-	Files                 []RecoveryReadFile              `json:"files"`
-	StorageVolumes        map[string]RecoveryVolumeResult `json:"storage_volumes"`
-	SnapshotID            string                          `json:"snapshot_id,omitempty"`
-	ComparisonComplete    bool                            `json:"comparison_complete"`
-	Preserved             []RecoveryPreservation          `json:"preserved"`
-	Source                Inventory                       `json:"source"`
-	Target                Inventory                       `json:"target"`
-	Ports                 []RecoveryPort                  `json:"ports"`
-	TargetPorts           []Interface                     `json:"target_ports"`
-	Storage               []RecoveryStorage               `json:"storage"`
-	TargetStorage         []RecoveryStorage               `json:"target_storage"`
-	Blockers              []string                        `json:"blockers"`
-	Warnings              []string                        `json:"warnings"`
-	Manual                []string                        `json:"manual"`
-	RequiresConsole       bool                            `json:"requires_console"`
-	RequiresSourceOffline bool                            `json:"requires_source_offline"`
-	Automatic             bool                            `json:"automatic"`
+	ManifestSHA        string                          `json:"manifest_sha,omitempty"`
+	NetworkStanzas     []RecoveryNetworkStanza         `json:"network_stanzas"`
+	Files              []RecoveryReadFile              `json:"files"`
+	StorageVolumes     map[string]RecoveryVolumeResult `json:"storage_volumes"`
+	SnapshotID         string                          `json:"snapshot_id,omitempty"`
+	ComparisonComplete bool                            `json:"comparison_complete"`
+	Preserved          []RecoveryPreservation          `json:"preserved"`
+	Source             Inventory                       `json:"source"`
+	Target             Inventory                       `json:"target"`
+	Ports              []RecoveryPort                  `json:"ports"`
+	TargetPorts        []Interface                     `json:"target_ports"`
+	Storage            []RecoveryStorage               `json:"storage"`
+	TargetStorage      []RecoveryStorage               `json:"target_storage"`
+	Blockers           []string                        `json:"blockers"`
+	Warnings           []string                        `json:"warnings"`
+	Manual             []string                        `json:"manual"`
+	// Protected lists selected system files whose restore needs ProtectedConfirmed.
+	Protected             []string `json:"protected,omitempty"`
+	RequiresConsole       bool     `json:"requires_console"`
+	RequiresSourceOffline bool     `json:"requires_source_offline"`
+	Automatic             bool     `json:"automatic"`
 }
 
 func recoverySelection(m Manifest, r PlanRequest) (map[string]bool, error) {
@@ -373,8 +375,8 @@ func fileManualReason(e Entry, source, target Inventory) string {
 			return "Nur freigegebene PBS-Konfigurationsdateien auf einem PBS-Ziel übernehmen; Zielsystem und Datastore-Inhalte erhalten"
 		}
 	}
-	if e.Type != "file" || protectedPath(e.Path) || len(e.XAttrs) > 0 {
-		return "Hardware-, Identitäts-, Cluster- oder Metadatenbestandteil gezielt manuell übernehmen"
+	if e.Type != "file" || !hostWritablePath(e.Path) || len(e.XAttrs) > 0 {
+		return "Kein gewöhnliches Hostfile oder ACLs/xattrs vorhanden; gezielt manuell übernehmen"
 	}
 	for _, key := range []string{"users", "groups"} {
 		id := e.UID
@@ -470,6 +472,9 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 			continue
 		}
 		reason := fileManualReason(e, m.Inventory, target)
+		if e.Type == "file" && hostWritablePath(e.Path) && protectedPath(e.Path) {
+			i.Protected = append(i.Protected, e.Path)
+		}
 		if reason != "" {
 			i.Automatic = false
 			i.Manual = appendUnique(i.Manual, e.Path+": "+reason)
@@ -537,6 +542,15 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 	sort.Slice(i.Storage, func(a, b int) bool { return i.Storage[a].ID < i.Storage[b].ID })
 	if len(i.Storage) > 0 {
 		i.TargetStorage = targetStorages(target)
+		// Same ID with an identical, verified backing is the obvious choice;
+		// it stays a suggestion the user sees and can change.
+		for n := range i.Storage {
+			for _, t := range i.TargetStorage {
+				if t.ID == i.Storage[n].ID && matchingStorageBacking(i.Storage[n], t) {
+					i.Storage[n].Suggested = t.ID
+				}
+			}
+		}
 		i.Automatic = false
 		i.Manual = appendUnique(i.Manual, "Storage-Zuordnungen sind manuelle Entscheidungen; Pools, Volumes, Mounts und Datenbestand erhalten, keine automatische Formatierung oder Umbenennung")
 	}
@@ -545,7 +559,7 @@ func (s *Service) analyzeRecovery(b Backup, m Manifest, target Inventory, r Plan
 	}
 	if r.Scenario != "files" {
 		i.Automatic = false
-		i.Manual = appendUnique(i.Manual, "Gesamtszenario erfordert manuellen Wiederaufbau und geprüfte Hostidentität")
+		i.Manual = appendUnique(i.Manual, "Wiederaufbau: Zielinstallation, Bootloader, SSH-Zugang und Maschinenidentität bleiben erhalten; danach Dienste und Netzwerk an der Konsole prüfen")
 	}
 	if m.Status != "successful" {
 		i.Blockers = append(i.Blockers, "Sicherung hat Pflichtlücken; nur manueller Export ist erlaubt")

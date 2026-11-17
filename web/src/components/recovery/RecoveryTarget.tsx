@@ -1,6 +1,7 @@
 import { date } from "../../api";
 import type { Status, User } from "../../api";
 import { Field } from "../shared";
+import { displayHostName } from "../../hostNames";
 import type { RecoveryDraft } from "./useRecoveryDraft";
 export default function RecoveryTarget({
   status,
@@ -19,11 +20,7 @@ export default function RecoveryTarget({
   return (
     <section aria-label="SSH-Zielprüfung" data-surface-topic="network">
       <h2>2 · Ziel anbinden und prüfen</h2>
-      <p>
-        „Ziel prüfen“ liest das aktuelle Zielinventar und erfasst die
-        ausgewählten Zieldateien. Die Vorbereitung verändert keine
-        Konfiguration.
-      </p>
+      <p>Die Prüfung liest nur; am Ziel wird nichts verändert.</p>
       <Field label="Zielhost">
         <select
           value={d.target}
@@ -38,7 +35,7 @@ export default function RecoveryTarget({
             )
             .map((h) => (
               <option value={h.id} key={h.id}>
-                {h.name}
+                {displayHostName(h.name)}
               </option>
             ))}
         </select>
@@ -53,15 +50,10 @@ export default function RecoveryTarget({
           anbinden. Danach hier den Zielhost auswählen.
         </p>
       )}
-      <p className="field-hint">
-        Hostschlüsselprüfung und getrennte SSH-Rollen gelten auch für ein
-        Wiederherstellungsziel.
-      </p>
       {isPBS && (
         <p className="notice">
-          PBS-Dienste müssen gestoppt sein. Geprüft werden Konfiguration,
-          bestehende Datastore-Verzeichnisse und Mount-Identitäten. Daten werden
-          weder übernommen noch initialisiert.
+          Die PBS-Dienste müssen gestoppt sein. Geprüft werden Konfiguration und
+          eingebundene Datastores; Daten werden nicht angefasst.
         </p>
       )}
       <button
@@ -112,9 +104,13 @@ export default function RecoveryTarget({
       )}
       {d.inspection && !d.inspection.comparison_complete && (
         <p className="notice warning">
-          Zieldateien nicht vollständig erfasst. Hinweise prüfen; fehlende
-          Nachweise bleiben manuell. Für eine neue Aufnahme „Ziel prüfen“
-          verwenden.
+          Nicht alle Zieldateien konnten gelesen werden; diese bleiben manuell.
+          Für einen neuen Versuch „Ziel prüfen“ wählen.
+        </p>
+      )}
+      {d.needsInspection && (
+        <p className="notice warning" role="status">
+          Zuordnungen wurden geändert. Ziel erneut prüfen.
         </p>
       )}
       {!d.target && (

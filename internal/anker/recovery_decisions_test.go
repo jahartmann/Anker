@@ -485,3 +485,42 @@ func TestKeepProtectedFileDoesNotRequireWriteMapping(t *testing.T) {
 		t.Fatalf("kept protected path requires write mapping: %s %v %v", p.State, p.Blockers, err)
 	}
 }
+
+// Protected system files are restorable, but only with the plan-level
+// confirmation; the inspection names them so the UI can ask for it.
+func TestProtectedFileAppliesOnlyWithConfirmation(t *testing.T) {
+	path := "etc/hosts"
+	content := []byte("127.0.0.1 broken\n")
+	meta := Entry{Path: path, Type: "file", Mode: 0644, UID: 0, GID: 0, Size: int64(len(content)), SHA256: Hash(content), XAttrs: map[string]string{}}
+	hashes, _ := json.Marshal(map[string]string{path: Hash(content), "etc/pve/storage.cfg": "missing"})
+	metadata := json.RawMessage(`{"etc/hosts":{"path":"etc/hosts","type":"file","mode":420,"uid":0,"gid":0,"size":17,"xattrs":{}}}`)
+	accounts := json.RawMessage(`{"0":"root"}`)
+	commands := json.RawMessage(`{"file_inventory":{"state":"ok"},"pve_version":{"state":"ok"},"users":{"state":"ok"},"groups":{"state":"ok"}}`)
+	target := Inventory{Hostname: "target", PVEVersion: "8.4", Details: map[string]json.RawMessage{"file_hashes": hashes, "file_metadata": metadata, "command_results": commands, "users": accounts, "groups": accounts}}
+	source := Inventory{PVEVersion: "8.4", Details: map[string]json.RawMessage{"users": accounts, "groups": accounts}}
+	s, b := recoverySetup(t, map[string]string{path: "127.0.0.1 localhost\n"}, source, target)
+	s.Collector = snapshotCollector{targetCollector: targetCollector{inv: target}, result: RecoveryReadResult{Files: []RecoveryReadFile{{Path: path, State: "read", SHA256: Hash(content), Metadata: &meta, Content: content}, {Path: "etc/pve/storage.cfg", State: "missing"}}, StorageVolumes: map[string]RecoveryVolumeResult{}}}
+	r := requestDecision(t, PlanRequest{BackupID: b.ID, TargetID: "target", Scenario: "files", Files: []string{path}}, path, "backup")
+	i, err := s.InspectRecovery(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(i.Protected) != 1 || i.Protected[0] != path {
+		t.Fatalf("inspection does not name protected file: %v", i.Protected)
+	}
+	p, err := s.CreatePlan(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Steps[0].Action != "manual" {
+		t.Fatalf("protected file applied without confirmation: %s", p.Steps[0].Action)
+	}
+	r.ProtectedConfirmed = true
+	p, err = s.CreatePlan(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Steps[0].Action != "apply" || !p.ProtectedConfirmed || p.State != "ready" {
+		t.Fatalf("confirmed protected file not applied: %s %s %q %v", p.Steps[0].Action, p.State, p.Steps[0].Reason, p.Blockers)
+	}
+}

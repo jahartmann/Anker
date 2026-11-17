@@ -250,7 +250,7 @@ export default function BackupReadiness({
                       „Nicht enthalten“ beschreibt den Sicherungsumfang, keine
                       nachgewiesen fehlende Datei auf dem Host. Programm-,
                       Paket- und Laufzeitziele werden durch ein
-                      Konfigurationsbackup nicht automatisch mitgesichert.
+                      Konfigurationssicherung nicht automatisch mitgesichert.
                     </p>
                     <input
                       aria-label="Verweise durchsuchen"

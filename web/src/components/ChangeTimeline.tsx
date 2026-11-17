@@ -2,7 +2,7 @@ import { useListPageSize } from "../listPageSize";
 import ChangeHighlights from "./ChangeHighlights";
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, GitCompareArrows, Check, CircleDot } from "lucide-react";
-import { api, preciseDate, calendarDate } from "../api";
+import { api, preciseDate, calendarDate, plural } from "../api";
 import type { Backup, FileDiff } from "../api";
 import { usableRecoverySource } from "../hostHealth";
 import { changeArea } from "./ChangeSummary";
@@ -226,19 +226,20 @@ export default function ChangeTimeline({
     >
       <summary>
         <Clock3 size={16} aria-hidden="true" />
-        <span>Änderungsverlauf dieser Node</span>
-        <span className="count-badge">{sorted.length} Stände</span>
+        <span>Änderungsverlauf dieses Hosts</span>
+        <span className="count-badge">
+          {plural(sorted.length, "Stand", "Stände")}
+        </span>
       </summary>
       {open && (
         <div className="timeline-content">
           <div className="timeline-intro">
-            <p>Die Konfiguration deiner Node im Zeitverlauf.</p>
+            <p>Die Konfiguration dieses Hosts im Zeitverlauf.</p>
             <details>
               <summary>So liest du den Verlauf</summary>
               <p>
-                Neueste Zeitpunkte zuerst. Jeder Vergleich bezieht sich auf den
-                vorherigen erfassten Stand derselben Node. Der genaue Zeitpunkt
-                einer Änderung zwischen zwei Sicherungen ist nicht bekannt.
+                Neueste zuerst. Verglichen wird jeweils mit der Sicherung davor;
+                wann genau dazwischen etwas geändert wurde, ist nicht bekannt.
               </p>
             </details>
           </div>

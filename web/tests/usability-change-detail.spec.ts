@@ -86,7 +86,10 @@ test("timeline cards explain at most three changes without reading file contents
     contents++;
     return r.fulfill({ json: {} });
   });
-  await page.locator(".host-tabs").getByRole("button", { name: "Änderungen", exact: true }).click();
+  await page
+    .locator(".host-tabs")
+    .getByRole("button", { name: "Änderungen", exact: true })
+    .click();
   await page.locator(".change-timeline > summary").click();
   const card = page.locator(".timeline-event").first();
   await expect(card.getByRole("listitem")).toHaveCount(3);
@@ -100,7 +103,10 @@ test("dedicated detail page is wider and returning restores timeline page and fo
   page,
 }, info) => {
   await setup(page);
-  await page.locator(".host-tabs").getByRole("button", { name: "Änderungen", exact: true }).click();
+  await page
+    .locator(".host-tabs")
+    .getByRole("button", { name: "Änderungen", exact: true })
+    .click();
   await page.locator(".change-timeline > summary").click();
   const timeline = page.locator(".change-timeline");
   await timeline
@@ -112,7 +118,7 @@ test("dedicated detail page is wider and returning restores timeline page and fo
   });
   await entry.click();
   const detail = page.getByRole("region", {
-    name: "Änderungsdetails der Node",
+    name: "Änderungsdetails des Hosts",
   });
   await expect(detail).toBeVisible();
   await expect(
@@ -182,7 +188,7 @@ test("detail comparison keeps file reading explicit and remains usable on a phon
     .getByRole("button", { name: "Änderungen ansehen", exact: true })
     .click();
   const detail = page.getByRole("region", {
-    name: "Änderungsdetails der Node",
+    name: "Änderungsdetails des Hosts",
   });
   await expect(
     detail.getByRole("region", { name: "Was sich geändert hat" }),
@@ -238,7 +244,7 @@ test("detail comparison keeps file reading explicit and remains usable on a phon
     path: info.outputPath("node-change-detail-mobile.png"),
   });
   await detail
-    .getByText("Andere Stände dieser Node vergleichen", { exact: true })
+    .getByText("Andere Stände dieses Hosts vergleichen", { exact: true })
     .click();
   await expect(
     detail.getByLabel("Vergleich von", { exact: true }),

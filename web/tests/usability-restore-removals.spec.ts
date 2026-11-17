@@ -33,9 +33,7 @@ test("real moved declaration is selected, inspected, explicitly deleted and rest
   await page
     .getByRole("button", { name: "pve-berlin-02", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
   await page
     .getByRole("button", { name: "Wiederherstellungsvorschau", exact: true })
     .click();
@@ -86,7 +84,7 @@ test("real moved declaration is selected, inspected, explicitly deleted and rest
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Plan prüfen", exact: true }),
+    page.getByRole("button", { name: "Plan speichern", exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("checkbox", {
@@ -98,7 +96,9 @@ test("real moved declaration is selected, inspected, explicitly deleted and rest
       new URL(r.url()).pathname === "/api/plans" &&
       r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const plan = await (await planResponse).json();
   expect(plan.steps.find((s: any) => s.path === later).action).toBe("remove");
   await expect(

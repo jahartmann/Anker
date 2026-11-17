@@ -3,8 +3,6 @@
   --mono:
     ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
     monospace;
-  --hardware-line: #c6cec3;
-  --hardware-ink: #586451;
 }
 .brand-wordmark {
   display: flex;
@@ -24,16 +22,6 @@
   letter-spacing: 0.035em;
   color: #626b5c;
 }
-.sidebar {
-  background-image: linear-gradient(
-    90deg,
-    transparent 0,
-    transparent 7px,
-    #dfe4d833 7px,
-    #dfe4d833 8px,
-    transparent 8px
-  );
-}
 .sidebar .demo-label {
   font-family: var(--mono);
   font-size: 10px;
@@ -52,7 +40,6 @@
 }
 .page-emblem {
   position: relative;
-  border-radius: 8px;
 }
 .page-emblem::before,
 .page-emblem::after {
@@ -120,8 +107,6 @@
   line-height: 1.65;
   font-variant-numeric: tabular-nums;
   border: 1px solid #dfe4d8;
-  border-radius: 5px;
-  background: #f8faf5;
   padding: 4px 9px;
   overflow-wrap: anywhere;
   user-select: all;
@@ -146,9 +131,6 @@
 .host-facts dd {
   font-family: var(--mono);
   font-size: 11px;
-}
-.state {
-  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
 }
 .state::before {
   content: "";
@@ -177,9 +159,6 @@
   font-weight: 500;
   letter-spacing: 0.035em;
   color: #606957;
-}
-.host-tabs {
-  border-bottom-color: #dce2d5;
 }
 .host-tabs button.selected {
   border-bottom-width: 2px;
@@ -217,9 +196,6 @@
   width: 30px;
   height: 30px;
   border: 1px solid #d9dfd3;
-  border-radius: 6px;
-  background: #f3f6ef;
-  color: #52654b;
 }
 .topic-symbol[data-topic="access"],
 .topic-symbol[data-topic="security"],
@@ -246,7 +222,6 @@
   width: 18px;
   height: 20px;
   flex-basis: 18px;
-  background: transparent;
   border: 0;
   color: inherit;
 }
@@ -269,15 +244,11 @@
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fafbf7;
 }
 .settings-nav-label {
   display: block;
   margin: 0 4px 8px;
-  color: #636d5c;
-  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
 }
 .settings-nav-items {
   display: flex;
@@ -294,38 +265,6 @@
   border-radius: 6px;
   background: transparent;
   font-size: 12px;
-  color: #5d6657;
-}
-.settings-tabs .settings-nav-items button:hover {
-  background: #eef2e9;
-}
-.settings-tabs .settings-nav-items button.selected {
-  border-color: #cdd7c5;
-  background: #fff;
-  color: #354c32;
-  box-shadow: 1px 2px 0 #e5eadf;
-}
-.settings-context {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  box-shadow: none;
-  background: #fafbf7;
-}
-.settings-context > .topic-symbol {
-  width: 38px;
-  height: 38px;
-  flex-basis: 38px;
-}
-.settings-context > div {
-  min-width: 0;
-}
-.settings-context-scope {
-  display: block;
-  margin-bottom: 5px;
-  color: #697260;
-  font-size: 10px;
-  letter-spacing: 0.035em;
 }
 .inventory-detail-group {
   margin-top: 22px;
@@ -341,7 +280,6 @@
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 18px 20px;
-  background: #fafbf7;
 }
 .inventory-summary > div,
 .update-facts > div,
@@ -360,15 +298,6 @@
   font-size: 11px;
   line-height: 1.7;
   tab-size: 2;
-}
-.content[data-workspace="Wiederherstellung"] > .page-kicker .page-emblem {
-  border-color: #dfd3bd;
-  color: #7c6847;
-}
-.content[data-workspace="Einstellungen"] > .page-kicker .page-emblem,
-.content[data-workspace="Aufträge"] > .page-kicker .page-emblem {
-  border-color: #d2dce5;
-  color: #536477;
 }
 @media (max-width: 1100px) {
   .settings-tabs {
@@ -403,10 +332,6 @@
     font-size: 11px;
     padding-inline: 7px;
     gap: 5px;
-  }
-  .settings-context {
-    padding: 15px;
-    gap: 11px;
   }
   .host-tabs {
     gap: 14px;
@@ -455,7 +380,6 @@
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fafbf7;
 }
 .host-settings-card > h3 {
   margin: 0 0 18px;

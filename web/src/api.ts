@@ -395,6 +395,8 @@ export interface RecoveryInspection {
   snapshot_id?: string;
   comparison_complete?: boolean;
   preserved?: { path: string; reason: string }[];
+  /** Selected system files whose restore needs protected_confirmed. */
+  protected?: string[];
   files?: {
     path: string;
     state: string;
@@ -581,6 +583,17 @@ export const preciseDate = (v?: string) =>
           timeZone: displayTimezone,
         }).format(new Date(v))
     : "—";
+/** "1 Host", "3 Hosts": the count with the matching singular or plural noun. */
+export function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+/** A repeat interval in minutes as German text, e.g. "alle 15 Minuten", "täglich". */
+export function interval(minutes: number) {
+  if (minutes === 1440) return "täglich";
+  if (minutes === 60) return "stündlich";
+  if (minutes % 60 === 0) return `alle ${minutes / 60} Stunden`;
+  return `alle ${minutes} Minuten`;
+}
 export function bytes(v: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;

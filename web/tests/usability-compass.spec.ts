@@ -34,10 +34,10 @@ test("global compass is keyboard accessible, bounded, searchable and returns foc
   await expect(dialog.locator(".compass-host")).toHaveCount(1);
   await dialog.locator(".compass-host").click();
   await dialog
-    .getByRole("button", { name: "Konfigurationsreise öffnen", exact: true })
+    .getByRole("button", { name: "Änderungen öffnen", exact: true })
     .click();
   await expect(
-    page.getByRole("region", { name: "Konfigurationsreise", exact: true }),
+    page.getByRole("region", { name: "Änderungen", exact: true }),
   ).toBeVisible();
   await expect(
     page
@@ -66,7 +66,7 @@ test("same host and same page can be revisited in a different workspace", async 
     dialog.getByRole("region", { name: "Nächster Schritt" }),
   ).toContainText("Berlin 02");
   await dialog
-    .getByRole("button", { name: "Konfigurationsreise öffnen", exact: true })
+    .getByRole("button", { name: "Änderungen öffnen", exact: true })
     .click();
   await expect(
     page
@@ -102,7 +102,7 @@ test("a contextual compass can deliberately switch to another host", async ({
   ).toHaveAttribute("aria-pressed", "true");
 });
 
-test("overview task cards prepare restoration without performing operations", async ({
+test("compass task cards prepare restoration without performing operations", async ({
   page,
 }) => {
   await page.goto("/");
@@ -115,11 +115,9 @@ test("overview task cards prepare restoration without performing operations", as
     .getByRole("navigation", { name: "Hauptnavigation" })
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
-  await page
-    .getByRole("region", { name: "Direkt zum nächsten Schritt" })
-    .getByRole("button", { name: /Gezielt zurücksetzen/ })
-    .click();
+  await page.getByRole("button", { name: "Anker Kompass öffnen" }).click();
   const dialog = page.getByRole("dialog", { name: "Anker Kompass" });
+  await dialog.getByRole("button", { name: /Gezielt zurücksetzen/ }).click();
   await dialog.getByLabel("Host im Kompass suchen").fill("Berlin 02");
   await dialog.locator(".compass-host").click();
   await expect(dialog).toContainText("Quelle und Ziel aktuell");
@@ -234,7 +232,7 @@ test("mobile compass fits and retains the next step without a long list", async 
   await dialog.locator(".compass-host").first().click();
   await expect(
     dialog.getByRole("button", {
-      name: "Konfigurationsreise öffnen",
+      name: "Änderungen öffnen",
       exact: true,
     }),
   ).toBeVisible();

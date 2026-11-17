@@ -80,7 +80,9 @@ test("backup search finds real and synthetic folders and offers file location", 
   ).toBeVisible();
   await expect(dialog.getByText("sensitive content")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Inhalt anzeigen" }).click();
-  await expect(dialog.locator(".file-preview pre")).toContainText("sensitive content");
+  await expect(dialog.locator(".file-preview pre")).toContainText(
+    "sensitive content",
+  );
   await dialog
     .getByRole("button", { name: "Alle Dateien", exact: true })
     .click();
@@ -180,14 +182,22 @@ test("recovery uses folders while selections survive navigation, search and page
   await files.getByRole("button", { name: "Übergeordneter Ordner" }).click();
   await files.getByRole("button", { name: "Ordner var öffnen" }).click();
   await files.getByRole("button", { name: "Ordner var/log öffnen" }).click();
-  await expect(files.getByRole("checkbox")).toHaveCount(25);
+  await expect(
+    files.locator(".restore-file-items").getByRole("checkbox"),
+  ).toHaveCount(25);
   await files.getByRole("button", { name: "Nächste Seite" }).click();
   await files.getByLabel("var/log/log-25.txt", { exact: true }).check();
   await files.getByLabel("Wiederherstellungsdateien durchsuchen").fill("empty");
   await expect(
     files.getByRole("button", { name: "Ordner etc/empty öffnen" }),
   ).toBeVisible();
-  await expect(files.getByRole("checkbox")).toHaveCount(0);
+  // An empty folder offers nothing to select.
+  await expect(
+    files.getByRole("checkbox", { name: "Ordner etc/empty auswählen" }),
+  ).toBeDisabled();
+  await expect(
+    files.locator(".restore-file-result").getByRole("checkbox"),
+  ).toHaveCount(0);
   await files.getByRole("button", { name: "Nur ausgewählte Dateien" }).click();
   await expect(
     files.getByText("Ausgewählte Dateien aus allen Ordnern"),

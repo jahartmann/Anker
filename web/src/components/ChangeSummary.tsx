@@ -206,7 +206,7 @@ export default function ChangeSummary({
       )}
       {onHistory && (
         <button className="text-button" onClick={onHistory}>
-          Konfigurationsreise öffnen
+          Änderungen öffnen
         </button>
       )}
     </section>

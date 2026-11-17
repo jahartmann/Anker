@@ -64,7 +64,7 @@ test("PBS shows configuration inventory and opens configuration-only guided reco
   await expect(config).toContainText("/mnt/datastore/main");
   await expect(config).toContainText("nightly");
   await expect(config).toContainText(
-    "Datastore-Inhalte werden separat gesichert",
+    "Die Inhalte der Datastores gehören nicht dazu",
   );
   await expect(
     page.locator(".inventory-summary").getByText("Cluster", { exact: true }),

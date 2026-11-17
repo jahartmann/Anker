@@ -65,8 +65,8 @@ test("host quick filters count hosts and combine with search and status selectio
     .getByRole("button", { name: "Handlungsbedarf 1", exact: true })
     .click();
   await expect(
-    page.getByRole("combobox", { name: "Hoststatus filtern" }),
-  ).toHaveValue("attention");
+    filters.getByRole("button", { name: "Handlungsbedarf 1", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("button", { name: "Polish Attention", exact: true }),
   ).toBeVisible();
@@ -91,14 +91,9 @@ test("host quick filters count hosts and combine with search and status selectio
   await expect(
     page.getByRole("button", { name: "Polish Attention", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "Hoststatus filtern" })
-    .selectOption("active");
+  await filters.getByRole("button", { name: /^Gesichert/ }).click();
   await expect(
     page.getByRole("button", { name: "Polish Saved", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Polish Attention", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Polish Paused", exact: true }),
@@ -127,9 +122,11 @@ test("host source evidence starts collapsed and restore stays reachable", async 
   await openHosts(page);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole("button", { name: "Polish Saved", exact: true }).click();
-  const evidence = page
-    .locator("details")
-    .filter({ has: page.locator("summary", { hasText: "Details zum Host und zur letzten Sicherung" }) });
+  const evidence = page.locator("details").filter({
+    has: page.locator("summary", {
+      hasText: "Details zum Host und zur letzten Sicherung",
+    }),
+  });
   await expect(evidence).not.toHaveAttribute("open", "");
   await expect(
     evidence.getByRole("region", { name: "Prüfergebnisse" }),

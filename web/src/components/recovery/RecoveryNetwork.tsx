@@ -12,8 +12,8 @@ export default function RecoveryNetwork({
     <section aria-label="Netzwerk vorbereiten" data-surface-topic="network">
       <h3>Managementnetz vorbereiten</h3>
       <p>
-        Quellstanza und IP-Familie ausdrücklich auswählen. Leere Werte bleiben
-        erhalten. Schreiben und Aktivierung über die Konsole bleiben manuell.
+        Nur ausfüllen, wenn sich Adresse, Gateway oder DNS ändern sollen.
+        Aktiviert wird das Netzwerk an der Konsole.
       </p>
       {stanzas.map((stanza) => {
         const value = d.network[stanza.key];

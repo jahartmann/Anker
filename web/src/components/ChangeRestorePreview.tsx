@@ -105,10 +105,9 @@ function FileCard({
       </div>
       {file.action === "remove" && (
         <p className="rollback-file-warning">
-          Im früheren Quellstand fehlt diese Datei. Die Rückkehr würde eine
-          Entfernung erfordern. Sie ist zunächst abgewählt und benötigt im
-          Assistenten eine eigene Entscheidung und Bestätigung. Das Original
-          wird vor dem Löschen zur Rücksetzung gesichert.
+          Im früheren Stand gab es diese Datei nicht; zurückkehren hieße, sie zu
+          löschen. Das ist abgewählt und braucht im Assistenten eine eigene
+          Bestätigung.
         </p>
       )}
       {(additions > 0 || removals > 0) && (
@@ -296,8 +295,7 @@ export default function ChangeRestorePreview({
                 </span>
               </div>
               <p className="rollback-scope">
-                Der Umfang umfasst ganze Dateien: abweichende Textstellen,
-                Dateirechte und weitere Eigenschaften. Die einzelnen
+                Zurückgeschrieben werden ganze Dateien. Die einzelnen
                 Unterschiede stehen in der Dateivorschau.
               </p>
               {data.files
@@ -353,10 +351,8 @@ export default function ChangeRestorePreview({
             <div className="rollback-next-step">
               <strong>Vor einer tatsächlichen Übernahme</strong>
               <p>
-                Der laufende Host kann inzwischen abweichen. Im
-                Wiederherstellungsassistenten müssen Quelle, Dateiauswahl und
-                ein frisch gelesener Zielzustand erneut geprüft werden. Diese
-                Vorschau gibt keine Übernahme frei.
+                Die Vorschau vergleicht zwei Sicherungen. Den aktuellen Zustand
+                des Hosts prüft erst der Assistent.
               </p>
             </div>
             {prepare && (
@@ -414,8 +410,8 @@ export default function ChangeRestorePreview({
                     <ArrowRight size={15} aria-hidden="true" />
                   </button>
                   <small>
-                    Öffnet eine neue Vorbereitung. Keine Zielprüfung, kein Plan
-                    und keine Übernahme werden automatisch gestartet.
+                    Öffnet den Assistenten mit dieser Auswahl. Dabei wird noch
+                    nichts geschrieben.
                   </small>
                 </>
               </section>

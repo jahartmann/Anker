@@ -1,5 +1,5 @@
 import type { FileComparison } from "../api";
-import { date } from "../api";
+import { date, plural } from "../api";
 import { Empty, LoadError } from "./shared";
 
 const fields: Record<string, string> = {
@@ -141,8 +141,12 @@ export default function FileComparisonView({
               ))}
               {edits.length > 4 && (
                 <p className="muted">
-                  {edits.length - 4} weitere Textstellen im vollständigen
-                  Zeilenvergleich.
+                  {plural(
+                    edits.length - 4,
+                    "weitere Textstelle",
+                    "weitere Textstellen",
+                  )}{" "}
+                  im vollständigen Zeilenvergleich.
                 </p>
               )}
             </section>

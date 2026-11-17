@@ -59,6 +59,7 @@ export function Pagination({
   total,
   onPageChange,
   onPageSizeChange,
+  initialPageSize,
   label = "Einträge",
   previousLabel = "Vorherige Seite",
   nextLabel = "Nächste Seite",
@@ -68,6 +69,7 @@ export function Pagination({
   total: number;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
+  initialPageSize?: number;
   label?: string;
   previousLabel?: string;
   nextLabel?: string;
@@ -83,6 +85,7 @@ export function Pagination({
       {onPageSizeChange && (
         <PageSizeSelect
           value={pageSize}
+          initial={initialPageSize}
           label={label + " pro Seite"}
           onChange={(size) => {
             onPageSizeChange(size);
@@ -122,22 +125,17 @@ export function Heading({
   title,
   description,
   action,
-  count,
   accessibleTitle,
 }: {
   accessibleTitle?: string;
   title: string;
   description?: string;
   action?: ReactNode;
-  count?: number;
 }) {
   return (
     <header className="page-heading" data-ui="view-heading">
       <div>
         <h1 aria-label={accessibleTitle}>{title}</h1>
-        {count !== undefined && (
-          <span className="collection-count">{count} Ergebnisse</span>
-        )}
         {description && <p>{description}</p>}
       </div>
       {action && <div className="heading-action">{action}</div>}

@@ -20,7 +20,6 @@ test("storage settings keep demo isolated", async ({ page }) => {
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText(/Speicherverwaltung ist in der Demo ausgeschaltet/),
   ).toBeVisible();
@@ -142,7 +141,6 @@ test("storage shows consumption and requires a fresh confirmed growth plan", asy
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByRole("progressbar", { name: "Belegung /srv/anker" }),
   ).toHaveAttribute("aria-valuenow", "71");
@@ -215,7 +213,6 @@ test("LXC storage assistant creates only an explicit host resize command", async
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await page.getByRole("button", { name: "Erweitern", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Container-ID").fill("123");
@@ -265,7 +262,6 @@ test("storage retries unavailable reports and keeps the last values on refresh f
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText("Mount nicht erreichbar", { exact: true }),
   ).toBeVisible();
@@ -325,7 +321,6 @@ test("storage polling failure keeps an accepted operation running and blocks dup
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await expect(
     page.getByText(
       /Status nicht erreichbar; die Erweiterung kann weiterlaufen/,
@@ -369,7 +364,6 @@ test("new backup drive offers a downloadable manual migration with mount checks"
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
   await page.getByRole("button", { name: "Betrieb", exact: true }).click();
-  await page.getByRole("button", { name: "Speicher", exact: true }).click();
   await page
     .getByRole("button", { name: "Neues Laufwerk einbinden", exact: true })
     .click();
@@ -728,7 +722,9 @@ test("a running plan request cannot be dismissed or submitted twice", async ({
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Vorbereitung schließen", exact: true }),
   ).toBeDisabled();
@@ -1225,7 +1221,9 @@ test("file restore plans and executes only after exact confirmation", async ({
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
@@ -1718,7 +1716,9 @@ test("web certificate renewal confirms browser trust and keeps policy after fail
   await page
     .getByRole("button", { name: "Jetzt erneuern", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("Browserfreigabe");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Der Fingerprint ändert sich",
+  );
   await page
     .getByRole("button", { name: "Zertifikat jetzt erneuern", exact: true })
     .click();

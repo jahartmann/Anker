@@ -306,10 +306,9 @@ export default function Restore({
             </div>
           ) : (
             <Empty title="Noch keine Wiederherstellungspläne">
-              Eine Sicherung und einen Zielhost auswählen. Anker zeigt danach
-              die möglichen Schritte und offenen Entscheidungen. Ein
-              gespeicherter Plan ändert noch keine Zieldateien; eine Übernahme
-              wird später gesondert bestätigt.
+              Mit „Plan erstellen“ wählst du eine Sicherung, die Dateien und das
+              Ziel. Geschrieben wird erst, wenn du den gespeicherten Plan
+              anwendest.
             </Empty>
           )}
         </>

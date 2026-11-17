@@ -1,6 +1,6 @@
 import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useState } from "react";
-import { api, date } from "../api";
+import { api, date, plural } from "../api";
 import { Dialog, Field, LoadError } from "../components/shared";
 import type { Notify } from "../components/shared";
 
@@ -236,7 +236,8 @@ function VolumeRow({
                 <strong>Kein verfügbarer Speicher mehr.</strong>
               ) : v.forecast.days_to_full !== undefined ? (
                 <strong>
-                  Rechnerisch noch etwa {v.forecast.days_to_full} Tage · bis{" "}
+                  Rechnerisch noch etwa{" "}
+                  {plural(v.forecast.days_to_full, "Tag", "Tage")} · bis{" "}
                   {date(v.forecast.full_at)}
                 </strong>
               ) : (
@@ -481,10 +482,8 @@ function Expand({
               {plan.can_grow && (
                 <div className="storage-confirm">
                   <p>
-                    Der vorhandene Inhalt bleibt erhalten. Anker lässt das
-                    Dateisystem den bereits zugewiesenen zusätzlichen Platz
-                    übernehmen. Vorher eine aktuelle Sicherung der Anker-Daten
-                    sicherstellen.
+                    Das Dateisystem übernimmt den zusätzlich zugewiesenen Platz;
+                    der Inhalt bleibt. Vorher die Anker-Daten sichern.
                   </p>
                   <Field
                     label="Mountpoint bestätigen"
@@ -661,10 +660,8 @@ function NewDrive({
           )}
           {drive && !ready && (
             <p className="notice warning">
-              Dieses Gerät hat noch kein unterstütztes, eindeutig erkanntes
-              Dateisystem. Es muss zuerst bewusst eingerichtet werden; dabei
-              vorhandene Daten und Partitionen prüfen. Danach Anker
-              aktualisieren.
+              Auf diesem Gerät ist kein unterstütztes Dateisystem. Erst
+              einrichten (vorhandene Daten prüfen), dann hier aktualisieren.
             </p>
           )}
           {!!steps.length && (
@@ -795,7 +792,7 @@ export default function Storage({ notify }: { notify: Notify }) {
             Speicher auf dem Anker-Server
           </h3>
           <p className="muted">
-            System, Backup-Ablage und eingebundene Laufwerke.
+            System, Sicherungsablage und eingebundene Laufwerke.
           </p>
         </div>
         {!report.demo && (
@@ -880,9 +877,8 @@ export default function Storage({ notify }: { notify: Notify }) {
             </button>
           </section>
           <p className="field-hint">
-            Anker misst einmal pro Stunde und hält bis zu 90 Tage Verlauf.
-            Gemeinsame Dateisysteme werden einmal angezeigt. Die Belegung
-            umfasst auch andere Dateien auf demselben Laufwerk.
+            Gemessen wird stündlich, der Verlauf reicht 90 Tage. Die Belegung
+            zählt alle Dateien auf dem Laufwerk, nicht nur Ankers.
           </p>
         </>
       )}

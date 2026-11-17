@@ -117,8 +117,7 @@ export default function BackupIssues({
       )}
       <p className="issue-boundary">
         Nach einer neuen vollständigen Sicherung verschwindet der Hinweis aus
-        der Hostübersicht. Bei diesem älteren Stand bleibt er als Nachweis
-        erhalten.
+        der Hostübersicht; bei diesem Stand bleibt er sichtbar.
       </p>
     </section>
   );

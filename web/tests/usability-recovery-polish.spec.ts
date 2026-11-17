@@ -40,21 +40,8 @@ async function chooseTarget(page: Page, scenario = "files") {
     .selectOption(base.hosts[0].id);
 }
 
-test("draft context keeps uninspected decisions unknown and identifies the current step once", async ({
-  page,
-}) => {
+test("draft identifies the current step once", async ({ page }) => {
   await openDraft(page);
-  const context = page.getByRole("region", {
-    name: "Vorbereitungskontext",
-    exact: true,
-  });
-  await expect(context.getByText("Quelle", { exact: true })).toBeVisible();
-  await expect(context.getByText("Ziel", { exact: true })).toBeVisible();
-  await expect(
-    context.getByText("Entscheidungen", { exact: true }),
-  ).toBeVisible();
-  await expect(context).toContainText("Nach Zielprüfung ermitteln");
-  await expect(context).not.toContainText("0 offen");
   const progress = page.getByRole("navigation", {
     name: "Vorbereitungsschritte",
   });
@@ -107,7 +94,7 @@ for (const complete of [false, true]) {
         target.getByText("Ziel geprüft", { exact: true }),
       ).toHaveCount(0);
       await expect(target).toContainText(
-        "Zieldateien nicht vollständig erfasst",
+        "Nicht alle Zieldateien konnten gelesen werden",
       );
     }
     await expect(
@@ -133,7 +120,9 @@ test("saved plan summary labels source target state and file actions without los
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const summary = page.getByRole("region", {
     name: "Planübersicht",
     exact: true,
@@ -147,8 +136,8 @@ test("saved plan summary labels source target state and file actions without los
   ]) {
     await expect(summary.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(summary).toContainText("1 Ziel behalten");
-  await expect(summary).toContainText("0 Dateien übernehmen");
+  await expect(summary).toContainText("1 bleibt unverändert");
+  await expect(summary).not.toContainText("geschrieben");
   await expect(summary).toContainText("Dienste prüfen");
   await expect(
     page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
@@ -171,12 +160,11 @@ test("changed storage binding explains the required fresh target capture", async
     .first();
   await storage.selectOption("manual");
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
-  const context = page.getByRole("region", {
-    name: "Vorbereitungskontext",
-    exact: true,
-  });
-  await expect(context).toContainText("Erneute Zielprüfung erforderlich");
-  await expect(context).toContainText("Ziel erneut prüfen");
+  await expect(
+    page.getByText("Zuordnungen wurden geändert. Ziel erneut prüfen.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Weiter zu Entscheidungen", exact: true }),
   ).toBeEnabled();

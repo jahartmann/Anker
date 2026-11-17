@@ -73,7 +73,7 @@ export default function SystemDiagnosis({ value }: { value: unknown }) {
       title: "Reale Wiederherstellung",
       state: "Nicht geprüft",
       detail:
-        "Diese Systemabfrage prüft keinen Restore auf Proxmox. Wiederherstellungsplan und isolierte Laborprobe separat durchführen und dokumentieren.",
+        "Diese Systemabfrage prüft keine Wiederherstellung auf Proxmox. Wiederherstellungsplan und isolierte Laborprobe separat durchführen und dokumentieren.",
     },
   ];
   const report = {
@@ -106,9 +106,8 @@ export default function SystemDiagnosis({ value }: { value: unknown }) {
       aria-label="Diagnoseübersicht"
     >
       <p className="muted">
-        Aktuelle Serverantwort und Ablagespeicher. Hostverbindungen,
-        Sicherungsintegrität und echte Wiederherstellungen werden separat
-        geprüft.
+        Prüft den Anker-Server und seinen Speicher, nicht die Hosts oder
+        Sicherungen.
       </p>
       {source.demo === true && (
         <p className="notice">
@@ -140,9 +139,8 @@ export default function SystemDiagnosis({ value }: { value: unknown }) {
         Diagnosebericht herunterladen
       </button>
       <p className="field-hint">
-        Der Bericht enthält Version, Betriebsmodus, Speicherwerte und diese
-        Prüfergebnisse. Zugangsdaten, Hostadressen, lokale Pfade und das
-        Aktivitätsprotokoll werden nicht exportiert.
+        Der Bericht enthält Version, Speicherwerte und diese Ergebnisse, aber
+        keine Zugangsdaten, Hostadressen oder Pfade.
       </p>
       <details className="detail-section">
         <summary>Technische Details</summary>

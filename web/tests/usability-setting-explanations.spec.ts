@@ -196,7 +196,7 @@ async function setup(page: any, request: any, protectedFile = false) {
   await page.getByRole("button", { name: host.name, exact: true }).click();
   return {
     reads,
-    journey: page.getByRole("region", { name: "Konfigurationsreise" }),
+    journey: page.getByRole("region", { name: "Änderungen" }),
   };
 }
 
@@ -205,9 +205,7 @@ test("journey explains only the observed change, then reads the exact original o
   request,
 }, info) => {
   const { reads, journey } = await setup(page, request);
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
   const explanation = journey.getByRole("region", {
     name: "Bedeutung der Änderung",
   });
@@ -260,7 +258,10 @@ test("setting trail uses the same explanation and masked evidence never exposes 
   request,
 }) => {
   const { reads } = await setup(page, request, true);
-  await page.locator(".host-tabs").getByRole("button", { name: "Änderungen", exact: true }).click();
+  await page
+    .locator(".host-tabs")
+    .getByRole("button", { name: "Änderungen", exact: true })
+    .click();
   const trace = page.locator(".setting-trace");
   await trace.locator(":scope > summary").click();
   const explanation = trace.getByRole("region", {
@@ -297,9 +298,7 @@ test("failed original reads retry the same source without losing its evidence co
           },
         }),
   );
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
   const explanation = journey.getByRole("region", {
     name: "Bedeutung der Änderung",
   });

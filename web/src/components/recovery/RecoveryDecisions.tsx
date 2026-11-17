@@ -8,6 +8,21 @@ import RecoveryNetwork from "./RecoveryNetwork";
 import RecoveryMapping from "../RecoveryMapping";
 import { Field, Pagination } from "../shared";
 import type { RecoveryDraft } from "./useRecoveryDraft";
+const captureStates: Record<string, string> = {
+  missing: "Am Ziel nicht vorhanden; die Datei wird neu angelegt.",
+  unreadable: "Am Ziel nicht lesbar.",
+  unsupported: "Am Ziel kein gewöhnliches File.",
+  too_large: "Am Ziel zu groß für einen Vergleich.",
+  changed: "Am Ziel während der Prüfung verändert.",
+  limit: "Prüfgrenze erreicht; nicht verglichen.",
+};
+/** Says something only when the target file is not simply readable. */
+function captureHint(state?: string) {
+  return state === "read"
+    ? undefined
+    : captureStates[state || ""] || "Zielstand unbekannt.";
+}
+
 export default function RecoveryDecisions({
   draft: d,
   canReveal,
@@ -26,12 +41,40 @@ export default function RecoveryDecisions({
     Math.max(1, Math.ceil(rows.length / listSize)),
   );
   if (!d.inspection) return null;
+  const open = d.openFiles + d.openMappings;
+  const undecided = d.selectedPaths.filter(
+    (p) => !d.decisions[p] && !d.removeFiles.includes(p),
+  );
+  // On other hardware the network and name files need the prepared version,
+  // which carries the port and hostname mapping; on the same host the
+  // original is exactly right.
+  const sameHost =
+    d.inspection.source.hostname === d.inspection.target.hostname;
+  const adapted = (path: string) =>
+    !sameHost &&
+    (path.startsWith("etc/network/") ||
+      ["etc/hosts", "etc/hostname", "etc/mailname"].includes(path));
+  const adaptedOpen = undecided.filter(adapted).length;
+  function decideOpen(decision: FileDecision) {
+    d.setDecisions((old) => ({
+      ...old,
+      ...Object.fromEntries(
+        undecided.map((p) => [
+          p,
+          decision === "backup" && adapted(p) ? "prepared" : decision,
+        ]),
+      ),
+    }));
+  }
   return (
     <section aria-label="Entscheidungen" data-surface-topic="recovery">
       <h2>3 · Entscheidungen</h2>
       <p>
-        {d.openFiles + d.openMappings} offene Entscheidungen ·{" "}
-        {d.selectedPaths.length} Dateien
+        {open === 1 ? "1 offene Entscheidung" : `${open} offene Entscheidungen`}{" "}
+        ·{" "}
+        {d.selectedPaths.length === 1
+          ? "1 Datei"
+          : `${d.selectedPaths.length} Dateien`}
       </p>
       <RecoveryRecipes draft={d} />
       {!!(
@@ -57,7 +100,7 @@ export default function RecoveryDecisions({
       ) && (
         <Field
           label="Gewünschter Hostname"
-          hint="Optional für vorbereitete Dateien; den Vergleich nach Änderungen erneut öffnen."
+          hint="Optional; wirkt auf vorbereitete Dateien."
         >
           <input
             value={d.hostname}
@@ -85,18 +128,36 @@ export default function RecoveryDecisions({
       )}
       {d.inspection.source.host_type === "pbs" && (
         <p className="notice">
-          Für Datastore- und Jobdateien die vorbereitete Fassung verwenden:
-          vorhandene Ziel-Anbindungen bleiben erhalten und automatische Auslöser
-          werden deaktiviert. Quelldateien mit aktiven Zeitplänen werden nicht
-          automatisch übernommen.
+          Für Datastore- und Jobdateien die vorbereitete Fassung wählen: Sie
+          behält die Anbindungen des Ziels und deaktiviert Zeitpläne.
         </p>
       )}
       <h3>Dateien entscheiden</h3>
       <p className="field-hint">
-        Original übernehmen, vorbereitete Fassung prüfen, Ziel behalten oder
-        manuell bearbeiten. Nicht freigegebene Systemdateien bleiben manuell.
-        Identische Inhalte und Schreibmetadaten werden nicht erneut geschrieben.
+        Identische Dateien werden nicht erneut geschrieben.
       </p>
+      {undecided.length > 0 && (
+        <div className="recovery-decide-all">
+          <button type="button" onClick={() => decideOpen("backup")}>
+            {undecided.length === 1
+              ? "Offene Datei aus Sicherung übernehmen"
+              : `Alle ${undecided.length} offenen Dateien aus Sicherung übernehmen`}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => decideOpen("manual")}
+          >
+            Offene Dateien manuell bearbeiten
+          </button>
+          {adaptedOpen > 0 && (
+            <p className="field-hint">
+              Anderer Zielhost: Netzwerk- und Namensdateien werden dabei in der
+              vorbereiteten Fassung mit den Zuordnungen oben übernommen.
+            </p>
+          )}
+        </div>
+      )}
       <Field label="Dateientscheidungen durchsuchen">
         <input
           value={query}
@@ -111,29 +172,11 @@ export default function RecoveryDecisions({
           .slice((current - 1) * listSize, current * listSize)
           .map((path) => (
             <div key={path}>
-              <DraftFileComparison
-                key={d.previewKey + path}
-                draft={d}
-                path={path}
-                canReveal={canReveal}
-              />
               <Field
                 label={"Entscheidung für " + path}
-                hint={
-                  "Zielaufnahme: " +
-                  ({
-                    read: "gelesen",
-                    missing: "nicht vorhanden",
-                    unreadable: "nicht lesbar",
-                    unsupported: "nicht unterstützt",
-                    too_large: "zu groß",
-                    changed: "während Prüfung verändert",
-                    limit: "Prüfgrenze erreicht",
-                  }[
-                    d.inspection?.files?.find((f) => f.path === path)?.state ||
-                      ""
-                  ] || "unbekannt")
-                }
+                hint={captureHint(
+                  d.inspection?.files?.find((f) => f.path === path)?.state,
+                )}
               >
                 <select
                   value={d.decisions[path] || ""}
@@ -168,6 +211,12 @@ export default function RecoveryDecisions({
                   )}
                 </select>
               </Field>
+              <DraftFileComparison
+                key={d.previewKey + path}
+                draft={d}
+                path={path}
+                canReveal={canReveal}
+              />
             </div>
           ))}
       </div>
@@ -179,24 +228,6 @@ export default function RecoveryDecisions({
         onPageChange={setPage}
         label="Dateientscheidungen"
       />
-      {!!d.openFiles && (
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            d.setDecisions((old) => ({
-              ...old,
-              ...Object.fromEntries(
-                d.selectedPaths
-                  .filter((p) => !d.removeFiles.includes(p))
-                  .map((p) => [p, old[p] || ("manual" as const)]),
-              ),
-            }))
-          }
-        >
-          Offene Dateien manuell bearbeiten
-        </button>
-      )}
       {!!d.openFiles && (
         <p className="notice">Für jede Datei eine Entscheidung auswählen.</p>
       )}
@@ -277,7 +308,7 @@ function DraftFileComparison({
     <div className="draft-file-comparison">
       <button
         type="button"
-        className="secondary"
+        className="text-button"
         disabled={!available}
         aria-expanded={open}
         onClick={() => {

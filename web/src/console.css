@@ -6,7 +6,6 @@
   --soft: #f3f6f8;
   --muted: #626f79;
   --hardware-line: #bbc8d0;
-  --hardware-ink: #526876;
   color: #293640;
   background: #f5f7f8;
 }
@@ -120,9 +119,6 @@
 .sidebar :is(button, a):focus-visible {
   outline-color: #b5d7e8;
 }
-.workspace {
-  background: #f8fafb;
-}
 .topbar {
   color: #637480;
   background: #fff;
@@ -144,33 +140,7 @@
 .topbar kbd {
   color: #617580;
 }
-.content {
-  --console-accent: #456b84;
-  --console-tint: #edf3f7;
-  --console-edge: #c5d5e0;
-}
-.content[data-workspace="Sicherungen"] {
-  --console-accent: #3f7269;
-  --console-tint: #edf5f1;
-  --console-edge: #c5dbd3;
-}
-.content[data-workspace="Wiederherstellung"] {
-  --console-accent: #866a3c;
-  --console-tint: #f8f3e9;
-  --console-edge: #dfd2b9;
-}
-.content[data-workspace="Aufträge"] {
-  --console-accent: #686189;
-  --console-tint: #f1f0f7;
-  --console-edge: #d3cfe3;
-}
-.page-kicker {
-  color: #5a6e7b;
-  font-size: 11px;
-  letter-spacing: 0.025em;
-}
-.page-emblem,
-.content[data-workspace] > .page-kicker .page-emblem {
+.page-emblem {
   border-color: var(--console-edge, #c5d5e0);
   color: var(--console-accent, #456b84);
   background: #fff;
@@ -207,11 +177,7 @@
   pointer-events: none;
 }
 .page-heading h1 {
-  color: #243540;
   letter-spacing: -0.045em;
-}
-.page-heading p {
-  color: #5f707b;
 }
 .page-heading .collection-count {
   color: var(--console-accent);
@@ -227,12 +193,10 @@
   .overview-metric:first-child,
   .host-settings-card,
   .settings-nav-group,
-  .settings-context,
   .storage-volume,
   .diagnosis-check,
   .journey-value-card,
   .journey-time-card,
-  .recovery-draft-context,
   .plan-next-task
 ) {
   border-color: #d5dfe5;
@@ -264,7 +228,6 @@
 :is(.data-surface, .backup-table, .inventory-network, .inventory-disks) th {
   color: #566b79;
   font-family: var(--mono);
-  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.025em;
 }
@@ -344,17 +307,9 @@
   color: #365269;
   padding: 16px;
 }
-.settings-nav-group {
-  border-top: 2px solid #c1d2df;
-  background: #f0f5f8;
-}
 .settings-nav-group:nth-child(1) {
   border-top-color: #a4c4b7;
   background: #f1f6f3;
-}
-.settings-nav-group:nth-child(2) {
-  border-top-color: #abbcd2;
-  background: #f1f4f9;
 }
 .settings-nav-label {
   color: #526b7a;
@@ -374,21 +329,10 @@
   box-shadow: 0 2px 0 #d5e0e8;
   background: #fff;
 }
-.settings-context {
-  border-left: 3px solid #a2baca;
-  background: linear-gradient(110deg, #fff, #f0f5f8);
-}
-.settings-context-scope {
-  color: #5d7383;
-  font-family: var(--mono);
-}
 .settings-group {
   border-color: #dbe3e9;
   border-radius: 6px;
   background: #fff;
-}
-.settings-group legend {
-  color: #526b7a;
 }
 .settings-form .settings-savebar {
   border-color: #c8d6df;
@@ -434,20 +378,12 @@
 }
 .dialog {
   border-color: #bccedb;
-  border-top: 3px solid #7998ae;
-  border-radius: 9px;
-  box-shadow:
-    0 20px 75px #12273538,
-    0 0 0 4px #e6edf240;
 }
 .dialog-title {
   border-bottom-color: #d4e0e8;
 }
 .dialog-title h2 {
   color: #2b4353;
-}
-.dialog-footer {
-  border-top-color: #d4e0e8;
 }
 .file-preview {
   background: #f5f8fa;
@@ -470,12 +406,6 @@
 .login-form {
   width: min(400px, 100%);
   min-width: 0;
-  padding: 28px;
-  border: 1px solid #cbd9e2;
-  border-top: 3px solid #7998ae;
-  border-radius: 9px;
-  box-shadow: 0 14px 50px #29485c12;
-  background: #fff;
 }
 .login-form .wordmark {
   margin-bottom: 32px;
@@ -485,14 +415,11 @@
 :is(
   .overview-brief,
   .overview-brief.needs-attention,
-  .host-list-focus,
   .host-status-strip > div,
   .host-status-strip > div:nth-child(2),
   .host-status-strip > div:nth-child(3),
   .active-jobs,
   .history-latest,
-  .problem-card,
-  .problem-card.problem-critical,
   .backup-reference,
   .host-focus-card,
   .backup-focus-grid > .host-workspace:nth-child(n),
@@ -505,12 +432,10 @@
 .host-focus-card > .object-icon {
   box-shadow: 0 1px 2px #243c4d0c;
 }
-.host-settings-card,
-.settings-context {
+.host-settings-card {
   position: relative;
 }
-.host-settings-card::after,
-.settings-context::after {
+.host-settings-card::after {
   content: "";
   position: absolute;
   inset: 9px 9px auto auto;
@@ -661,12 +586,6 @@
   --console-edge: #a18dc4;
   --console-tint: #ede8f7;
 }
-.page-kicker .page-emblem {
-  color: #fff;
-  background: var(--console-accent);
-  border-color: var(--console-accent);
-  box-shadow: 3px 3px 0 var(--console-edge);
-}
 .host-overview-detail {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -684,20 +603,16 @@
   padding: 26px;
   border: 1px solid #37576b;
   border-top: 5px solid #5791b4;
-  background: #203e52;
-  color: #f3f8fc;
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
   align-content: start;
-  box-shadow: 0 8px 22px #183c5017;
 }
 .host-next-step > div {
   flex: 1 1 230px;
   min-width: 0;
 }
 .host-next-step h2 {
-  color: #fff;
   font-size: 25px;
   line-height: 1.3;
 }
@@ -706,41 +621,20 @@
   color: #d1e1eb;
 }
 .host-next-step .object-icon {
-  background: #355c73;
-  color: #e5f4ff;
   border-color: #5a7d94;
 }
 .host-next-step .host-focus-action {
-  background: #f2f7fa;
-  color: #21465e;
-  border-color: #f2f7fa;
   margin-top: auto;
 }
-.host-next-step .host-focus-action:hover {
-  background: #dcecf6;
-  color: #193b51;
-}
 .host-overview-detail > .host-next-step:is(.warning, .danger) {
-  background: #fff7ed;
   color: #613914;
   border-color: #d8ac70;
   border-top-color: #ab6518;
-}
-.host-next-step:is(.warning, .danger) h2 {
-  color: #6a3a13;
-}
-.host-next-step:is(.warning, .danger) :is(p, .eyebrow) {
-  color: #754b28;
 }
 .host-next-step:is(.warning, .danger) .object-icon {
   background: #f1d8b5;
   color: #74400f;
   border-color: #d8ac70;
-}
-.host-next-step:is(.warning, .danger) .host-focus-action {
-  background: #794b1d;
-  color: #fff;
-  border-color: #794b1d;
 }
 .host-overview-detail > .host-status-strip {
   grid-column: 9 / -1;
@@ -749,11 +643,15 @@
   margin: 0;
   gap: 9px;
 }
+.host-overview-detail.without-focus:not(.has-backup-diagnosis)
+  > .host-status-strip {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .host-status-strip > div {
   border: 1px solid #b9cedc;
   border-left: 4px solid #387b9f;
   background: #edf5fa;
-  padding: 14px 17px;
 }
 .host-status-strip > div:nth-child(2) {
   background: #f0edf9;
@@ -781,34 +679,16 @@
   gap: 22px;
   align-items: stretch;
 }
-.host-workspace[data-topic="capture"] {
-  --panel-ink: #155c50;
-  --panel-edge: #2a8b76;
-  --panel-tint: #e9f4ee;
-}
-.host-workspace[data-topic="changes"] {
-  --panel-ink: #4e4b86;
-  --panel-edge: #8273b2;
-  --panel-tint: #f0ecf8;
-}
-.host-workspace[data-topic="recovery"] {
-  --panel-ink: #785020;
-  --panel-edge: #b78032;
-  --panel-tint: #f9efdf;
-}
 .host-workspace[data-topic] {
   border: 1px solid color-mix(in srgb, var(--panel-edge) 50%, white);
   border-top: 5px solid var(--panel-edge);
   border-radius: 9px;
-  background: linear-gradient(180deg, var(--panel-tint), #fff 150px);
   padding: 23px;
-  box-shadow: 0 4px 12px #23384a08;
 }
 .host-workspace[data-topic]::before {
   display: none;
 }
 .host-workspace[data-topic] > .eyebrow {
-  color: var(--panel-ink);
   font-size: 11px;
   letter-spacing: 0.07em;
 }
@@ -834,7 +714,6 @@
   background: var(--panel-tint);
 }
 .host-overview-detail .host-workspaces > [data-topic="recovery"] {
-  background: linear-gradient(105deg, #f5e7ce, #fffaf2 55%, #fff);
   border-top-color: #b78032;
 }
 .host-tabs {
@@ -857,31 +736,24 @@
 }
 .host-tabs button:hover {
   background: #dce7ef;
-  color: #243f55;
 }
 .host-tabs button.selected:hover {
   background: #f3f8fb;
 }
 .backup-issues {
   margin: 12px 0 22px;
-  padding: 22px;
-  border: 1px solid #cf9b68;
-  border-left: 5px solid #a75620;
   border-radius: 9px;
-  background: #fff7ed;
   overflow-wrap: anywhere;
 }
 .backup-issues-heading {
   display: flex;
   gap: 14px;
-  align-items: flex-start;
   margin-bottom: 18px;
 }
 .backup-issues-heading .eyebrow {
   color: #8d4c21;
 }
 .backup-issues-heading h3 {
-  font-size: 20px;
   color: #603a22;
   margin: 4px 0;
 }
@@ -906,9 +778,6 @@
   grid-template-columns: 21px minmax(0, 1fr);
   gap: 11px;
   background: #fff;
-  border: 1px solid #e1cbb4;
-  border-radius: 6px;
-  padding: 16px;
 }
 .backup-issue > svg {
   color: #a75620;
@@ -916,7 +785,6 @@
 }
 .backup-issue h4 {
   margin: 0 0 8px;
-  font-size: 14px;
   color: #533b29;
 }
 .backup-issue p {
@@ -1000,11 +868,6 @@
 .inventory-section:has([data-topic="catalog"]) {
   border-color: #ae8545;
 }
-.settings-context {
-  border-top: 4px solid var(--console-accent);
-  background: var(--console-tint);
-  padding: 23px;
-}
 .settings-nav-group {
   border-top: 3px solid #658eab;
   background: #edf4f8;
@@ -1017,17 +880,6 @@
   border-top-color: #6f9287;
   background: #edf4f0;
 }
-.settings-context:has([data-topic="security"]),
-.settings-context:has([data-topic="access"]) {
-  border-top-color: #9776af;
-  background: #f3eef8;
-}
-.settings-context:has([data-topic="schedule"]),
-.settings-context:has([data-topic="archive"]) {
-  border-top-color: #3a8b79;
-  background: #eaf4f0;
-}
-.recovery-draft-context,
 .recovery-plan-summary {
   border: 1px solid #cba56d;
   border-left: 5px solid #a97632;
@@ -1036,7 +888,6 @@
   padding: 22px;
 }
 .recovery-workspace .form-fields > section {
-  border-top: 3px solid #bd995e;
   padding-top: 18px;
 }
 .recovery-section-title {
@@ -1062,17 +913,6 @@
 .dialog:has(.recovery-workspace) .dialog-title {
   background: #f6eddf;
   border-color: #d7c3a4;
-}
-.dialog:has(.job-detail) .dialog-title {
-  background: #eee9f7;
-  border-color: #c8badf;
-}
-.problem-card.problem-critical {
-  border-left: 4px solid #ad4c31;
-  background: #fff4ed;
-}
-.problem-host {
-  border-top-color: #d7c1ae;
 }
 @media (max-width: 1050px) {
   .host-overview-detail {
@@ -1126,26 +966,17 @@
   .host-workspace,
   .overview-metric,
   .host-settings-card,
-  .settings-context,
   .storage-volume,
   .diagnosis-check,
   .journey-value-card,
   .journey-time-card,
   .backup-reference,
-  .recovery-draft-context,
   .plan-next-task
 ) {
   border-radius: 6px;
   box-shadow: 4px 4px 0 #bed0db;
 }
-:is(
-  .overview-brief,
-  .host-list-focus,
-  .active-jobs,
-  .history-latest,
-  .problem-card,
-  .host-focus-card
-) {
+:is(.overview-brief, .active-jobs, .history-latest, .host-focus-card) {
   box-shadow: 4px 4px 0 #b9cbd7;
 }
 .host-overview-detail > .host-next-step {
@@ -1203,15 +1034,6 @@
 .host-status-strip > div:nth-child(3) {
   box-shadow: 3px 3px 0 #b8d1c3;
 }
-.host-workspace[data-topic="capture"] {
-  --panel-shadow: #a7cdbd;
-}
-.host-workspace[data-topic="changes"] {
-  --panel-shadow: #c2b5dd;
-}
-.host-workspace[data-topic="recovery"] {
-  --panel-shadow: #dec090;
-}
 .host-workspace[data-topic] {
   background: #fff;
   box-shadow: 5px 5px 0 var(--panel-shadow);
@@ -1232,12 +1054,6 @@
 }
 .host-tabs button:focus-visible {
   color: #243f55;
-}
-.backup-issues {
-  box-shadow: 5px 5px 0 #dfbe99;
-}
-.backup-issue {
-  box-shadow: 2px 2px 0 #ead6bf;
 }
 .settings-nav-group {
   box-shadow: 3px 3px 0 #b4cbdb;

@@ -71,10 +71,9 @@ test("overview starts with one answer and three bounded cards; the full history 
   page,
 }) => {
   const { focus } = await setup(page);
-  await expect(focus.getByRole("heading")).toHaveText(
-    "Die letzte Sicherung ist aktuell",
-  );
-  await expect(focus.getByRole("button")).toHaveCount(1);
+  // A healthy host needs no separate focus card; the status strip answers.
+  await expect(focus).toHaveCount(0);
+  await expect(page.locator(".host-status-strip")).toContainText("Gesichert");
   await expect(page.locator(".host-workspaces > .host-workspace")).toHaveCount(
     3,
   );
@@ -87,17 +86,17 @@ test("overview starts with one answer and three bounded cards; the full history 
     "In der Demo aus",
   );
   await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen", exact: true })
+    .getByRole("button", { name: "Änderungen öffnen", exact: true })
     .click();
   await expect(
-    page.getByRole("region", { name: "Konfigurationsreise", exact: true }),
+    page.getByRole("region", { name: "Änderungen", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".change-timeline")).toHaveCount(1);
   await page
     .locator(".host-tabs")
     .getByRole("button", { name: "Übersicht", exact: true })
     .click();
-  await expect(focus).toBeVisible();
+  await expect(page.locator(".host-status-strip")).toBeVisible();
   await expect(page.locator(".change-timeline, .setting-trace")).toHaveCount(0);
 });
 
@@ -244,14 +243,12 @@ test("the host collection stays at eight rows and its summary clears unrelated f
   await expect(page.locator(".host-table tbody tr")).toHaveCount(8);
   await page.getByLabel("Hosts durchsuchen", { exact: true }).fill("node-24");
   await expect(page.locator(".host-table tbody tr")).toHaveCount(1);
-  await page
-    .getByRole("region", { name: "Hosts im Überblick" })
-    .getByRole("button", { name: "Betroffene Hosts anzeigen" })
-    .click();
-  await expect(
-    page.getByLabel("Hosts durchsuchen", { exact: true }),
-  ).toHaveValue("");
-  await expect(page.getByLabel("Hoststatus filtern")).toHaveValue("attention");
+  await page.getByLabel("Hosts durchsuchen", { exact: true }).clear();
+  const attention = page
+    .getByRole("group", { name: "Host-Schnellfilter" })
+    .getByRole("button", { name: /^Handlungsbedarf/ });
+  await attention.click();
+  await expect(attention).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".host-table tbody tr")).toHaveCount(8);
 });
 

@@ -1,3 +1,4 @@
+import { displayHostName } from "../src/hostNames";
 import { test, expect, type Page } from "@playwright/test";
 import { demoCookies } from "./demo-auth";
 test.beforeEach(async ({ page, request }) => {
@@ -82,13 +83,7 @@ test("same-minute source options show seconds and backup IDs", async ({
   expect(options[1]).toContain("same-minute-o");
   expect(options[0]).not.toBe(options[1]);
   await source.selectOption("same-minute-one-1234");
-  await expect(
-    page.getByText(/Gewählte Sicherung:.*09:53:03.*same-minute-o/),
-  ).toBeVisible();
-  await page.getByText("Vollständige Sicherungs-ID", { exact: true }).click();
-  await expect(
-    page.getByText("same-minute-one-1234", { exact: true }),
-  ).toBeVisible();
+  await expect(source).toHaveValue("same-minute-one-1234");
 });
 test("four situations retain draft through back navigation", async ({
   page,
@@ -217,7 +212,9 @@ test("ordinary files avoid irrelevant mappings", async ({ page }) => {
   const request = page.waitForRequest(
     (r) => r.url().endsWith("/api/plans") && r.method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const body = (await request).postDataJSON();
   expect(body.decisions).toEqual({ "etc/sysctl.d/99-anker.conf": "backup" });
   expect(body.snapshot_id).toBeTruthy();
@@ -270,7 +267,7 @@ test("all four situations save explicit decisions through real demo endpoints", 
       (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
     );
     await page
-      .getByRole("button", { name: "Plan prüfen", exact: true })
+      .getByRole("button", { name: "Plan speichern", exact: true })
       .click();
     const created = await response;
     expect(created.ok()).toBeTruthy();
@@ -310,9 +307,7 @@ test("administrator connects a new demo target and returns without storing crede
   await dialog
     .getByRole("button", { name: "Manuell einrichten", exact: true })
     .click();
-  await dialog
-    .getByLabel("Hostname", { exact: true })
-    .fill(targetName);
+  await dialog.getByLabel("Hostname", { exact: true }).fill(targetName);
   await dialog.getByLabel("Adresse", { exact: true }).fill("192.0.2.240");
   await dialog
     .getByRole("button", { name: "Host speichern", exact: true })
@@ -320,10 +315,12 @@ test("administrator connects a new demo target and returns without storing crede
   await expect(dialog).toHaveCount(0);
   const target = page.getByLabel("Zielhost", { exact: true });
   await expect(target).toHaveValue(base.hosts[0].id);
+  // The list shows the readable form of the catalog name.
+  const label = displayHostName(targetName);
   await expect(
-    target.getByRole("option", { name: targetName, exact: true }),
+    target.getByRole("option", { name: label, exact: true }),
   ).toHaveCount(1);
-  await target.selectOption({ label: targetName });
+  await target.selectOption({ label });
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await page
     .getByLabel("Wiederherstellungsdateien durchsuchen")
@@ -385,7 +382,7 @@ test("recovery workspace stays readable with keyboard at desktop laptop and mobi
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("heading", {
-      name: "4 · Plan prüfen und speichern",
+      name: "4 · Plan speichern",
       exact: true,
     }),
   ).toBeVisible();
@@ -397,7 +394,7 @@ test("recovery workspace stays readable with keyboard at desktop laptop and mobi
     await page.setViewportSize({ width, height });
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     await page
-      .getByRole("button", { name: "Plan prüfen", exact: true })
+      .getByRole("button", { name: "Plan speichern", exact: true })
       .scrollIntoViewIfNeeded();
     const footer = await page.locator(".recovery-footer").boundingBox();
     expect(footer).not.toBeNull();
@@ -453,7 +450,9 @@ test("starting another plan returns to source selection with its draft", async (
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Zurück zu Plänen", exact: true })
     .click();
@@ -490,7 +489,9 @@ test("saved plan comparison and checks remain readable with keyboard at desktop 
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const planPage = page.getByRole("region", {
     name: "Wiederherstellungsplan",
     exact: true,
@@ -561,7 +562,9 @@ test("revising a freshly saved plan retains its controlled draft and requires fr
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Zuordnungen anpassen", exact: true })
     .click();
@@ -593,8 +596,15 @@ test("real demo task confirmations remain user attestations including reboot", a
   const created = page.waitForResponse(
     (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const plan = await (await created).json();
+  // A plan that writes nothing keeps the follow-up checks folded away.
+  const folded = page.getByText("Prüfungen nach einer Übernahme", {
+    exact: true,
+  });
+  if (await folded.isVisible()) await folded.click();
   for (const title of [
     "Dienste prüfen",
     "Erreichbarkeit prüfen",
@@ -720,7 +730,9 @@ test("kept network and storage prune only their mappings and recapture storage b
   const saved = page.waitForResponse(
     (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const response = await saved;
   expect(response.ok()).toBe(true);
   const body = response.request().postDataJSON();
@@ -783,10 +795,16 @@ test("typed source network stanza prepares effects and remains manual with keybo
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
+  // Network files are protected: writing them needs its own confirmation.
+  await page
+    .getByLabel("Diese Systemdateien aus der Sicherung zurückschreiben")
+    .check();
   const saved = page.waitForResponse(
     (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const response = await saved;
   expect(response.ok()).toBe(true);
   expect(response.request().postDataJSON().mapping.network).toEqual({

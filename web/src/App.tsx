@@ -1,6 +1,5 @@
-import IncidentCenter from "./components/IncidentCenter";
 import { ServerRack as Server } from "./components/InfrastructureDetails";
-import AnkerCompass, { CompassEntrypoints } from "./components/AnkerCompass";
+import AnkerCompass from "./components/AnkerCompass";
 import type {
   CompassIntent,
   CompassDestination,
@@ -22,33 +21,16 @@ import {
   RotateCcw,
   Activity,
   Settings2,
-  ShieldCheck,
-  CircleAlert,
-  Clock3,
 } from "lucide-react";
-import {
-  api,
-  date,
-  configureTimezone,
-  emptyStatus,
-  hostState,
-  labels,
-} from "./api";
+import { api, date, configureTimezone, emptyStatus } from "./api";
 import type { Status, User } from "./api";
-import {
-  BrandMark,
-  PageEmblem,
-  Dialog,
-  Empty,
-  Field,
-  Heading,
-  State,
-} from "./components/shared";
-import ActiveJobs from "./components/ActiveJobs";
+import { BrandMark, Dialog, Field, Heading, State } from "./components/shared";
 import Jobs from "./views/Jobs";
-import Hosts, { HostForm } from "./views/Hosts";
-import Backups, { FileBrowser } from "./views/Backups";
-import BackupReadiness from "./components/BackupReadiness";
+import Hosts from "./views/Hosts";
+import Overview from "./views/Overview";
+import { HostForm } from "./components/HostForm";
+import Backups from "./views/Backups";
+import { FileBrowser } from "./components/FileBrowser";
 import Restore from "./views/Restore";
 import type { RecoveryOperation } from "./components/recovery/RecoveryPlan";
 import Settings from "./views/Settings";
@@ -374,14 +356,6 @@ export default function App() {
     },
     onRestore: restore,
   };
-  const overdue = status.hosts.filter(
-    (h) => h.enabled && hostState(h, status).tone !== "success",
-  );
-  const enabledHosts = status.hosts.filter((h) => h.enabled);
-  const pausedHosts = status.hosts.length - enabledHosts.length;
-  const active = status.jobs.filter((j) =>
-    ["queued", "running"].includes(j.state),
-  );
   return (
     <ChangeRecoveryContext.Provider
       value={
@@ -571,33 +545,6 @@ export default function App() {
                   {connectionError} Angezeigte Daten: {date(updatedAt)}.
                 </p>
               )}
-              {page !== "Hosts" && page !== "Übersicht" && (
-                <div className="page-kicker">
-                  <PageEmblem
-                    tone={
-                      page === "Wiederherstellung"
-                        ? "sand"
-                        : page === "Einstellungen" || page === "Aufträge"
-                          ? "blue"
-                          : "sage"
-                    }
-                  >
-                    {(() => {
-                      const Icon =
-                        pageIcons[page as keyof typeof pageIcons] || Server;
-                      return (
-                        <Icon size={20} strokeWidth={1.6} aria-hidden="true" />
-                      );
-                    })()}
-                  </PageEmblem>
-                  <span>
-                    {page === "Einstellungen" || page === "Aufträge"
-                      ? "Verwaltung"
-                      : "Konfigurationssicherung"}{" "}
-                    <span className="kicker-separator">/</span> {page}
-                  </span>
-                </div>
-              )}
               {page === "Hosts" && (
                 <Hosts
                   {...common}
@@ -654,253 +601,19 @@ export default function App() {
                 />
               )}{" "}
               {page === "Übersicht" && (
-                <>
-                  <div className="page-kicker">
-                    <PageEmblem tone="blue">
-                      <LayoutDashboard
-                        size={20}
-                        strokeWidth={1.6}
-                        aria-hidden="true"
-                      />
-                    </PageEmblem>
-                    <span>
-                      Infrastruktur <span className="kicker-separator">/</span>{" "}
-                      Alles im Blick
-                    </span>
-                  </div>
-                  <Heading
-                    title="Übersicht"
-                    description="Was gesichert ist und wo Handlungsbedarf besteht."
-                  />
-                  <section
-                    className="compass-overview"
-                    aria-label="Direkt zum nächsten Schritt"
-                  >
-                    <div className="compass-overview-heading">
-                      <span className="eyebrow">Dein nächster Schritt</span>
-                      <p>Was möchtest du tun?</p>
-                    </div>
-                    <CompassEntrypoints
-                      onChoose={(intent) => setCompass({ intent })}
-                    />
-                  </section>
-                  <div
-                    className={
-                      "overview-brief" +
-                      (overdue.length ? " needs-attention" : "")
-                    }
-                  >
-                    <span
-                      className={
-                        "object-icon " + (overdue.length ? "ochre" : "sage")
-                      }
-                    >
-                      {overdue.length ? (
-                        <CircleAlert
-                          size={21}
-                          strokeWidth={1.6}
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <ShieldCheck
-                          size={21}
-                          strokeWidth={1.6}
-                          aria-hidden="true"
-                        />
-                      )}
-                    </span>
-                    <div>
-                      <span className="eyebrow">Sicherungsüberblick</span>
-                      <h2>
-                        {!status.hosts.length
-                          ? "Noch kein Host verbunden"
-                          : !enabledHosts.length
-                            ? "Die automatische Sicherung pausiert"
-                            : overdue.length
-                              ? `${overdue.length} ${overdue.length === 1 ? "Host braucht" : "Hosts brauchen"} Aufmerksamkeit`
-                              : "Alle aktiven Hosts sind aktuell gesichert"}
-                      </h2>
-                      <p>
-                        {!status.hosts.length
-                          ? "Verbinde einen Proxmox-Host, um seine Konfiguration zu sichern."
-                          : overdue.length
-                            ? "Offene Punkte findest du direkt unter dem Sicherungsstatus."
-                            : "Sicherungen und Prüfergebnisse findest du beim jeweiligen Host."}
-                      </p>
-                    </div>
-                  </div>
-                  <section
-                    className="overview-summary"
-                    aria-label="Sicherungsstatus"
-                  >
-                    <dl className="overview-metrics">
-                      {[
-                        {
-                          label: "Aktive Hosts",
-                          count: enabledHosts.length,
-                          tone: "neutral",
-                          filter: "active" as const,
-                        },
-                        {
-                          label: "Aktuell gesichert",
-                          count: enabledHosts.length - overdue.length,
-                          tone: "success",
-                          filter: "saved" as const,
-                        },
-                        {
-                          label: "Handlungsbedarf",
-                          count: overdue.length,
-                          tone: overdue.length ? "warning" : "neutral",
-                          filter: "attention" as const,
-                        },
-                        {
-                          label: "Aktive Aufträge",
-                          count: active.length,
-                          tone: active.length ? "active" : "neutral",
-                          filter: "jobs" as const,
-                        },
-                      ].map((metric) => (
-                        <div
-                          className={"overview-metric " + metric.tone}
-                          key={metric.label}
-                          data-surface-topic={
-                            metric.filter === "jobs"
-                              ? "activity"
-                              : metric.filter === "saved"
-                                ? "archive"
-                                : metric.filter === "attention"
-                                  ? "recovery"
-                                  : "server"
-                          }
-                        >
-                          <dt>
-                            {(() => {
-                              const Icon =
-                                metric.filter === "jobs"
-                                  ? Activity
-                                  : metric.filter === "attention"
-                                    ? CircleAlert
-                                    : metric.filter === "saved"
-                                      ? ShieldCheck
-                                      : Server;
-                              return (
-                                <Icon
-                                  size={14}
-                                  strokeWidth={1.7}
-                                  aria-hidden="true"
-                                />
-                              );
-                            })()}
-                            {metric.label}
-                          </dt>
-                          <dd>
-                            <button
-                              className="overview-metric-link"
-                              aria-label={`${metric.label}: ${metric.count} anzeigen`}
-                              onClick={() => {
-                                if (metric.filter === "jobs") {
-                                  setJobFilter("active");
-                                  navigate("Aufträge");
-                                } else {
-                                  setHostFilter(metric.filter);
-                                  navigate("Hosts");
-                                }
-                              }}
-                            >
-                              {metric.count}
-                            </button>
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                    <p className="overview-context">
-                      {status.demo
-                        ? "Automatischer Zeitplan in der Demo deaktiviert."
-                        : !status.hosts.length
-                          ? "Noch keine Hosts eingerichtet."
-                          : !enabledHosts.length
-                            ? "Automatische Sicherung für alle Hosts pausiert."
-                            : "Zeitplan aktiv."}{" "}
-                      Zeitzone {status.timezone}.
-                      {pausedHosts > 0 && enabledHosts.length > 0 && (
-                        <span className="context-tag">
-                          {pausedHosts} {pausedHosts === 1 ? "Host" : "Hosts"}{" "}
-                          pausiert
-                        </span>
-                      )}
-                    </p>
-                  </section>
-                  <IncidentCenter
-                    hosts={status.hosts}
-                    openJob={common.openJob}
-                    refresh={refresh}
-                    allHosts={() => navigate("Hosts")}
-                    revision={JSON.stringify([
-                      status.backups.map((b) => [
-                        b.id,
-                        b.status,
-                        b.verified_at,
-                      ]),
-                      status.jobs.map((j) => [j.id, j.state]),
-                      status.hosts.map((h) => [
-                        h.id,
-                        h.last_probe,
-                        h.maintenance_until,
-                        h.enabled,
-                        h.config_revision,
-                      ]),
-                    ])}
-                    canOperate={user.role !== "reader"}
-                    openHost={(id) => {
-                      setSelectedHost(id);
-                      navigate("Hosts");
-                    }}
-                  />
-                  <ActiveJobs status={status} openJob={common.openJob} />
-                  <details className="detail-section overview-evidence">
-                    <summary>Prüfergebnisse der letzten Sicherung</summary>
-                    <p className="muted">
-                      Diese Nachweise gelten für einen einzelnen
-                      Sicherungsstand. Sie bewerten nicht automatisch alle
-                      Hosts.
-                    </p>
-                    <BackupReadiness
-                      backup={
-                        [...status.backups].sort((a, b) =>
-                          b.created_at.localeCompare(a.created_at),
-                        )[0]
-                      }
-                      compact
-                    />
-                    <button
-                      className="secondary"
-                      onClick={() => navigate("Sicherungen")}
-                    >
-                      Sicherungen prüfen und vergleichen
-                    </button>
-                  </details>
-                  <details className="detail-section overview-history">
-                    <summary>
-                      <Clock3 size={15} aria-hidden="true" /> Letzte
-                      abgeschlossene Aufträge
-                    </summary>
-                    <Jobs
-                      status={{
-                        ...status,
-                        jobs: status.jobs.filter(
-                          (j) => !["queued", "running"].includes(j.state),
-                        ),
-                      }}
-                      notify={notify}
-                      refresh={refresh}
-                      canEdit={user.role !== "reader"}
-                      canManage={user.role === "admin"}
-                      openBackup={setFile}
-                      openPlan={common.openPlan}
-                      limit={5}
-                    />
-                  </details>
-                </>
+                <Overview
+                  status={status}
+                  user={user}
+                  notify={notify}
+                  refresh={refresh}
+                  navigate={navigate}
+                  openJob={common.openJob}
+                  openPlan={common.openPlan}
+                  openBackup={setFile}
+                  onHostFilter={setHostFilter}
+                  onJobFilter={setJobFilter}
+                  onSelectHost={setSelectedHost}
+                />
               )}{" "}
               {page === "Aufträge" && (
                 <>

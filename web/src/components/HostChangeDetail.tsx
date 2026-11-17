@@ -50,7 +50,7 @@ export default function HostChangeDetail({
     <section
       className="node-change-detail"
       data-surface-topic="activity"
-      aria-label="Änderungsdetails der Node"
+      aria-label="Änderungsdetails des Hosts"
     >
       <button className="back-button" onClick={onBack}>
         <ArrowLeft size={15} aria-hidden="true" /> Zurück zum Hostverlauf

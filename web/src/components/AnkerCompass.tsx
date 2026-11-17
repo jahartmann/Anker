@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { Host, Status } from "../api";
-import { hostState } from "../api";
+import { hostState, plural } from "../api";
 import { displayHostName, HostName } from "../hostNames";
 import { recoverySource } from "../hostHealth";
 import { Dialog } from "./shared";
@@ -59,7 +59,7 @@ const intents = [
   },
 ] as const;
 
-export function CompassEntrypoints({
+function CompassEntrypoints({
   onChoose,
 }: {
   onChoose: (intent: CompassIntent) => void;
@@ -165,11 +165,11 @@ export default function AnkerCompass({
       destination = { kind: "host", hostID: host.id, tab: "Sicherungen" };
       action = "Sicherungsverlauf öffnen";
       explanation = backups.length
-        ? `${backups.length} Sicherungen. Prüfe die Dateien, bevor du sie verwendest.`
+        ? `${plural(backups.length, "Sicherung", "Sicherungen")}. Prüfe die Dateien, bevor du sie verwendest.`
         : "Noch kein Stand erfasst. Im Host kannst du die Verbindung prüfen und eine erste Sicherung starten.";
     } else if (intent === "changes") {
       destination = { kind: "host", hostID: host.id, tab: "Änderungen" };
-      action = "Konfigurationsreise öffnen";
+      action = "Änderungen öffnen";
       explanation =
         backups.length > 1
           ? "Sieh, wann sich Dateien und Einstellungen geändert haben. Die passenden Sicherungen kannst du direkt vergleichen."
@@ -314,7 +314,7 @@ export default function AnkerCompass({
                         currentPage * hostSize + hostSize,
                         hosts.length,
                       )}{" "}
-                      von {hosts.length} Hosts
+                      von {plural(hosts.length, "Host", "Hosts")}
                     </span>
                     <button
                       className="secondary"

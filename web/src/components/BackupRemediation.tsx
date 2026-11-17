@@ -6,7 +6,7 @@ import {
   RefreshCw,
   WandSparkles,
 } from "lucide-react";
-import { api } from "../api";
+import { api, plural } from "../api";
 import type { Status } from "../api";
 import { HostName } from "../hostNames";
 import { useListPageSize } from "../listPageSize";
@@ -121,7 +121,11 @@ export default function BackupRemediation({
                 request.current = value.request;
                 setIncludePaused(value.request.include_paused);
                 setRun(value);
-                setExpanded(true);
+                setExpanded(
+                  value.targets.some(
+                    (target) => outcome(target).tone !== "success",
+                  ),
+                );
               }
             })
             .catch(() => {
@@ -304,15 +308,14 @@ export default function BackupRemediation({
               : "Bekannte Sicherungsprobleme gesammelt beheben"}
           </h3>
         </div>
-        <span className="remediation-count">{targets.length} Hosts</span>
+        <span className="remediation-count">
+          {plural(targets.length, "Host", "Hosts")}
+        </span>
       </div>
       {!run && (
         <p>
-          Für die bekannten systemd-, Lynx- und Powerman-Hinweise:
-          Konfigurationen neu erfassen und anschließend automatisch auf
-          Integrität prüfen. Das gilt für alle hier erkannten betroffenen Hosts,
-          unabhängig von den Listenfiltern. Hostprofile und Datastore-Inhalte
-          bleiben erhalten.
+          Sichert alle betroffenen Hosts neu und prüft die Sicherungen danach
+          automatisch. Das gilt unabhängig von den Listenfiltern.
         </p>
       )}
       {loadError && (
@@ -414,7 +417,7 @@ export default function BackupRemediation({
               ? "Wird eingereiht …"
               : needsReconcile
                 ? "Start abgleichen"
-                : `${eligible.length} Hosts neu sichern & prüfen`}
+                : `${plural(eligible.length, "Host", "Hosts")} neu sichern & prüfen`}
           </button>
         )}
         <button
@@ -510,7 +513,7 @@ export default function BackupRemediation({
         erfolgreicher Integritätsprüfung als bestätigt. Andere Fehler bleiben
         sichtbar; alte Sicherungen werden nicht umgeschrieben.
         {plan?.other_hosts
-          ? ` ${plan.other_hosts} weitere Hosts haben andere Hinweise und sind nicht Teil dieser Aktion.`
+          ? ` ${plan.other_hosts} ${plan.other_hosts === 1 ? "weiterer Host hat" : "weitere Hosts haben"} andere Hinweise und ${plan.other_hosts === 1 ? "ist" : "sind"} nicht Teil dieser Aktion.`
           : ""}
       </p>
     </section>

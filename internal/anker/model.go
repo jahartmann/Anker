@@ -268,17 +268,20 @@ const (
 )
 
 type PlanRequest struct {
-	RemoveFiles       []string                `json:"remove_files,omitempty"`
-	RemovalsConfirmed bool                    `json:"removals_confirmed,omitempty"`
-	Decisions         map[string]FileDecision `json:"decisions,omitempty"`
-	SnapshotID        string                  `json:"snapshot_id,omitempty"`
-	BackupID          string                  `json:"backup_id"`
-	TargetID          string                  `json:"target_id"`
-	Scenario          string                  `json:"scenario"`
-	Files             []string                `json:"files"`
-	Mapping           Mapping                 `json:"mapping"`
-	ConsoleConfirmed  bool                    `json:"console_confirmed"`
-	SourceOffline     bool                    `json:"source_offline"`
+	RemoveFiles       []string `json:"remove_files,omitempty"`
+	RemovalsConfirmed bool     `json:"removals_confirmed,omitempty"`
+	// ProtectedConfirmed approves writing protected system files (identity,
+	// network, cluster, access) of this selection back to the target.
+	ProtectedConfirmed bool                    `json:"protected_confirmed,omitempty"`
+	Decisions          map[string]FileDecision `json:"decisions,omitempty"`
+	SnapshotID         string                  `json:"snapshot_id,omitempty"`
+	BackupID           string                  `json:"backup_id"`
+	TargetID           string                  `json:"target_id"`
+	Scenario           string                  `json:"scenario"`
+	Files              []string                `json:"files"`
+	Mapping            Mapping                 `json:"mapping"`
+	ConsoleConfirmed   bool                    `json:"console_confirmed"`
+	SourceOffline      bool                    `json:"source_offline"`
 }
 type Step struct {
 	Decision        FileDecision     `json:"decision,omitempty"`
@@ -297,6 +300,7 @@ type Plan struct {
 	OutcomeChecks        []RecoveryOutcome             `json:"outcome_checks,omitempty"`
 	RemoveFiles          []string                      `json:"remove_files,omitempty"`
 	RemovalsConfirmed    bool                          `json:"removals_confirmed,omitempty"`
+	ProtectedConfirmed   bool                          `json:"protected_confirmed,omitempty"`
 	VerificationAttempts []RecoveryVerificationAttempt `json:"verification_attempts,omitempty"`
 	SchemaVersion        int                           `json:"schema_version,omitempty"`
 	TargetSnapshotSHA    string                        `json:"target_snapshot_sha,omitempty"`

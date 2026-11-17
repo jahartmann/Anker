@@ -6,7 +6,41 @@ import type { Entry, Status } from "../../api";
 import { Field, Pagination, LoadError } from "../shared";
 import type { RecoveryDraft } from "./useRecoveryDraft";
 import FileNavigation, { useFileNavigation } from "../files/FileNavigation";
-import { indexManifest, parentPath, visibleEntries } from "../files/manifest";
+import {
+  filesByDirectory,
+  groupSelection,
+  indexManifest,
+  parentPath,
+  toggleGroup,
+  visibleEntries,
+} from "../files/manifest";
+import type { GroupSelection } from "../files/manifest";
+import { displayHostName } from "../../hostNames";
+
+function GroupCheckbox({
+  label,
+  state,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  state: GroupSelection;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={state === "all"}
+      disabled={disabled}
+      ref={(input) => {
+        if (input) input.indeterminate = state === "some";
+      }}
+      onChange={onToggle}
+    />
+  );
+}
 function RestoreFiles({
   entries,
   files,
@@ -27,6 +61,7 @@ function RestoreFiles({
   const [listSize, setListSize] = useListPageSize("recovery-source", 25);
   const selected = useMemo(() => new Set(files), [files]);
   const indexed = useMemo(() => indexManifest(entries), [entries]);
+  const below = useMemo(() => filesByDirectory(entries), [entries]);
   const matches = useMemo(
     () =>
       selectedOnly
@@ -54,6 +89,18 @@ function RestoreFiles({
     navigate(path);
     setPage(1);
   }
+  const searching = !!query.trim();
+  // Everything the "select all" box covers: search hits, or the open folder with its subfolders.
+  const scope = searching
+    ? matches.flatMap((entry) =>
+        entry.type === "directory" ? [] : [entry.path],
+      )
+    : below.get(directory) || [];
+  const scopeLabel = searching
+    ? `Alle ${scope.length} gefundenen Dateien auswählen`
+    : directory
+      ? `Alles in ${directory} auswählen`
+      : "Gesamte Sicherung auswählen";
   return (
     <fieldset className="file-selection restore-file-selection">
       <legend>Dateien auswählen · {files.length} ausgewählt</legend>
@@ -85,19 +132,32 @@ function RestoreFiles({
           Nur ausgewählte Dateien
         </button>
       </div>
+      {!selectedOnly && scope.length > 0 && (
+        <label className="check restore-select-all">
+          <GroupCheckbox
+            label={scopeLabel}
+            state={groupSelection(selected, scope)}
+            onToggle={() => onChange(toggleGroup(files, scope))}
+          />
+          <span>{scopeLabel}</span>
+          <small className="muted">
+            {scope.filter((path) => selected.has(path)).length} von{" "}
+            {scope.length}
+          </small>
+        </label>
+      )}
       <div className="restore-file-items">
         {matches.slice((current - 1) * listSize, current * listSize).map((f) =>
           f.type === "directory" ? (
-            <button
-              type="button"
-              className="restore-folder"
+            <FolderRow
               key={f.path}
-              aria-label={"Ordner " + f.path + " öffnen"}
-              onClick={() => moveTo(f.path)}
-            >
-              <span aria-hidden="true">▸</span> {f.path.split("/").at(-1)}
-              {query.trim() && <small className="mono">{f.path}</small>}
-            </button>
+              path={f.path}
+              contents={below.get(f.path) || []}
+              selected={selected}
+              showPath={searching}
+              open={() => moveTo(f.path)}
+              toggle={(group) => onChange(toggleGroup(files, group))}
+            />
           ) : (
             <div className="restore-file-result" key={f.path}>
               <label className="check">
@@ -149,12 +209,62 @@ function RestoreFiles({
         onPageChange={setPage}
         label="Dateien"
       />
-      <p className="field-hint">
-        Die Auswahl bleibt beim Suchen und Blättern erhalten.
-      </p>
     </fieldset>
   );
 }
+
+function FolderRow({
+  path,
+  contents,
+  selected,
+  showPath,
+  open,
+  toggle,
+}: {
+  path: string;
+  contents: string[];
+  selected: Set<string>;
+  showPath: boolean;
+  open: () => void;
+  toggle: (group: string[]) => void;
+}) {
+  const chosen = contents.filter((file) => selected.has(file)).length;
+  return (
+    <div className="restore-folder-row">
+      <GroupCheckbox
+        label={"Ordner " + path + " auswählen"}
+        state={groupSelection(selected, contents)}
+        disabled={!contents.length}
+        onToggle={() => toggle(contents)}
+      />
+      <button
+        type="button"
+        className="restore-folder"
+        aria-label={"Ordner " + path + " öffnen"}
+        onClick={open}
+      >
+        <span aria-hidden="true">▸</span> {path.split("/").at(-1)}
+        {showPath && <small className="mono">{path}</small>}
+      </button>
+      <small className="muted">
+        {contents.length
+          ? chosen
+            ? `${chosen} von ${contents.length}`
+            : `${contents.length} ${contents.length === 1 ? "Datei" : "Dateien"}`
+          : "leer"}
+      </small>
+    </div>
+  );
+}
+
+const situationHint: Record<string, string> = {
+  files: "Ausgewählte Dateien und Ordner aus der Sicherung zurückschreiben.",
+  host: "Einen neu installierten oder neuen Host mit der gesicherten Konfiguration ausstatten. Bootloader, SSH-Zugang, Benutzer und Maschinenidentität des Ziels bleiben erhalten.",
+  "cluster-node":
+    "Einen ausgefallenen Node im laufenden Cluster ersetzen. Nur die Konfiguration dieses Nodes wird übernommen; gemeinsame Clusterdateien bleiben unverändert.",
+  "cluster-disaster":
+    "Den Cluster auf einem isolierten Node neu aufbauen, wenn kein Node mehr läuft. Alte Nodes müssen ausgeschaltet oder vom Netz getrennt sein.",
+};
 
 export default function RecoverySource({
   status,
@@ -170,6 +280,13 @@ export default function RecoverySource({
   useEffect(() => {
     if (isPBS && d.scenario !== "files") d.changeScenario("files");
   }, [isPBS, d.scenario]);
+  // Restoring onto the host the backup came from is the usual case, also when
+  // the assistant opens with a backup chosen elsewhere.
+  const origin = selectedSource?.host_id;
+  useEffect(() => {
+    if (!d.target && origin && status.hosts.some((h) => h.id === origin))
+      d.changeTarget(origin);
+  }, [origin]);
   function shortId(id: string) {
     let length = Math.min(10, id.length);
     while (
@@ -183,7 +300,7 @@ export default function RecoverySource({
     return id.slice(0, length);
   }
   function sourceLabel(source: (typeof status.backups)[number]) {
-    return `${source.host_name} · ${preciseDate(source.created_at)} · ${shortId(source.id)}`;
+    return `${displayHostName(source.host_name)} · ${preciseDate(source.created_at)} · ${shortId(source.id)}`;
   }
   return (
     <section aria-label="Quelle und Situation" data-surface-topic="archive">
@@ -200,7 +317,7 @@ export default function RecoverySource({
             <option value="">Alle Quellhosts</option>
             {Array.from(sources).map(([id, name]) => (
               <option key={id} value={id}>
-                {name}
+                {displayHostName(name)}
               </option>
             ))}
           </select>
@@ -222,16 +339,10 @@ export default function RecoverySource({
           </select>
         </Field>
       </div>
-      {selectedSource && (
-        <div className="field-hint">
-          Gewählte Sicherung: {sourceLabel(selectedSource)}
-          <details>
-            <summary>Vollständige Sicherungs-ID</summary>
-            <code>{selectedSource.id}</code>
-          </details>
-        </div>
-      )}
-      <Field label="Situation">
+      <Field
+        label="Situation"
+        hint={isPBS ? undefined : situationHint[d.scenario]}
+      >
         <select
           value={d.scenario}
           onChange={(e) => d.changeScenario(e.target.value)}
@@ -250,10 +361,9 @@ export default function RecoverySource({
         <section className="notice" aria-label="PBS-Wiederherstellung">
           <h3>PBS-Konfiguration wiederherstellen</h3>
           <p>
-            Der Assistent übernimmt ausgewählte Dateien aus /etc/proxmox-backup.
-            Datastore-Inhalte, Mounts und die Systeminstallation bleiben
-            erhalten. Eine passende PBS-Hauptversion und bereits eingebundene
-            Datastores sind erforderlich.
+            Zurückgeschrieben werden Dateien aus /etc/proxmox-backup.
+            Voraussetzung: gleiche PBS-Hauptversion und bereits eingebundene
+            Datastores.
           </p>
           <p>
             Vor der Zielprüfung am Ziel ausführen:{" "}
@@ -262,10 +372,8 @@ export default function RecoverySource({
             Jobs.
           </p>
           <p>
-            Für Datastore- und Jobdateien die aufbereitete Fassung prüfen:
-            Ziel-Anbindungen bleiben erhalten und zurückgespielte Jobs bleiben
-            deaktiviert. Vor einer späteren Aktivierung alle bestehenden Jobs
-            und Aufbewahrungsregeln separat prüfen.
+            Zurückgespielte Jobs bleiben deaktiviert. Vor dem Aktivieren alle
+            Jobs und Aufbewahrungsregeln prüfen.
           </p>
           <button
             type="button"
@@ -316,9 +424,8 @@ export default function RecoverySource({
         >
           <h3>Zum Entfernen vorgemerkt</h3>
           <p>
-            Diese Dateien fehlen im früheren Quellstand. Erst die aktuelle
-            Zielprüfung ermittelt, was tatsächlich entfernt würde. Danach jede
-            Datei ausdrücklich entscheiden.
+            Diese Dateien gab es im früheren Stand nicht. Nach der Zielprüfung
+            entscheidest du für jede einzeln, ob sie gelöscht wird.
           </p>
           <RemovalFiles
             paths={d.removeFiles}
@@ -327,13 +434,6 @@ export default function RecoverySource({
             }
           />
         </section>
-      )}
-      {d.scenario !== "files" && (
-        <p className="notice">
-          Der Plan führt den Wiederaufbau manuell. Gastdatenträger kommen aus
-          vorhandenen Storages oder PBS. Zielinstallation und bestehender
-          Cluster behalten ihre geschützten Konfigurationen.
-        </p>
       )}
     </section>
   );

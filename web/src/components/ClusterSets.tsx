@@ -125,10 +125,8 @@ export default function ClusterSets({
       <div className="cluster-set-notice">
         <strong>Nur manuelle Quellplanung</strong>
         <p>
-          Die Hosts werden innerhalb des eingestellten Auftragslimits
-          zeitversetzt erfasst. Kein atomarer Clustersnapshot. Die Bewertung
-          gilt für das Erfassungsfenster. Aktuelle Integrität, Quorum, Isolation
-          und Wiederherstellbarkeit separat prüfen.
+          Die Hosts werden nacheinander gesichert, nicht im selben Augenblick.
+          Die Bewertung gilt für diesen Zeitraum.
         </p>
       </div>
       {canEdit && (
@@ -269,9 +267,8 @@ export default function ClusterSets({
                 Quellreferenzen exportieren
               </a>
               <p>
-                Export enthält Referenzen und Grenzen, keine Sicherungsdateien
-                und keine Ausführungsfreigabe. Einzelne Quellen und ihr Material
-                separat prüfen und exportieren.
+                Der Export beschreibt das Set, enthält aber keine
+                Sicherungsdateien. Diese je Host einzeln exportieren.
               </p>
             </>
           )}

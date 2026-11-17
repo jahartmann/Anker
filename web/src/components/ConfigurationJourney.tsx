@@ -10,7 +10,7 @@ import {
   Files,
   Fingerprint,
 } from "lucide-react";
-import { api, preciseDate } from "../api";
+import { api, preciseDate, plural } from "../api";
 import type { Backup, FileDiff } from "../api";
 import { usableRecoverySource } from "../hostHealth";
 import { observationLabels, settingValue } from "../settingHistory";
@@ -178,12 +178,12 @@ export default function ConfigurationJourney({
     <section
       className="configuration-journey"
       data-surface-topic="activity"
-      aria-label="Konfigurationsreise"
+      aria-label="Änderungen"
     >
       <header className="journey-heading">
         <div>
           <span className="eyebrow">
-            <Compass size={15} aria-hidden="true" /> Konfigurationsreise
+            <Compass size={15} aria-hidden="true" /> Änderungen
           </span>
           <h3>Konfiguration im Verlauf</h3>
           <p>
@@ -306,7 +306,7 @@ export default function ConfigurationJourney({
           <div
             className="journey-areas"
             role="group"
-            aria-label="Bereich der Konfigurationsreise"
+            aria-label="Bereich der Änderungen"
           >
             <button
               className="journey-area"
@@ -459,7 +459,7 @@ export default function ConfigurationJourney({
             >
               {showAllSettings
                 ? "Unklare Werte einklappen"
-                : `${settings.length - recorded.length} weitere Einstellungen ohne eindeutigen Wert anzeigen`}
+                : `${plural(settings.length - recorded.length, "weitere Einstellung", "weitere Einstellungen")} ohne eindeutigen Wert anzeigen`}
             </button>
           )}
           {!!visibleFiles.length && (
@@ -484,7 +484,12 @@ export default function ConfigurationJourney({
               </div>
               {visibleFiles.length > 3 && (
                 <p>
-                  {visibleFiles.length - 3} weitere Dateien im Detailvergleich.
+                  {plural(
+                    visibleFiles.length - 3,
+                    "weitere Datei",
+                    "weitere Dateien",
+                  )}{" "}
+                  im Detailvergleich.
                 </p>
               )}
             </div>
@@ -507,9 +512,8 @@ export default function ConfigurationJourney({
             </button>
           </div>
           <p className="journey-footnote">
-            Jeder Schritt steht für eine Sicherung. Angezeigt werden die Werte
-            in den Dateien. Welche Werte am laufenden Host gelten, wird hier
-            nicht geprüft; Standardwerte werden nicht ergänzt.
+            Jeder Schritt ist eine Sicherung. Gezeigt werden die Werte aus den
+            gesicherten Dateien, nicht der laufende Zustand des Hosts.
           </p>
         </>
       )}

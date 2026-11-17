@@ -6,11 +6,9 @@ async function setup(page: any, request: any) {
   await page
     .getByRole("button", { name: "pve-berlin-01", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
   const explanation = page
-    .getByRole("region", { name: "Konfigurationsreise" })
+    .getByRole("region", { name: "Änderungen" })
     .getByRole("region", { name: "Bedeutung der Änderung" });
   await expect(explanation).toBeVisible();
   return explanation.getByRole("button", {
@@ -111,7 +109,7 @@ test("collateral values and removals are explicit while files stay paged", async
   await expect(
     dialog.locator(".rollback-additional .rollback-values strong"),
   ).toHaveText(["10", "60"]);
-  await expect(dialog).toContainText("Entfernung erfordern");
+  await expect(dialog).toContainText("zurückkehren hieße, sie zu löschen");
   await expect(dialog).toContainText("Datei wieder anlegen");
   await expect(dialog.locator(".rollback-file-card")).toHaveCount(4);
   await dialog
@@ -214,7 +212,7 @@ test("the setting trail offers the same read-only return preview", async ({
   await expect(dialog.locator(".rollback-values strong").first()).toHaveText(
     "Deaktiviert",
   );
-  await expect(dialog).toContainText("frisch gelesener Zielzustand");
+  await expect(dialog).toContainText("prüft erst der Assistent");
 });
 
 test("handoff keeps source, node and selected files but requires a fresh inspection and explicit decisions", async ({
@@ -374,9 +372,7 @@ test("only selected files reach the assistant and a new handoff does not reuse a
   await page
     .getByRole("button", { name: "pve-berlin-01", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
   await page
     .getByRole("button", { name: "Wiederherstellungsvorschau", exact: true })
     .click();
@@ -479,7 +475,9 @@ test("handoff reaches the existing guarded demo execution after current inspecti
       new URL(r.url()).pathname === "/api/plans" &&
       r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   const plan = await (await response).json();
   await expect(
     page.getByRole("button", { name: "In Demo anwenden", exact: true }),

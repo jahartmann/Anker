@@ -104,7 +104,7 @@ test("fresh inspection shows only necessary mappings before creating a plan", as
     0,
   );
   await expect(
-    page.getByRole("button", { name: "Plan prüfen", exact: true }),
+    page.getByRole("button", { name: "Plan speichern", exact: true }),
   ).toHaveCount(0);
 });
 test("failed inspection retries the same file draft and prevents duplicate or closed requests", async ({
@@ -201,10 +201,10 @@ test("duplicate physical port choices block preparation and storage stays an exp
     .getByRole("button", { name: "Weiter zu Entscheidungen", exact: true })
     .click();
   await expect(
-    page.getByLabel("local-zfs → Zielspeicher (manuell)", { exact: true }),
+    page.getByLabel("local-zfs → Zielspeicher", { exact: true }),
   ).toHaveValue("");
   await page
-    .getByLabel("local-zfs → Zielspeicher (manuell)", { exact: true })
+    .getByLabel("local-zfs → Zielspeicher", { exact: true })
     .selectOption("manual");
   await page
     .getByLabel("eno2 → Zielport", { exact: true })
@@ -226,12 +226,14 @@ test("duplicate physical port choices block preparation and storage stays an exp
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText("Prüfung unterbrochen");
   expect(payload.mapping.storage).toEqual({ "local-zfs": "manual" });
   await page.getByRole("button", { name: "Zurück", exact: true }).click();
   await expect(
-    page.getByLabel("local-zfs → Zielspeicher (manuell)", { exact: true }),
+    page.getByLabel("local-zfs → Zielspeicher", { exact: true }),
   ).toHaveValue("manual");
 });
 
@@ -668,7 +670,9 @@ test("whole recovery records desired identity as a manual decision without anoth
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText("Planprüfung pausiert");
   expect(payload.mapping.hostname).toBe("pve-ersatz");
   expect(payload.mapping.address).toBe("10.50.0.77");
@@ -1424,7 +1428,7 @@ test("a lost reply with ready server and refused reconcile gives console guidanc
   await expect(
     page.getByRole("region", { name: "Wiederherstellungsplan" }),
   ).toContainText(
-    "Über die Zielkonsole das Hostjournal zur Recovery-ID review-plan und laufende Anker-Aufträge prüfen",
+    "Über die Zielkonsole das Hostjournal zur Plan-ID review-plan und laufende Anker-Aufträge prüfen",
   );
   await expect(
     page.getByRole("button", { name: "Hostzustand abgleichen", exact: true }),

@@ -1,7 +1,7 @@
 import SettingExplanation from "./SettingExplanation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Fingerprint, ArrowRight, Clock3 } from "lucide-react";
-import { api, preciseDate } from "../api";
+import { api, preciseDate, plural } from "../api";
 import type { Backup } from "../api";
 import { LoadError } from "./shared";
 import {
@@ -160,9 +160,8 @@ export default function SettingHistory({
             </select>
           </label>
           <p className="setting-trace-note">
-            Anker liest die Werte aus den gesicherten Dateien. Ob sie am Host
-            wirksam sind, welche Standardwerte gelten oder welche Datei Vorrang
-            hat, wird hier nicht geprüft.
+            Die Werte stammen aus den gesicherten Dateien. Ob sie am Host gerade
+            wirksam sind, zeigt diese Ansicht nicht.
           </p>
           {busy && !result && <p role="status">Werte werden geladen …</p>}
           {error && (
@@ -176,8 +175,9 @@ export default function SettingHistory({
             <>
               {result.undated > 0 && (
                 <p className="notice warning">
-                  {result.undated} Stände mit unplausiblem Datum sind zeitlich
-                  nicht eingeordnet.
+                  {plural(result.undated, "Stand", "Stände")} mit unplausiblem
+                  Datum {result.undated === 1 ? "ist" : "sind"} zeitlich nicht
+                  eingeordnet.
                 </p>
               )}
               {latest ? (
@@ -209,7 +209,7 @@ export default function SettingHistory({
                 </div>
               ) : (
                 <p>
-                  Noch keine datierten Sicherungen für diese Node vorhanden.
+                  Noch keine datierten Sicherungen für diesen Host vorhanden.
                 </p>
               )}
               <div
@@ -345,7 +345,8 @@ export default function SettingHistory({
               )}
               {!!result.observations.length && (
                 <p className="setting-trace-note">
-                  {result.observations.length} Stände geprüft
+                  {plural(result.observations.length, "Stand", "Stände")}{" "}
+                  geprüft
                   {result.next
                     ? " · weitere Sicherungen vorhanden"
                     : " · Ende des vorhandenen datierten Verlaufs"}

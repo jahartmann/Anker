@@ -14,6 +14,7 @@ test("overview metrics open meaningful filters repeatedly", async ({
     route.fulfill({ json: { ...base, hosts, backups: [], jobs: [] } }),
   );
   await page.goto("/");
+  const hostFilters = page.getByRole("group", { name: "Host-Schnellfilter" });
   const overview = () =>
     page
       .getByRole("navigation", { name: "Hauptnavigation" })
@@ -22,23 +23,23 @@ test("overview metrics open meaningful filters repeatedly", async ({
   await overview();
   await page.getByRole("button", { name: /^Aktive Hosts/ }).click();
   await expect(
-    page.getByLabel("Hoststatus filtern", { exact: true }),
-  ).toHaveValue("active");
+    hostFilters.getByRole("button", { name: /^Aktiv/ }),
+  ).toHaveAttribute("aria-pressed", "true");
   await overview();
   await page.getByRole("button", { name: /^Handlungsbedarf/ }).click();
   await expect(
-    page.getByLabel("Hoststatus filtern", { exact: true }),
-  ).toHaveValue("attention");
+    hostFilters.getByRole("button", { name: /^Handlungsbedarf/ }),
+  ).toHaveAttribute("aria-pressed", "true");
   await overview();
   await page.getByRole("button", { name: /^Aktuell gesichert/ }).click();
   await expect(
-    page.getByLabel("Hoststatus filtern", { exact: true }),
-  ).toHaveValue("saved");
+    hostFilters.getByRole("button", { name: /^Gesichert/ }),
+  ).toHaveAttribute("aria-pressed", "true");
   await overview();
   await page.getByRole("button", { name: /^Aktive Hosts/ }).click();
   await expect(
-    page.getByLabel("Hoststatus filtern", { exact: true }),
-  ).toHaveValue("active");
+    hostFilters.getByRole("button", { name: /^Aktiv/ }),
+  ).toHaveAttribute("aria-pressed", "true");
   await overview();
   await page.getByRole("button", { name: /^Aktive Aufträge/ }).click();
   await expect(

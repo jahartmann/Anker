@@ -66,9 +66,7 @@ export default function RecoveryChecks({
     >
       <h3>Manuelle Aufgaben und Betriebsprüfungen</h3>
       <p className="field-hint">
-        Benutzerbestätigungen dokumentieren eigene Prüfungen. Sie ersetzen keine
-        maschinellen Nachweise und geben Netzwerk, Cluster oder
-        Storageverwaltung nicht automatisch frei.
+        Hier hältst du fest, was du nach der Übernahme selbst geprüft hast.
       </p>
       <section
         aria-label="Maschinelle Prüfversuche"
@@ -77,9 +75,7 @@ export default function RecoveryChecks({
       >
         <h3>Maschinelle Prüfversuche</h3>
         <p className="field-hint">
-          Frische lesende Abfrage am gebundenen Ziel. Dienste und aufgenommene
-          Volumes werden geprüft; keine automatische Aktivierung, kein Neustart
-          und keine Betriebsfreigabe.
+          Anker liest Dienste und Volumes am Ziel und ändert dabei nichts.
         </p>
         {onVerify && (
           <button

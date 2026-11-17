@@ -181,7 +181,14 @@ func (c SSHCollector) Apply(ctx context.Context, h Host, p Plan, root string) (A
 				return result, errors.New("Zielmetadaten sind ungültig")
 			}
 		}
-		files = append(files, map[string]any{"path": step.Path, "before_sha": step.BeforeSHA, "content": base64.StdEncoding.EncodeToString(data), "mode": e.Mode, "uid": e.UID, "gid": e.GID, "type": e.Type, "expected_metadata": expected, "user": users[strconv.Itoa(e.UID)], "group": groups[strconv.Itoa(e.GID)]})
+		item := map[string]any{"path": step.Path, "before_sha": step.BeforeSHA, "content": base64.StdEncoding.EncodeToString(data), "mode": e.Mode, "uid": e.UID, "gid": e.GID, "type": e.Type, "expected_metadata": expected, "user": users[strconv.Itoa(e.UID)], "group": groups[strconv.Itoa(e.GID)]}
+		if protectedPath(step.Path) {
+			if !p.ProtectedConfirmed {
+				return result, errors.New("Geschützte Systemdatei ohne Bestätigung im Plan")
+			}
+			item["protected_confirmed"] = true
+		}
+		files = append(files, item)
 	}
 	req := map[string]any{"version": 1, "operation": "apply", "plan_id": p.ID, "confirm": p.ID, "expected_inventory": p.Target, "files": files}
 	err = sshRun(ctx, h, req, func(r io.Reader) error {

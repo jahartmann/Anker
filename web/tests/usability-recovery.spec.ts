@@ -138,7 +138,9 @@ test("recovery selection pages and searches 1600 files without dropping prior se
   await files
     .getByRole("button", { name: "Ordner etc/sysctl.d öffnen" })
     .click();
-  await expect(files.getByRole("checkbox")).toHaveCount(25);
+  await expect(
+    files.locator(".restore-file-items").getByRole("checkbox"),
+  ).toHaveCount(25);
   await files
     .getByLabel("etc/sysctl.d/conf-0000.conf", { exact: true })
     .check();
@@ -178,7 +180,9 @@ test("recovery selection pages and searches 1600 files without dropping prior se
   await page
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText(
     "Testziel nicht erreichbar",
   );
@@ -276,7 +280,9 @@ test("freshly inspected target ports are mapped before the first plan without lo
     .getByRole("button", { name: "Weiter zur Planprüfung", exact: true })
     .click();
   await page.getByLabel("Konsolenzugang zum Ziel ist verfügbar").check();
-  await page.getByRole("button", { name: "Plan prüfen", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Plan speichern", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Wiederherstellungsplan", exact: true }),
   ).toBeVisible();
@@ -400,12 +406,13 @@ test("large host lists page and filter by actionable state without losing hosts"
   await expect(
     page.getByRole("button", { name: "node-39", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Hoststatus filtern").selectOption("paused");
+  const hostFilters = page.getByRole("group", { name: "Host-Schnellfilter" });
+  await hostFilters.getByRole("button", { name: /^Pausiert/ }).click();
   await expect(page.locator(".host-table tbody tr")).toHaveCount(1);
   await expect(
     page.getByRole("button", { name: "node-39", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Hoststatus filtern").selectOption("attention");
+  await hostFilters.getByRole("button", { name: /^Handlungsbedarf/ }).click();
   await expect(page.locator(".host-table tbody tr")).toHaveCount(8);
   await page.getByLabel("Hosts durchsuchen").fill("node-38");
   await expect(page.locator(".host-table tbody tr")).toHaveCount(1);

@@ -335,7 +335,9 @@ export default function RecoveryOutcomeCards({
                     }}
                   >
                     {filter === "attention"
-                      ? `Alle ${files.length} Dateien zeigen`
+                      ? files.length === 1
+                        ? "Die Datei zeigen"
+                        : `Alle ${files.length} Dateien zeigen`
                       : "Nur Prüfbedarf zeigen"}
                   </button>
                 )}

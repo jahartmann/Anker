@@ -26,7 +26,7 @@ export default function RecoveryEvidence({
   );
   const rows = matches
     .slice((current - 1) * listSize, current * listSize)
-    .map((item, i) => <li key={(current - 1) * 25 + i}>{item}</li>);
+    .map((item, i) => <li key={(current - 1) * listSize + i}>{item}</li>);
   return (
     <details
       className={

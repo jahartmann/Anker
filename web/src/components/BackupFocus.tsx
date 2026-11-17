@@ -11,7 +11,7 @@ import BackupIssues from "./BackupIssues";
 function problem(backup: Backup) {
   return !usableRecoverySource(backup);
 }
-export function focusBackups(status: Status, hostID: string) {
+function focusBackups(status: Status, hostID: string) {
   const groups = new Map<string, Backup[]>();
   for (const backup of status.backups) {
     const history = groups.get(backup.host_id) || [];

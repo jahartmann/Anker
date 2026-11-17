@@ -407,10 +407,9 @@ export default function Updates({
                 <div className="update-note" role="status">
                   <strong>{state.target} wird installiert …</strong>
                   <p>
-                    Die Oberfläche kann beim Neustart kurz nicht erreichbar
-                    sein. Anker prüft den Start und fällt bei einem Fehler auf
-                    die vorherige Version zurück. Nach erfolgreichem Start wird
-                    diese Seite automatisch neu geladen.
+                    Beim Neustart ist die Oberfläche kurz nicht erreichbar und
+                    lädt danach selbst neu. Schlägt der Start fehl, kehrt Anker
+                    zur vorherigen Version zurück.
                   </p>
                 </div>
               ) : state.available ? (
@@ -544,9 +543,8 @@ export default function Updates({
             Anker {state.current} wird durch {state.available.version} ersetzt.
           </p>
           <p>
-            Der Dienst startet dafür neu. Aktive Aufträge müssen vorher beendet
-            sein. Bei einem fehlgeschlagenen Start werden die vorherige
-            Programmversion und der Katalog wiederhergestellt.
+            Der Dienst startet neu; laufende Aufträge müssen vorher fertig sein.
+            Schlägt der Start fehl, kehrt Anker zur vorherigen Version zurück.
           </p>
           <p className="muted">
             Die Anmeldung bleibt nach dem Update erhalten.

@@ -208,6 +208,7 @@ test("saving reviewed intent requires explicit review and shows the saved mappin
     .getByRole("button", { name: "Wiederherstellung", exact: true })
     .click();
   await page.getByRole("button", { name: "Plan ansehen", exact: true }).click();
+  await page.getByText("Zuordnungen als Vorlage speichern").click();
   const save = page.getByRole("region", {
     name: "Zuordnungsvorlage speichern",
   });

@@ -717,7 +717,7 @@ def load_journal(folder):
   if j['state'] not in ('writing','applied','rolling_back','rolled_back','interrupted','rollback_conflict','failed') or not isinstance(j['files'],list):raise ValueError('invalid journal state')
   for e in j['files']:
    relative(e['path'])
-   if protected_restore(e['path']) or e['phase'] not in ('prepared','writing','applied','rolling_back','rolled_back','rollback_conflict'):raise ValueError('invalid journal file')
+   if not e['path'].startswith(('etc/','usr/local/')) or e['phase'] not in ('prepared','writing','applied','rolling_back','rolled_back','rollback_conflict'):raise ValueError('invalid journal file')
    for key in ('before_sha','after_sha'):
     if not re.fullmatch(r'[0-9a-f]{64}',e[key]) and not (e[key]=='missing' and (key=='before_sha' or (e.get('action')=='remove' and e.get('after_metadata') is None and e.get('before_sha')!='missing'))):raise ValueError('invalid journal hash')
    if e['before_sha']=='missing' and e['before_metadata'] is not None:raise ValueError('invalid journal metadata')
@@ -742,12 +742,17 @@ def restore_status(root,plan_id):
 
 
 def write_file(path,data,mode,uid,gid,test_mode):
+ # /etc/pve is pmxcfs: owner and mode are fixed by the cluster filesystem and
+ # chown/chmod are refused there, so they are left to pmxcfs.
+ cluster_fs=not test_mode and '/etc/pve/' in path.as_posix()
  fd,tmp=tempfile.mkstemp(prefix='.anker-',dir=path.parent)
  try:
   with os.fdopen(fd,'wb') as f:
    f.write(data);f.flush()
-   if not test_mode:os.fchown(f.fileno(),uid,gid)
-   os.fchmod(f.fileno(),mode);os.fsync(f.fileno())
+   if not cluster_fs:
+    if not test_mode:os.fchown(f.fileno(),uid,gid)
+    os.fchmod(f.fileno(),mode)
+   os.fsync(f.fileno())
   if metadata(pathlib.Path(tmp),test_mode)['xattrs']:raise ValueError('staging metadata contains unsupported ACL/xattrs; manual procedure required')
   sync_directory(path.parent)
   return tmp
@@ -843,7 +848,8 @@ def apply_files(root,items,test_mode=False,plan_id=None):
    if pbs:
     if not pbs_restore_path(rel) or item.get('action','replace')!='replace' or pbs_excluded(p,pbs_data_roots(root)):raise ValueError('PBS recovery writes configuration files only; no deletions')
    elif rel.startswith('etc/proxmox-backup/'):raise ValueError('PBS configuration requires a PBS target')
-   if protected_restore(rel):raise ValueError('protected restore requires manual procedure: '+rel)
+   if not rel.startswith(('etc/','usr/local/')):raise ValueError('only host configuration files can be restored: '+rel)
+   if protected_restore(rel) and item.get('protected_confirmed') is not True:raise ValueError('protected restore requires explicit confirmation: '+rel)
    if rel in seen:raise ValueError('duplicate restore path')
    seen.add(rel)
    if item.get('type','file')!='file' or item.get('xattrs'):raise ValueError('file metadata requires manual procedure')
@@ -1063,7 +1069,14 @@ def main(root=None):
    if any(details.get('command_results',{}).get(k,{}).get('state')!='ok' for k in required):raise ValueError('required target inventory query failed')
   for x in ('captured_at','fingerprint'):expected.pop(x,None);current.pop(x,None)
   stable=('file_hashes','file_metadata','users','groups','capabilities','command_results','boot_id','addresses','routes','packages','manual_packages','pci','boot','pbs_services','pbs_datastore_identity')
-  for inv in (expected,current):inv['details']={k:v for k,v in inv.get('details',{}).items() if k in stable}
+  for inv in (expected,current):
+   details={k:v for k,v in inv.get('details',{}).items() if k in stable}
+   if inv.get('host_type')=='pve' and isinstance(details.get('file_hashes'),dict):
+    # pmxcfs metrics, the virtual version index and HA heartbeats change without an admin edit.
+    # Keep comparing file metadata and the hashes of the underlying configuration files.
+    details['file_hashes']={path:digest for path,digest in details['file_hashes'].items()
+     if path not in ('etc/pve/.rrd','etc/pve/.version') and not re.fullmatch(r'etc/pve/nodes/[^/]+/lrm_status',path)}
+   inv['details']=details
   def normalize(v):
    if isinstance(v,dict):return {k:normalize(x) for k,x in v.items() if k not in ('valid_life_time','preferred_life_time') and x not in ('',None,[],{})}
    if isinstance(v,list):return [normalize(x) for x in v]

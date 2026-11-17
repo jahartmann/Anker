@@ -695,9 +695,8 @@ export default function Jobs({
                 )}
                 {selected.kind === "restore" && (
                   <p className="hint">
-                    Das Auftragsergebnis ist kein Rebootnachweis. Im Plan das
-                    Hostjournal und offene Prüfungen ansehen, bevor ein weiterer
-                    Lauf vorbereitet wird.
+                    Ob der Host danach sauber neu startet, zeigt dieser Auftrag
+                    nicht. Offene Prüfungen stehen im Plan.
                   </p>
                 )}
                 {selected.kind === "restore" &&

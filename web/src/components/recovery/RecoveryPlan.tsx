@@ -2,7 +2,7 @@ import { useListPageSize } from "../../listPageSize";
 import RecoveryOutcomeCards from "./RecoveryOutcomeCards";
 import RemovalFiles from "./RemovalFiles";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, labels } from "../../api";
+import { api, ApiError, labels, plural } from "../../api";
 import type {
   FileComparison,
   Job,
@@ -127,6 +127,9 @@ export default function RecoveryPlan({
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [deletionsConfirmed, setDeletionsConfirmed] = useState(false);
   const hasDeletions = plan.steps.some((s) => s.action === "remove");
+  const manualSteps = plan.steps.filter((s) => s.action === "manual");
+  const nothingToWrite =
+    plan.steps.length > 0 && plan.steps.every((s) => s.action === "keep");
   const [confirmation, setConfirmation] = useState("");
   useEffect(() => {
     setDeletionsConfirmed(false);
@@ -406,6 +409,15 @@ export default function RecoveryPlan({
       }
     }
   }
+  const checks = (
+    <RecoveryChecks
+      plan={plan}
+      onVerify={user.role !== "reader" ? verifyRecovery : undefined}
+      onConfirm={user.role !== "reader" ? confirmTask : undefined}
+      disabled={busy || !!pendingJob || uncertain || targetBusy}
+      onDirtyChange={setChecksDirty}
+    />
+  );
   return (
     <section
       className="recovery-workspace recovery-plan-page"
@@ -447,11 +459,9 @@ export default function RecoveryPlan({
       )}
       {plan.source.host_type === "pbs" && (
         <p className="notice" role="status">
-          PBS-Konfigurationsplan: Datastore-Inhalte und Ziel-Anbindungen bleiben
-          erhalten. PBS-Dienste bleiben während Übernahme und Rücksetzung
-          gestoppt. Zurückgespielte Jobs sind in der aufbereiteten Fassung
-          deaktiviert; alle bestehenden Jobs vor einem späteren Dienststart
-          separat prüfen.
+          PBS-Plan: Datastore-Inhalte und Anbindungen des Ziels bleiben, wie sie
+          sind. Die PBS-Dienste müssen gestoppt sein; zurückgespielte Jobs sind
+          deaktiviert. Vor dem Dienststart alle Jobs prüfen.
         </p>
       )}
       <section className="recovery-plan-summary" aria-label="Planübersicht">
@@ -489,14 +499,22 @@ export default function RecoveryPlan({
           <div>
             <dt>Dateiaktionen</dt>
             <dd>
-              {plan.steps.filter((step) => step.action === "apply").length}{" "}
-              Dateien übernehmen ·{" "}
-              {plan.steps.filter((step) => step.action === "remove").length}{" "}
-              Entfernungen ·{" "}
-              {plan.steps.filter((step) => step.action === "keep").length} Ziel
-              behalten ·{" "}
-              {plan.steps.filter((step) => step.action === "manual").length}{" "}
-              manuelle Dateien
+              {(
+                [
+                  ["apply", "wird geschrieben", "werden geschrieben"],
+                  ["remove", "wird gelöscht", "werden gelöscht"],
+                  ["keep", "bleibt unverändert", "bleiben unverändert"],
+                  ["manual", "manuell", "manuell"],
+                ] as const
+              )
+                .map(([action, one, many]) => {
+                  const count = plan.steps.filter(
+                    (step) => step.action === action,
+                  ).length;
+                  return count ? `${count} ${count === 1 ? one : many}` : "";
+                })
+                .filter(Boolean)
+                .join(" · ") || "Keine Dateiaktionen"}
             </dd>
           </div>
         </dl>
@@ -527,6 +545,88 @@ export default function RecoveryPlan({
           {s}
         </p>
       ))}
+      {nothingToWrite && (
+        <p className="notice" role="status">
+          Nichts zu schreiben:{" "}
+          {plan.steps.length === 1
+            ? "Die Datei ist"
+            : `Alle ${plan.steps.length} Dateien sind`}{" "}
+          am Ziel bereits identisch oder bleiben, wie sie sind.
+        </p>
+      )}
+      {manualSteps.length > 0 && (
+        <p className="notice warning">
+          {manualSteps.length === 1
+            ? "Eine Datei schreibt Anker nicht selbst; sie bleibt am Ziel, wie sie ist:"
+            : `${manualSteps.length} Dateien schreibt Anker nicht selbst; sie bleiben am Ziel, wie sie sind:`}{" "}
+          <span className="mono">
+            {manualSteps
+              .slice(0, 5)
+              .map((step) => step.path)
+              .join(", ")}
+            {manualSteps.length > 5 && " …"}
+          </span>
+        </p>
+      )}
+      {hasDeletions && plan.state === "ready" && (
+        <section
+          className="removal-cards"
+          aria-label="Löschumfang vor Ausführung"
+        >
+          <h3>Diese Dateien werden gelöscht</h3>
+          <p>
+            Der vorherige Inhalt wird gesichert und lässt sich zurücksetzen.
+          </p>
+          <RemovalFiles
+            paths={plan.steps
+              .filter((s) => s.action === "remove")
+              .map((s) => s.path)}
+          />
+          {user.role !== "reader" && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={deletionsConfirmed}
+                onChange={(e) => setDeletionsConfirmed(e.target.checked)}
+              />
+              Diese Dateien nach vorheriger Sicherung ausdrücklich löschen
+            </label>
+          )}
+        </section>
+      )}
+      {!legacy && plan.state === "ready" && user.role !== "reader" && (
+        <section className="plan-execute" aria-label="Plan ausführen">
+          {!pendingJob && (
+            <Field label="Plan-ID zur Ausführung eingeben" hint={plan.id}>
+              <input
+                autoComplete="off"
+                disabled={busy}
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                placeholder={plan.id}
+              />
+            </Field>
+          )}
+          <button
+            disabled={
+              confirmation !== plan.id ||
+              (hasDeletions && !deletionsConfirmed) ||
+              !!plan.blockers?.length ||
+              busy ||
+              !!pendingJob ||
+              uncertain ||
+              targetBusy
+            }
+            onClick={() => execute("apply")}
+          >
+            {busy
+              ? "Startet …"
+              : status.demo
+                ? "In Demo anwenden"
+                : "Dateien übernehmen"}
+          </button>
+        </section>
+      )}
       <h3 className="recovery-section-title">Dateiaktionen und Vergleiche</h3>
       {legacy && (
         <p className="notice warning">
@@ -580,27 +680,28 @@ export default function RecoveryPlan({
         {plan.result && (
           <div className="notice recovery-result">
             <p>
-              {plan.result.applied?.length || 0} Dateien im Übernahmenachweis.{" "}
+              {plural(plan.result.applied?.length || 0, "Datei", "Dateien")} im
+              Übernahmenachweis.{" "}
               {plan.state === "rolled_back" && !uncertain
                 ? "Rücksetzung laut Hostjournal abgeschlossen."
                 : "Betriebsprüfung bleibt ausstehend."}
             </p>
             {plan.result.operation_id && (
               <p>
-                Recovery-ID:{" "}
+                Plan-ID:{" "}
                 <span className="mono">{plan.result.operation_id}</span>
               </p>
             )}
             {plan.result.rollback_path && (
               <p>
-                Rollback:{" "}
+                Rücksetzdaten:{" "}
                 <span className="mono">{plan.result.rollback_path}</span>
               </p>
             )}
             {plan.result.error && <p role="alert">{plan.result.error}</p>}
             <p>
-              Ein vollständiger Host-Restore und ein geprüfter Neustart sind
-              damit nicht bestätigt.
+              Eine vollständige Hostwiederherstellung und ein geprüfter Neustart
+              sind damit nicht bestätigt.
             </p>
             <p className="field-hint">
               {status.demo
@@ -621,13 +722,14 @@ export default function RecoveryPlan({
         <PlanFiles key={plan.id} plan={plan} user={user} />
       </div>
       <div id="plan-tasks">
-        <RecoveryChecks
-          plan={plan}
-          onVerify={user.role !== "reader" ? verifyRecovery : undefined}
-          onConfirm={user.role !== "reader" ? confirmTask : undefined}
-          disabled={busy || !!pendingJob || uncertain || targetBusy}
-          onDirtyChange={setChecksDirty}
-        />
+        {nothingToWrite && !plan.result ? (
+          <details className="detail-disclosure">
+            <summary>Prüfungen nach einer Übernahme</summary>
+            {checks}
+          </details>
+        ) : (
+          checks
+        )}
       </div>
       {(uncertain ||
         ["interrupted", "failed", "unknown", "rollback_conflict"].includes(
@@ -641,7 +743,7 @@ export default function RecoveryPlan({
       )}
       {reconcileRefused && (
         <p className="notice warning" role="status">
-          Über die Zielkonsole das Hostjournal zur Recovery-ID {plan.id} und
+          Über die Zielkonsole das Hostjournal zur Plan-ID {plan.id} und
           laufende Anker-Aufträge prüfen. Der Server speichert keine ungeklärte
           Ausführung. Dieser Plan bleibt für eine zweite Übernahme gesperrt,
           solange Server und Journal keinen eindeutigen Zustand liefern. Ein
@@ -649,54 +751,11 @@ export default function RecoveryPlan({
           ändert.
         </p>
       )}
-      {hasDeletions && plan.state === "ready" && (
-        <section
-          className="removal-cards"
-          aria-label="Löschumfang vor Ausführung"
-        >
-          <h3>Diese Dateien werden gelöscht</h3>
-          <p>
-            Vorherige Inhalte und Eigenschaften werden für die kontrollierte
-            Rücksetzung gesichert. Nachträglich neu angelegte Dateien bleiben
-            bei einer Rücksetzung erhalten.
-          </p>
-          <RemovalFiles
-            paths={plan.steps
-              .filter((s) => s.action === "remove")
-              .map((s) => s.path)}
-          />
-          {user.role !== "reader" && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={deletionsConfirmed}
-                onChange={(e) => setDeletionsConfirmed(e.target.checked)}
-              />
-              Diese Dateien nach vorheriger Sicherung ausdrücklich löschen
-            </label>
-          )}
-        </section>
-      )}
-      {!legacy &&
-        plan.state === "ready" &&
-        user.role !== "reader" &&
-        !pendingJob && (
-          <Field label="Plan-ID zur Ausführung eingeben" hint={plan.id}>
-            <input
-              autoComplete="off"
-              disabled={busy}
-              value={confirmation}
-              onChange={(e) => setConfirmation(e.target.value)}
-              placeholder={plan.id}
-            />
-          </Field>
-        )}
       {rollbackOpen && (
         <section className="recovery-rollback">
           <p className="notice warning">
-            Nur unveränderte Dateien aus dieser Übernahme werden kontrolliert
-            zurückgesetzt. Zwischenzeitliche Fremdänderungen können die
-            Rücksetzung blockieren.
+            Zurückgesetzt werden nur Dateien, die seit der Übernahme niemand
+            geändert hat.
           </p>
           <Field label="Plan-ID zur Rücksetzung eingeben" hint={plan.id}>
             <input
@@ -738,12 +797,15 @@ export default function RecoveryPlan({
         </p>
       )}
       {!legacy && user.role !== "reader" && (
-        <SaveRecoveryRecipe
-          key={plan.id}
-          planID={plan.id}
-          mapping={plan.mapping}
-          disabled={busy || uncertain || !!pendingJob || targetBusy}
-        />
+        <details className="detail-disclosure">
+          <summary>Zuordnungen als Vorlage speichern</summary>
+          <SaveRecoveryRecipe
+            key={plan.id}
+            planID={plan.id}
+            mapping={plan.mapping}
+            disabled={busy || uncertain || !!pendingJob || targetBusy}
+          />
+        </details>
       )}
       <footer className="dialog-footer">
         {onRevise &&
@@ -803,26 +865,6 @@ export default function RecoveryPlan({
               Dateien zurücksetzen
             </button>
           )}
-        {!legacy && plan.state === "ready" && user.role !== "reader" && (
-          <button
-            disabled={
-              confirmation !== plan.id ||
-              (hasDeletions && !deletionsConfirmed) ||
-              !!plan.blockers?.length ||
-              busy ||
-              !!pendingJob ||
-              uncertain ||
-              targetBusy
-            }
-            onClick={() => execute("apply")}
-          >
-            {busy
-              ? "Startet …"
-              : status.demo
-                ? "In Demo anwenden"
-                : "Dateien übernehmen"}
-          </button>
-        )}
       </footer>
     </section>
   );
@@ -905,19 +947,24 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
                       : "Manuell · keine automatische Übernahme"}
               </span>
             </div>
-            <p className="field-hint">
-              Entscheidung:{" "}
-              {step.decision === "backup"
-                ? "Originalsicherung"
-                : step.decision === "remove"
-                  ? "Ausdrücklich entfernen"
-                  : step.decision === "prepared"
-                    ? "Vorbereitete Datei"
-                    : step.decision === "keep"
-                      ? "Ziel behalten"
-                      : "Manuelle Referenz"}{" "}
-              · Zielpfad: {step.destination || step.path}
-            </p>
+            {(step.decision !== "keep" ||
+              (step.destination && step.destination !== step.path)) && (
+              <p className="field-hint">
+                Entscheidung:{" "}
+                {step.decision === "backup"
+                  ? "Originalsicherung"
+                  : step.decision === "remove"
+                    ? "Ausdrücklich entfernen"
+                    : step.decision === "prepared"
+                      ? "Vorbereitete Datei"
+                      : step.decision === "keep"
+                        ? "Ziel behalten"
+                        : "Manuelle Referenz"}{" "}
+                {step.destination &&
+                  step.destination !== step.path &&
+                  ` · Zielpfad: ${step.destination}`}
+              </p>
+            )}
             {step.reason && <p>{step.reason}</p>}
             {!!step.effects?.length && (
               <RecoveryEvidence
@@ -930,15 +977,14 @@ function PlanFiles({ plan, user }: { plan: Plan; user: User }) {
             )}
             {/^etc\/network\//.test(step.path) && (
               <p className="notice warning">
-                Netzwerkaktivierung und Erreichbarkeit separat an der Konsole
-                prüfen. Anker aktiviert keine Netzwerkkonfiguration automatisch.
+                Anker aktiviert das Netzwerk nicht. Das an der Konsole tun und
+                die Erreichbarkeit prüfen.
               </p>
             )}
             {/^etc\/pve\//.test(step.path) && (
               <p className="notice warning">
-                Clusterzuordnung, Quorum und Gastdatenträger separat prüfen.
-                Gleiche Speicher-IDs belegen keine verfügbaren Volumes; kein
-                Anlegen, Formatieren oder Verschieben.
+                Danach Cluster, Quorum und Gastdatenträger prüfen. Anker legt
+                keine Volumes an und verschiebt keine.
               </p>
             )}
             {step.path === "etc/fstab" && (

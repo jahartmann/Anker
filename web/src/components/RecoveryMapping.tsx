@@ -57,10 +57,9 @@ export default function RecoveryMapping({
         Plan prüfen.
       </p>
       {!!inspection.storage?.length && (
-        <p className="notice">
-          Speicherzuordnungen werden als manuelle Entscheidungen dokumentiert.
-          Gleiche IDs belegen keine gleichen Pools, Pfade oder vorhandenen
-          Volumes. Anker formatiert oder verschiebt keine Datenträger.
+        <p className="field-hint">
+          Anker formatiert oder verschiebt keine Datenträger; die Zuordnung legt
+          nur fest, welcher Zielspeicher gemeint ist.
         </p>
       )}
       {rows.length > 8 && (
@@ -114,16 +113,22 @@ export default function RecoveryMapping({
             !ports && inspection.storage.find((s) => s.id === row.key);
           const targetStorage =
             !ports && inspection.target_storage.find((s) => s.id === value);
-          const evidence = (s: typeof targetStorage) =>
+          const describe = (s: typeof targetStorage) =>
             s
               ? `${s.kind} · ${
-                  Object.entries(s.backing || {})
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join(" · ") ||
+                  Object.values(s.backing || {}).join(" / ") ||
                   s.path ||
-                  "Backing unbekannt"
-                } · Inhalte: ${(s.content || []).join(", ") || "unbekannt"}`
-              : "Kein geprüfter Speicherbeleg";
+                  "Unterbau unbekannt"
+                }`
+              : "";
+          const suggested = !!row.suggested && value === row.suggested;
+          const storageHint = !sourceStorage
+            ? ""
+            : !targetStorage
+              ? `In der Sicherung: ${describe(sourceStorage)}.`
+              : describe(sourceStorage) === describe(targetStorage)
+                ? `Gleicher Speicher wie in der Sicherung (${describe(targetStorage)}).`
+                : `Sicherung: ${describe(sourceStorage)} · Ziel: ${describe(targetStorage)}. Bitte prüfen.`;
           // A selected port remains in the bounded list even after a search changes.
           if (ports && value && !candidates.some((c) => c.id === value)) {
             const selected = inspection.target_ports.find(
@@ -138,24 +143,15 @@ export default function RecoveryMapping({
           return (
             <Field
               key={row.kind + row.key}
-              label={
-                row.key + (ports ? " → Zielport" : " → Zielspeicher (manuell)")
+              label={row.key + (ports ? " → Zielport" : " → Zielspeicher")}
+              hint={
+                [
+                  ports ? "" : storageHint,
+                  suggested ? "Von Anker vorgeschlagen." : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ") || undefined
               }
-              hint={[
-                row.reason,
-                !ports
-                  ? "Quelle: " +
-                    evidence(sourceStorage) +
-                    "; Ziel: " +
-                    evidence(targetStorage) +
-                    ". Konkreten Volumebestand separat prüfen."
-                  : "",
-                row.suggested && value === row.suggested
-                  ? "Vorschlag aus Zielprüfung"
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" · ")}
             >
               <select
                 value={value}

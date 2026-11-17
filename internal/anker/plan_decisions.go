@@ -306,7 +306,7 @@ func validateDecisionSteps(p Plan, m Manifest, snapshot RecoverySnapshot, target
 		}
 		e, ok := entries[step.Path]
 		f := before[step.Path]
-		if !ok || fileManualReason(e, p.Source, target) != "" || step.Destination != step.Path || (step.Decision != DecisionBackup && step.Decision != DecisionPrepared) || step.ComparisonState == "identical" || (f.State != "read" && f.State != "missing") {
+		if !ok || fileManualReason(e, p.Source, target) != "" || (protectedPath(step.Path) && !p.ProtectedConfirmed) || step.Destination != step.Path || (step.Decision != DecisionBackup && step.Decision != DecisionPrepared) || step.ComparisonState == "identical" || (f.State != "read" && f.State != "missing") {
 			return errors.New("Dateientscheidung erlaubt keine automatische Übernahme")
 		}
 		sha := f.SHA256

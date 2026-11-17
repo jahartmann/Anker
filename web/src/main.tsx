@@ -8,10 +8,10 @@ import "./console.css";
 import "./paper.css";
 import "./jobs.css";
 import "./remediation.css";
+import "./operations.css";
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
 );
-
-import "./operations.css";

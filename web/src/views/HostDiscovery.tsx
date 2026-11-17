@@ -397,11 +397,9 @@ export default function HostDiscovery({
       busy={!!busy}
     >
       <p className="dialog-intro">
-        Finde erreichbare Proxmox-Server vom Anker-Server aus. Für VPN und
-        weitere Standorte die jeweiligen Netze ergänzen. Die Port- und
-        HTTPS-Prüfung benötigt kein Passwort. Optionale Konfigurationshinweise
-        werden ausschließlich über bereits eingerichtete SSH-Zugänge gelesen;
-        nur Adressen innerhalb der ausgewählten Netze werden geprüft.
+        Sucht vom Anker-Server aus nach Proxmox-Servern in den gewählten Netzen.
+        Für VPN und weitere Standorte deren Netze ergänzen. Die Suche braucht
+        kein Passwort.
       </p>
       <Field
         label="Netzbereiche für LAN und VPN"
@@ -507,9 +505,8 @@ export default function HostDiscovery({
         </label>
       </details>
       <p className="field-hint">
-        Die Schnellrunde verteilt bevorzugte Host-Adressen über alle
-        Standortnetze. Danach folgen die übrigen Adressen und eine langsamere
-        Nachprüfung. Ein Treffer beendet die Suche im jeweiligen Netz nicht.
+        Zuerst werden die wahrscheinlichsten Adressen in allen Netzen geprüft,
+        danach alle übrigen.
       </p>
       <div className="discovery-actions">
         <button
@@ -872,9 +869,8 @@ export default function HostDiscovery({
               Optional: gemeinsame Zugangsdaten prüfen und Hosts einrichten
             </summary>
             <p>
-              Wähle die Hosts und lies ihre SSH-Identitäten. Vergleiche die
-              Fingerprints über einen vertrauenswürdigen Zugang, etwa die
-              Proxmox-Konsole. Erst nach der Bestätigung werden Passwörter
+              Wähle die Hosts und vergleiche ihre Fingerprints an der
+              Proxmox-Konsole. Passwörter werden erst nach deiner Bestätigung
               gesendet.
             </p>
             <button
@@ -885,9 +881,8 @@ export default function HostDiscovery({
               SSH-Identitäten lesen
             </button>
             <p className="muted">
-              Die Zugangsprüfung führt keine Befehle aus. Passwort 1 wird zuerst
-              geprüft, Passwort 2 nur bei abgelehnter Anmeldung. Die Passwörter
-              bleiben nur bis zum Schließen im Arbeitsspeicher dieses Fensters.
+              Passwort 2 wird nur versucht, wenn Passwort 1 abgelehnt wird.
+              Beide werden nicht gespeichert.
             </p>
             <div className="form-grid">
               <Field label="Gemeinsamer SSH-Benutzer">

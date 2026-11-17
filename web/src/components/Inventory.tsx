@@ -1,7 +1,7 @@
 import { useListPageSize } from "../listPageSize";
 import { Fragment, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
-import { bytes, date } from "../api";
+import { bytes, date, plural } from "../api";
 import type { Inventory as HostInventory } from "../api";
 import { Empty, Pagination } from "./shared";
 import { TopicSymbol } from "./InfrastructureDetails";
@@ -246,9 +246,8 @@ export default function Inventory({
             PBS-Konfiguration
           </h3>
           <p className="notice">
-            Gesichert wird die Konfiguration. Datastore-Inhalte werden separat
-            gesichert. Die geführte Wiederherstellung übernimmt ausschließlich
-            PBS-Konfigurationen; Datastore-Inhalte bleiben erhalten.
+            Anker sichert und wiederherstellt die PBS-Konfiguration. Die Inhalte
+            der Datastores gehören nicht dazu.
           </p>
           <h4>Datastores</h4>
           {queryNotice("pbs_datastores", "Datastores")}
@@ -563,7 +562,7 @@ export default function Inventory({
                     )}
                     {detailCount(value) !== undefined && (
                       <span className="count-badge">
-                        {detailCount(value)} Einträge
+                        {plural(detailCount(value)!, "Eintrag", "Einträge")}
                       </span>
                     )}
                   </summary>

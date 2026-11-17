@@ -228,3 +228,15 @@
 .incident-clear h4 {
   margin: 0 0 5px;
 }
+
+/* Nothing selected yet: only the two entry buttons, without a card around them. */
+.operations-card.operations-idle {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.operations-idle .operations-controls {
+  margin: 0;
+}

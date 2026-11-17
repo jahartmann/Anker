@@ -284,9 +284,9 @@ export default function BackupComparison({
       </div>
       {nodes.length > 1 && (
         <label className="comparison-node-scope">
-          Node im Vergleich
+          Host im Vergleich
           <select
-            aria-label="Node im Vergleich"
+            aria-label="Host im Vergleich"
             value={scope}
             onChange={(e) => {
               const id = e.target.value;
@@ -320,7 +320,7 @@ export default function BackupComparison({
               }
             }}
           >
-            <option value="">Alle Nodes · freie Auswahl</option>
+            <option value="">Alle Hosts · freie Auswahl</option>
             {nodes.map(([id, name]) => (
               <option key={id} value={id}>
                 {displayHostName(name)}
@@ -335,7 +335,7 @@ export default function BackupComparison({
       </p>
       {collapseSources ? (
         <details className="comparison-source-controls">
-          <summary>Andere Stände dieser Node vergleichen</summary>
+          <summary>Andere Stände dieses Hosts vergleichen</summary>
           {sourceControls}
         </details>
       ) : (

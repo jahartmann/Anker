@@ -43,7 +43,7 @@ for (const [width, height] of [
         .locator(".settings-tabs")
         .getByRole("button", { name: tab, exact: true })
         .click();
-      await expect(page.locator(".settings-context")).toBeVisible();
+      await expect(page.locator(".settings-intro")).toBeVisible();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBe(width);
@@ -56,9 +56,6 @@ for (const [width, height] of [
     await page
       .getByRole("button", { name: "Plan erstellen", exact: true })
       .click();
-    await expect(
-      page.getByRole("region", { name: "Vorbereitungskontext" }),
-    ).toContainText("Nach Zielprüfung ermitteln");
     await expect(
       page
         .getByRole("navigation", { name: "Vorbereitungsschritte" })

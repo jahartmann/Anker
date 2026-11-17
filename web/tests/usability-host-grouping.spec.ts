@@ -135,7 +135,7 @@ test("host overview keeps roles, filtering and persisted grouping usable on desk
     cp.getByText("Standortvorschlag", { exact: true }),
   ).toBeVisible();
   const colors = await cp
-    .locator(".host-site-services .server-role")
+    .locator(".host-node-meta .server-role")
     .evaluateAll((els) =>
       els.map((el) => getComputedStyle(el).backgroundColor),
     );

@@ -81,13 +81,11 @@ async function setup(
     backups,
     comparisons,
     reads,
-    journey: page.getByRole("region", { name: "Konfigurationsreise" }),
+    journey: page.getByRole("region", { name: "Änderungen" }),
   };
 }
 async function enter(page: any) {
-  await page
-    .getByRole("button", { name: "Konfigurationsreise öffnen" })
-    .click();
+  await page.getByRole("button", { name: "Änderungen öffnen" }).click();
 }
 
 test("journey starts lazily at the newest point and steps through exact same-node pairs", async ({
@@ -139,7 +137,7 @@ test("area cards distinguish changed settings from file categories and remain co
   await enter(page);
   await expect(journey.locator(".journey-value-card")).toHaveCount(2);
   const network = journey
-    .getByRole("group", { name: "Bereich der Konfigurationsreise" })
+    .getByRole("group", { name: "Bereich der Änderungen" })
     .getByRole("button", { name: /Netzwerk/ });
   await expect(network).toContainText("1 Wert geändert");
   await network.click();
@@ -148,7 +146,7 @@ test("area cards distinguish changed settings from file categories and remain co
   await journey.getByRole("button", { name: /Alle Bereiche/ }).click();
   await journey
     .getByRole("button", {
-      name: /weitere Einstellungen ohne eindeutigen Wert anzeigen/,
+      name: /weitere Einstellung(en)? ohne eindeutigen Wert anzeigen/,
     })
     .click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -174,7 +172,7 @@ test("opening a historical detail preserves the journey position and return focu
   });
   await link.click();
   const detail = page.getByRole("region", {
-    name: "Änderungsdetails der Node",
+    name: "Änderungsdetails des Hosts",
   });
   await expect(detail.getByLabel("Vergleich von", { exact: true })).toHaveValue(
     "journey-1",

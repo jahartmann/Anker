@@ -46,11 +46,9 @@ test("older stands use local calendar months and days, expand lazily and search 
   await expect(page.locator(".backup-table tbody tr")).toHaveCount(1);
   await expect(page.locator(".history-month")).toHaveCount(3);
   await expect(page.locator(".history-day")).toHaveCount(0);
-  const october = page
-    .locator(".history-month")
-    .filter({
-      has: page.locator(".history-month-name", { hasText: "Oktober 2026" }),
-    });
+  const october = page.locator(".history-month").filter({
+    has: page.locator(".history-month-name", { hasText: "Oktober 2026" }),
+  });
   await october.locator("summary").focus();
   await page.keyboard.press("Enter");
   await expect(october.locator(".history-day > summary")).toContainText([
@@ -59,11 +57,9 @@ test("older stands use local calendar months and days, expand lazily and search 
   await expect(october.locator(".backup-table")).toHaveCount(0);
   await october.locator(".history-day > summary").click();
   await expect(october.locator(".backup-table")).toContainText("october-bo");
-  const september = page
-    .locator(".history-month")
-    .filter({
-      has: page.locator(".history-month-name", { hasText: "September 2026" }),
-    });
+  const september = page.locator(".history-month").filter({
+    has: page.locator(".history-month-name", { hasText: "September 2026" }),
+  });
   await expect(september.locator("summary")).toContainText("1 mit Hinweisen");
   await september.locator("summary").click();
   await expect(october).not.toHaveAttribute("open", "");

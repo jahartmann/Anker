@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Host } from "../api";
-import { api, date } from "../api";
+import { api, date, plural } from "../api";
 import { HostName } from "../hostNames";
 import { Dialog, Pagination } from "./shared";
 import { useListPageSize } from "../listPageSize";
@@ -248,7 +248,7 @@ export default function IncidentCenter({
           }}
         >
           <p>
-            Für {repair.targets.length} Hosts wird eine neue
+            Für {plural(repair.targets.length, "Host", "Hosts")} wird eine neue
             Konfigurationssicherung mit anschließender Integritätsprüfung
             gestartet. Bisherige Stände und Hostprofile bleiben erhalten.
           </p>

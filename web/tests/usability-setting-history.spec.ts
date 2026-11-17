@@ -264,7 +264,7 @@ test("file comparison opens the matching setting trail with keyboard focus", asy
     .getByRole("button", { name: "Änderungen ansehen", exact: true })
     .click();
   const detail = page.getByRole("region", {
-    name: "Änderungsdetails der Node",
+    name: "Änderungsdetails des Hosts",
   });
   await detail
     .getByRole("button", {

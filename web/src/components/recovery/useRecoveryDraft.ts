@@ -7,6 +7,7 @@ import type {
   RecoveryInspection,
   RecoveryRecipePreview,
   RecoveryNetworkMapping,
+  RecoveryStorage,
 } from "../../api";
 
 // In-memory only: navigation retains intent without persisting private contents.
@@ -26,6 +27,7 @@ export function useRecoveryDraft(
     initialChange?.removeFiles || [],
   );
   const [removalsConfirmed, setRemovalsConfirmed] = useState(false);
+  const [protectedConfirmed, setProtectedConfirmed] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [decisions, setDecisions] = useState<Record<string, FileDecision>>({});
   const [interfaces, setInterfaces] = useState<Record<string, string>>({});
@@ -53,6 +55,9 @@ export function useRecoveryDraft(
   const generation = useRef(0);
   const active = useRef(true);
   const inspectionRequest = useRef(0);
+  // Set when an inspection prefilled suggested storage; the bound target
+  // capture then has to be repeated once with that mapping.
+  const suggestionApplied = useRef(false);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -120,6 +125,7 @@ export function useRecoveryDraft(
     setOffline(false);
   }
   function invalidate() {
+    setProtectedConfirmed(false);
     clearRecipe();
     clearRecipeChoices();
     generation.current++;
@@ -279,6 +285,7 @@ export function useRecoveryDraft(
       },
       console_confirmed: consoleOK,
       source_offline: offline,
+      ...(protectedConfirmed ? { protected_confirmed: true } : {}),
     };
   }
   async function previewRecipe(recipeID: string, apply = false) {
@@ -402,10 +409,9 @@ export function useRecoveryDraft(
           ]),
         ),
       );
-      setStorage((old) =>
-        Object.fromEntries(
-          (result.storage || []).map((s) => [
-            s.id,
+      setStorage((old) => {
+        const choice = (s: RecoveryStorage) => {
+          const kept =
             old[s.id] === "manual" ||
             result.target_storage.some(
               (t) =>
@@ -417,12 +423,15 @@ export function useRecoveryDraft(
                         (oldStorage) => oldStorage.id === t.id,
                       ),
                     )),
-            )
-              ? old[s.id]
-              : "",
-          ]),
-        ),
-      );
+            );
+          if (kept) return old[s.id];
+          if (s.suggested) suggestionApplied.current = true;
+          return s.suggested || "";
+        };
+        return Object.fromEntries(
+          (result.storage || []).map((s) => [s.id, choice(s)]),
+        );
+      });
       if (
         previous &&
         JSON.stringify(previous.files) !== JSON.stringify(result.files)
@@ -454,6 +463,11 @@ export function useRecoveryDraft(
         setInspecting(false);
     }
   }
+  useEffect(() => {
+    if (!suggestionApplied.current || !needsInspection || inspecting) return;
+    suggestionApplied.current = false;
+    void inspect();
+  }, [needsInspection, inspecting]);
   const portValues = (mappingInspection?.ports || [])
     .map((p) => interfaces[p.name])
     .filter(Boolean);
@@ -473,6 +487,8 @@ export function useRecoveryDraft(
     removeFiles,
     removalsConfirmed,
     setRemovalsConfirmed,
+    protectedConfirmed,
+    setProtectedConfirmed,
     changeRemovals: (paths: string[]) => {
       invalidate();
       setRemoveFiles(paths);
@@ -534,6 +550,7 @@ export function useRecoveryDraft(
       console_confirmed: undefined,
       source_offline: undefined,
       removals_confirmed: undefined,
+      protected_confirmed: undefined,
     }),
     inspect,
     recipePreview,

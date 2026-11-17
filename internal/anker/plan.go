@@ -46,6 +46,15 @@ func fileHashes(i Inventory) map[string]string {
 	}
 	return out
 }
+
+// hostWritablePath reports whether a backed-up path is a host file Anker may
+// write back at all. Other manifest entries are Anker's own derived records.
+func hostWritablePath(p string) bool {
+	return strings.HasPrefix(p, "etc/") || strings.HasPrefix(p, "usr/local/")
+}
+
+// protectedPath marks system files whose restore needs an explicit, separate
+// confirmation (ProtectedConfirmed) and that are never deleted by Anker.
 func protectedPath(p string) bool {
 	for _, pre := range []string{"etc/pve/", "etc/corosync/", "etc/ssh/", "etc/sudoers.d/", "etc/pam.d/", "usr/local/lib/anker/", "etc/network/", "etc/apt/", "etc/default/grub", "etc/kernel/", "etc/modprobe.d/", "etc/udev/", "etc/systemd/system/"} {
 		if strings.HasPrefix(p, pre) {
@@ -210,7 +219,7 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 		analysisRequest.Mapping = Mapping{}
 	}
 	resolvedPorts, mappingBlockers, mappingManual := validateRecoveryMapping(inspection, analysisRequest)
-	p := Plan{RemoveFiles: selection.RemoveFiles, RemovalsConfirmed: r.RemovalsConfirmed, SchemaVersion: 2, TargetSnapshotID: snapshot.ID, Decisions: map[string]FileDecision{}, Tasks: []RecoveryTask{}, ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
+	p := Plan{RemoveFiles: selection.RemoveFiles, RemovalsConfirmed: r.RemovalsConfirmed, ProtectedConfirmed: r.ProtectedConfirmed, SchemaVersion: 2, TargetSnapshotID: snapshot.ID, Decisions: map[string]FileDecision{}, Tasks: []RecoveryTask{}, ID: ID(), BackupID: b.ID, TargetID: h.ID, Scenario: r.Scenario, CreatedAt: now(), State: "ready", Source: m.Inventory, Target: target, Mapping: r.Mapping, Steps: []Step{}, Manual: []string{}, Blockers: []string{}}
 	if snapshot.ID != "" {
 		p.Target = snapshot.Target
 	}
@@ -343,6 +352,10 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 				actionContext.Target = target
 				candidateAction := recoveryCandidateAction(e, prepared, before, actionContext, decision)
 				step.Reason = candidateAction.Reason
+				if candidateAction.Action == "apply" && protectedPath(e.Path) && !r.ProtectedConfirmed {
+					candidateAction = RecoveryCandidateAction{"manual", "Geschützte Systemdatei: Übernahme vor dem Speichern ausdrücklich bestätigen"}
+					step.Reason = candidateAction.Reason
+				}
 				if candidateAction.Action == "apply" {
 					step.Action = "apply"
 					step.BeforeSHA = before.SHA256
@@ -419,9 +432,10 @@ func (s *Service) CreatePlan(ctx context.Context, r PlanRequest) (Plan, error) {
 	if count == 0 {
 		p.State = "manual"
 	}
-	if r.Scenario != "files" && !s.Demo {
-		p.State = "manual"
-		p.Manual = append(p.Manual, "Dieses Gesamtszenario hat noch keinen realen Hardware-/Cluster-Labortest. Vorbereitete Dateien und manuelle Anleitung exportieren; automatische Gesamtausführung bleibt gesperrt.")
+	if r.Scenario != "files" {
+		// Whole-host scenarios write the same journaled, individually confirmed
+		// files as a file restore; service, network and cluster checks follow.
+		p.Manual = append(p.Manual, "Nach der Übernahme Dienste, Netzwerk, Storage und Clusterzugehörigkeit an der Konsole prüfen; Gastdatenträger kommen aus vorhandenen Storages oder PBS.")
 	}
 	uniqueBlockers := []string{}
 	for _, blocker := range p.Blockers {

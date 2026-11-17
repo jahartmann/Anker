@@ -72,12 +72,6 @@ const settingsContext: Record<string, [string, string]> = {
   ],
 };
 
-const betriebAreas = [
-  ["betrieb-speicher", "Speicher", "Volumes und Prognose"],
-  ["betrieb-pruefung", "Prüfung", "Doctor und Index"],
-  ["betrieb-protokoll", "Protokoll", "Letzte Aktionen"],
-] as const;
-
 export default function Settings({
   notify,
   onDirtyChange,
@@ -292,23 +286,12 @@ export default function Settings({
           )}
         </div>
       )}
-      <div
-        className="settings-context"
+      <p
+        className="settings-intro muted"
         data-surface-topic={settingsTopics[tab]}
       >
-        <TopicSymbol topic={settingsTopics[tab]} />
-        <div>
-          <span className="settings-context-scope">
-            {
-              settingsGroups.find((group) =>
-                group.tabs.some((name) => name === tab),
-              )?.title
-            }
-          </span>
-          <h3>{settingsContext[tab][0]}</h3>
-          <p className="muted">{settingsContext[tab][1]}</p>
-        </div>
-      </div>
+        {settingsContext[tab][1]}
+      </p>
       {["Zeitplan", "Aufbewahrung", "Benachrichtigungen"].includes(tab) && (
         <form
           className="settings-form"
@@ -361,7 +344,7 @@ export default function Settings({
                     </Field>
                     <Field
                       label="Wiederholungen"
-                      hint="Nur vorübergehende Verbindungsfehler bei Sicherung und Hostprüfung. 0 deaktiviert Wiederholungen; 1–5 zusätzliche Versuche mit wachsender Wartezeit, im selben Auftrag. Rechte-, Identitäts- und Inhaltsfehler werden nicht wiederholt."
+                      hint="Zusätzliche Versuche bei Verbindungsfehlern, mit wachsender Wartezeit. 0 schaltet Wiederholungen aus."
                     >
                       <input
                         type="number"
@@ -435,9 +418,8 @@ export default function Settings({
                   <span>{value.monthly} Monate</span>
                 </div>
                 <p className="field-hint">
-                  Gezählt werden Zeiträume, in denen eine Sicherung vorhanden
-                  ist. Ein Stand kann mehrere Regeln erfüllen; die Zahlen werden
-                  nicht addiert. Stände außerhalb dieser Regeln werden bei der
+                  Pro Zeitraum bleibt die neueste Sicherung. Ein Stand kann
+                  mehrere Regeln erfüllen. Was keine Regel hält, wird bei der
                   täglichen Wartung gelöscht.
                 </p>
                 <div className="retention-protection">
@@ -460,9 +442,8 @@ export default function Settings({
                     Ältere Stände automatisch archivieren
                   </label>
                   <p className="field-hint">
-                    Archivierung spart Platz: Die Dateien werden komprimiert,
-                    der Stand bleibt im Web lesbar und herunterladbar. Sie
-                    verlängert die Aufbewahrung nicht.
+                    Archivierte Stände sind komprimiert, bleiben aber lesbar.
+                    Die Aufbewahrung verlängert das nicht.
                   </p>
                   <Field
                     label="Archivierung nach Tagen"
@@ -646,32 +627,6 @@ export default function Settings({
       )}
       {tab === "Betrieb" && (
         <>
-          <nav className="jump-nav" aria-label="Bereiche im Betrieb">
-            {betriebAreas.map(([id, label, hint]) => (
-              <button
-                key={id}
-                type="button"
-                className="secondary"
-                data-surface-topic={
-                  id === "betrieb-speicher"
-                    ? "storage"
-                    : id === "betrieb-pruefung"
-                      ? "system"
-                      : "activity"
-                }
-                aria-label={label}
-                onClick={() =>
-                  document.getElementById(id)?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  })
-                }
-              >
-                <span aria-hidden="true">{label}</span>
-                <small aria-hidden="true">{hint}</small>
-              </button>
-            ))}
-          </nav>
           <section id="betrieb-speicher" className="betrieb-section">
             <Storage notify={notify} />
           </section>

@@ -1,9 +1,10 @@
 import RemovalFiles from "./RemovalFiles";
 import type { ChangeRecoveryIntent } from "./ChangeRecoveryIntent";
 import { useEffect, useRef, useState } from "react";
-import { api, labels } from "../../api";
+import { api, labels, plural } from "../../api";
 import type { Plan, Status, User } from "../../api";
 import type { Notify } from "../shared";
+import { HostName } from "../../hostNames";
 import RecoverySource from "./RecoverySource";
 import RecoveryTarget from "./RecoveryTarget";
 import RecoveryEvidence from "./RecoveryEvidence";
@@ -64,6 +65,8 @@ export default function RecoveryWizard({
       onBusyChange?.(false);
     };
   }, [busy, onBusyChange]);
+  const source = status.backups.find((backup) => backup.id === d.backup);
+  const targetHost = status.hosts.find((host) => host.id === d.target);
   const decisionsReady =
     !d.recipeBusy &&
     !!d.inspection &&
@@ -72,7 +75,12 @@ export default function RecoveryWizard({
     !d.openMappings &&
     !d.duplicatePorts;
   const removals = d.selectedPaths.filter((p) => d.decisions[p] === "remove");
+  // Protected system files the plan would write; they need one explicit confirmation.
+  const protectedWrites = (d.inspection?.protected || []).filter((p) =>
+    ["backup", "prepared"].includes(d.decisions[p] || ""),
+  );
   const confirmationsReady =
+    (!protectedWrites.length || d.protectedConfirmed) &&
     (!removals.length || d.removalsConfirmed) &&
     (!d.inspection?.requires_console || d.consoleOK) &&
     (!d.inspection?.requires_source_offline || d.offline);
@@ -110,59 +118,14 @@ export default function RecoveryWizard({
           Vorbereitung schließen
         </button>
       </div>
-      <section
-        className="recovery-draft-context"
-        aria-label="Vorbereitungskontext"
-      >
-        <dl className="recovery-context">
-          <div>
-            <dt>Quelle</dt>
-            <dd>
-              {status.backups.find((backup) => backup.id === d.backup)
-                ?.host_name || "Noch auswählen"}
-            </dd>
-          </div>
-          <div>
-            <dt>Ziel</dt>
-            <dd>
-              {status.hosts.find((host) => host.id === d.target)?.name ||
-                "Noch auswählen"}
-            </dd>
-          </div>
-          <div>
-            <dt>Entscheidungen</dt>
-            <dd>
-              {!d.inspection
-                ? "Nach Zielprüfung ermitteln"
-                : d.needsInspection
-                  ? "Erneute Zielprüfung erforderlich"
-                  : `${d.openFiles + d.openMappings} offen`}
-            </dd>
-          </div>
-          <div>
-            <dt>Nächster Schritt</dt>
-            <dd>
-              {d.step === 1
-                ? "Quelle und Dateien auswählen"
-                : d.step === 2
-                  ? d.needsInspection
-                    ? "Ziel erneut prüfen"
-                    : d.inspection
-                      ? "Weiter zu Entscheidungen"
-                      : "Ziel auswählen und prüfen"
-                  : d.step === 3
-                    ? d.needsInspection
-                      ? "Zuordnungen erneut prüfen"
-                      : decisionsReady
-                        ? "Weiter zur Planprüfung"
-                        : "Dateien und Zuordnungen entscheiden"
-                    : confirmationsReady
-                      ? "Plan prüfen und speichern"
-                      : "Erforderliche Bestätigungen prüfen"}
-            </dd>
-          </div>
-        </dl>
-      </section>
+      {source && (
+        <p className="recovery-route">
+          <HostName name={source.host_name} /> →{" "}
+          {targetHost ? <HostName name={targetHost.name} /> : "Ziel offen"}
+          {d.scenario === "files" &&
+            ` · ${plural(d.files.length + d.removeFiles.length, "Datei", "Dateien")}`}
+        </p>
+      )}
       {changeIntent && (
         <section
           className="rollback-handoff-card"
@@ -173,9 +136,8 @@ export default function RecoveryWizard({
             {changeIntent.settingName} · Zielwert {changeIntent.desiredValue}
           </h3>
           <p>
-            Die Auswahl umfasst ganze Dateien. Der frühere Wert ist eine
-            Absicht; erst der Vergleich mit dem aktuell gelesenen Ziel zeigt die
-            tatsächlichen Änderungen.
+            Zurückgeschrieben werden ganze Dateien. Was sich dadurch wirklich
+            ändert, zeigt der Vergleich nach der Zielprüfung.
           </p>
           <strong>
             {d.backup === changeIntent.backupID &&
@@ -230,9 +192,6 @@ export default function RecoveryWizard({
             </li>
           ))}
         </ol>
-        <p className="field-hint recovery-step-next">
-          Schritt 5: Ausführen und nachprüfen – im gespeicherten Plan.
-        </p>
       </nav>
       <fieldset className="form-fields" disabled={busy}>
         {d.step === 1 && <RecoverySource status={status} draft={d} />}
@@ -249,9 +208,10 @@ export default function RecoveryWizard({
         )}
         {d.step === 4 && (
           <section aria-label="Planprüfung">
-            <h2>4 · Plan prüfen und speichern</h2>
+            <h2>4 · Plan speichern</h2>
             <p>
-              {labels[d.scenario]} · {d.selectedPaths.length} Dateien · Ziel{" "}
+              {labels[d.scenario]} ·{" "}
+              {plural(d.selectedPaths.length, "Datei", "Dateien")} · Ziel{" "}
               {d.inspection?.target.hostname}
             </p>
             <p className="field-hint">Sicherung {d.backup}</p>
@@ -275,9 +235,8 @@ export default function RecoveryWizard({
               ))}
             </ul>
             <p>
-              Der gespeicherte Plan zeigt den erfassten Zielstand, die
-              vorbereiteten Dateien und konkrete Unterschiede. Erst dort wird
-              eine mögliche Dateiübernahme gesondert bestätigt.
+              Speichern schreibt noch nichts. Im gespeicherten Plan siehst du
+              alle Unterschiede und wendest ihn an.
             </p>
             {!!removals.length && (
               <section
@@ -289,10 +248,8 @@ export default function RecoveryWizard({
                   würde{removals.length === 1 ? "" : "n"} gelöscht
                 </h3>
                 <p>
-                  Vor dem Löschen werden Inhalt und Eigenschaften im
-                  Rücksetzjournal gesichert. Eine spätere Rücksetzung stellt
-                  fehlende Dateien wieder her und überschreibt keine
-                  zwischenzeitlich neu angelegten Dateien.
+                  Vor dem Löschen wird jede Datei gesichert und lässt sich
+                  zurücksetzen.
                 </p>
                 <RemovalFiles paths={removals} />
                 <label className="check">
@@ -303,6 +260,35 @@ export default function RecoveryWizard({
                   />
                   Ich bestätige die aufgeführten Dateientfernungen und habe den
                   aktuellen Zielvergleich geprüft.
+                </label>
+              </section>
+            )}
+            {protectedWrites.length > 0 && (
+              <section
+                className="removal-cards"
+                aria-label="Geschützte Systemdateien bestätigen"
+              >
+                <h3>
+                  {protectedWrites.length === 1
+                    ? "1 geschützte Systemdatei wird überschrieben"
+                    : `${protectedWrites.length} geschützte Systemdateien werden überschrieben`}
+                </h3>
+                <p>
+                  Identität, Netzwerk, Zugänge oder Cluster des Ziels können
+                  sich dadurch ändern. Der vorherige Inhalt wird gesichert und
+                  lässt sich mit „Dateien zurücksetzen“ wiederherstellen.
+                </p>
+                <RemovalFiles
+                  paths={protectedWrites}
+                  label="Wird überschrieben"
+                />
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={d.protectedConfirmed}
+                    onChange={(e) => d.setProtectedConfirmed(e.target.checked)}
+                  />
+                  Diese Systemdateien aus der Sicherung zurückschreiben
                 </label>
               </section>
             )}
@@ -329,9 +315,8 @@ export default function RecoveryWizard({
             {(d.inspection?.requires_console ||
               d.inspection?.requires_source_offline) && (
               <p className="field-hint">
-                Anker speichert deine Bestätigung, kann diese Angaben aber nicht
-                selbst prüfen. Netzwerk, Cluster und Storage musst du getrennt
-                einrichten.
+                Anker kann diese Angaben nicht selbst prüfen und verlässt sich
+                auf deine Bestätigung.
               </p>
             )}
             {!confirmationsReady &&
@@ -432,7 +417,7 @@ export default function RecoveryWizard({
               disabled={busy || !decisionsReady || !confirmationsReady}
               onClick={create}
             >
-              {busy ? "Plan wird geprüft …" : "Plan prüfen"}
+              {busy ? "Plan wird gespeichert …" : "Plan speichern"}
             </button>
           )}
         </footer>

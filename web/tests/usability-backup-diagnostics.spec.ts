@@ -220,9 +220,8 @@ test("a new complete capture clears current host diagnostics while retaining the
       name: "Ursachen der unvollständigen Sicherung",
     }),
   ).toHaveCount(0);
-  await expect(page.locator(".host-next-step")).toContainText(
-    "Die letzte Sicherung ist aktuell",
-  );
+  await expect(page.locator(".host-next-step")).toHaveCount(0);
+  await expect(page.locator(".host-status-strip")).toContainText("Gesichert");
 });
 
 test("dependency details distinguish backup scope from missing host files and remain bounded", async ({

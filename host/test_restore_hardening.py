@@ -1,4 +1,4 @@
-import base64, importlib.util, json, os, pathlib, tempfile, unittest
+import base64, importlib.util, io, json, os, pathlib, tempfile, unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('restore_helper', pathlib.Path(__file__).with_name('anker_host.py'))
 h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
@@ -12,6 +12,18 @@ class RestoreHardeningTests(unittest.TestCase):
   return {'path':p.relative_to(self.root).as_posix(),'before_sha':h.digest(p.read_bytes()),'content':base64.b64encode(new).decode(),'type':'file','mode':0o640,'uid':st.st_uid,'gid':st.st_gid,'expected_metadata':{'type':'file','mode':st.st_mode&0o7777,'uid':st.st_uid,'gid':st.st_gid,'xattrs':{}}}
  def apply(self,items,id='plan-test'):
   return h.apply_files(self.root,items,test_mode=True,plan_id=id)
+ def test_protected_file_needs_explicit_confirmation_and_rolls_back(self):
+  hosts=self.root/'etc/hosts';hosts.write_bytes(b'old-hosts');hosts.chmod(0o644)
+  item=self.item(hosts,b'new-hosts')
+  with self.assertRaisesRegex(ValueError,'explicit confirmation'):self.apply([item],'protected-refused')
+  self.assertEqual(hosts.read_bytes(),b'old-hosts')
+  self.apply([{**item,'protected_confirmed':True}],'protected-ok')
+  self.assertEqual(hosts.read_bytes(),b'new-hosts')
+  result=h.rollback_files(self.root,'protected-ok','protected-ok',test_mode=True)
+  self.assertEqual(result['state'],'rolled_back');self.assertEqual(hosts.read_bytes(),b'old-hosts')
+ def test_paths_outside_host_configuration_are_never_written(self):
+  (self.root/'var').mkdir();f=self.root/'var/x';f.write_bytes(b'old')
+  with self.assertRaisesRegex(ValueError,'host configuration'):self.apply([{**self.item(f,b'new'),'protected_confirmed':True}],'outside')
  def test_second_write_error_preserves_cause_and_rolls_back(self):
   original=h.os.replace
   def replace(src,dest):
@@ -79,6 +91,31 @@ class RestoreHardeningTests(unittest.TestCase):
 
 
 class InventoryHardeningTests(unittest.TestCase):
+ def test_apply_ignores_pve_runtime_hashes_but_rejects_configuration_drift(self):
+  runtime_paths=('etc/pve/.rrd','etc/pve/.version','etc/pve/nodes/test/lrm_status')
+  config_path='etc/pve/storage.cfg'
+  inventory={'host_type':'pve','details':{
+   'capabilities':{'restore_protocol':2,'journal':True},
+   'command_results':{k:{'state':'ok'} for k in ('pve_version','users','groups','file_inventory')},
+   'file_hashes':dict.fromkeys((*runtime_paths,config_path),'before'),
+  }}
+  request={'version':1,'operation':'apply','plan_id':'test-plan','confirm':'test-plan',
+           'expected_inventory':inventory,'files':[]}
+  current=json.loads(json.dumps(inventory))
+  current['details']['file_hashes'].update(dict.fromkeys(runtime_paths,'after'))
+  def run(result):
+   stdin=type('Stdin',(),{'buffer':io.BytesIO(json.dumps(request).encode()+b'\n')})()
+   with patch.object(h.sys,'stdin',stdin),patch.object(h.sys,'stdout',io.StringIO()),patch.object(h,'probe',return_value=json.loads(json.dumps(result))):
+    h.main(root=self.root)
+  with tempfile.TemporaryDirectory() as d:
+   self.root=pathlib.Path(d)
+   with patch.object(h.os,'geteuid',return_value=0),patch.object(h.os,'umask'),patch.object(h.sys,'platform','linux'),patch.object(h.sys,'argv',['anker-host']),patch.object(h,'apply_files',return_value={}) as apply:
+    run(current)
+    apply.assert_called_once_with(self.root,[],plan_id='test-plan')
+    current['details']['file_hashes'][config_path]='after'
+    with self.assertRaisesRegex(ValueError,'target inventory changed'):run(current)
+    self.assertEqual(apply.call_count,1)
+
  def test_failed_required_commands_remain_distinguishable_from_empty_inventory(self):
   import subprocess
   with tempfile.TemporaryDirectory() as d,patch.object(h.subprocess,'run',side_effect=OSError('cannot execute')):

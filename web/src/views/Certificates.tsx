@@ -1,7 +1,7 @@
 import { TopicSymbol } from "../components/InfrastructureDetails";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { api, date } from "../api";
+import { api, date, plural } from "../api";
 import {
   DetailSection,
   Dialog,
@@ -178,7 +178,7 @@ export default function Certificates({
                     {date(status.expires_at)} ·{" "}
                     {status.days_remaining <= 0
                       ? "Abgelaufen"
-                      : `${status.days_remaining} Tage verbleibend`}
+                      : `${plural(status.days_remaining, "Tag", "Tage")} verbleibend`}
                   </dd>
                 </div>
                 <div>
@@ -273,9 +273,8 @@ export default function Certificates({
             übernommen.
           </p>
           <p>
-            Der Fingerprint ändert sich. Eine neue Browserfreigabe kann
-            erforderlich werden; dazu den neuen Fingerprint auf dem Server mit
-            dem Browser vergleichen.
+            Der Fingerprint ändert sich. Fragt der Browser danach neu, den
+            Fingerprint mit dem auf dem Server vergleichen.
           </p>
           <p className="muted">
             Alternativ am Server: <code>sudo anker tls status</code>.

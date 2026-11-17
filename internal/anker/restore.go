@@ -118,7 +118,7 @@ func (s *Service) ApplyPlan(ctx context.Context, id, confirmation string) (Plan,
 				continue
 			}
 			entry, ok := entries[step.Path]
-			if !ok || fileManualReason(entry, p.Source, inv) != "" {
+			if !ok || fileManualReason(entry, p.Source, inv) != "" || (protectedPath(step.Path) && !p.ProtectedConfirmed) {
 				return p, errors.New("Plan enthält inzwischen nur manuell freigegebene Dateien; Plan neu erstellen")
 			}
 		}
