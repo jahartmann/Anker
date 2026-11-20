@@ -19,6 +19,7 @@ class BuildReleaseTests(unittest.TestCase):
    for document in ('README.md','HANDBOOK.md'):
     shutil.copyfile(source/'docs'/document,root/'docs'/document)
    shutil.copytree(source/'docs/readme',root/'docs/readme')
+   shutil.copytree(source/'docs/reference',root/'docs/reference')
    (root/'internal/updater/official_public.key').write_text('trusted fixture key\n')
    (root/'scripts/release-notices.py').write_text('import pathlib,sys\npathlib.Path(sys.argv[1]).write_text("fixture dependency notice\\n")\n')
    def executable(name,body):
@@ -54,7 +55,8 @@ fi
       self.assertEqual(package.extractfile('./deploy/anker.1').read(),(source/'deploy/anker.1').read_bytes())
       self.assertEqual(package.extractfile('./LICENSE').read(),(source/'LICENSE').read_bytes())
       self.assertEqual(package.extractfile('./THIRD_PARTY_NOTICES.txt').read(),b'fixture dependency notice\n')
-      for file in [source/'docs/README.md', source/'docs/HANDBOOK.md', *sorted((source/'docs/readme').iterdir())]:
+      for file in [source/'docs/README.md', source/'docs/HANDBOOK.md',
+                   *sorted((source/'docs/reference').glob('*.md')), *sorted((source/'docs/readme').iterdir())]:
        self.assertEqual(package.extractfile('./'+file.relative_to(source).as_posix()).read(),file.read_bytes())
    else:
     self.assertFalse(list((root/'dist').glob('*.tar.gz')),'mismatched key produced a release package')

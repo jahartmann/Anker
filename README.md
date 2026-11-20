@@ -50,20 +50,9 @@ Ziel prüfen, Dateifassung wählen und die Plan-ID bestätigen. `/etc/hosts` ist
 
 ![Das signierte Paket laden, Signatur und SHA-256 prüfen und die Einrichtung öffnen.](docs/readme/installieren.png)
 
-Für den zentralen Dienst einen Linux-Server, eine VM oder einen LXC-Container mit systemd verwenden. Die signierten Pakete unterstützen `amd64` und `arm64`. Für den Installer braucht es Python 3 und OpenSSL 3.
+Linux mit systemd, `amd64` oder `arm64`. Der Schnellstart führt in vier Schritten vom signierten Release zur ersten geprüften Sicherung.
 
-<details>
-<summary><strong>Signierten Release installieren</strong></summary>
-
-Aus einem Anker-Checkout starten und den öffentlichen Signierschlüssel vorab unabhängig prüfen.
-
-```sh
-sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
-```
-
-Nach der Einrichtung unter **Hosts → Host hinzufügen** den SSH-Fingerprint des ersten Hosts prüfen und **Jetzt sichern** wählen. [Releases](https://github.com/jahartmann/Anker/releases) · [Installationsanleitung](docs/UPDATES.md#erstinstallation-aus-einem-release) · [Installation aus Quellcode](docs/HANDBOOK.md#installation)
-
-</details>
+**[Schnellstart öffnen](docs/HANDBOOK.md#installation)** · [Signierte Releases](https://github.com/jahartmann/Anker/releases) · [Weitere Installationswege](docs/UPDATES.md#weitere-installationswege)
 
 ## Optionale lokale Demo
 

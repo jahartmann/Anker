@@ -1,0 +1,206 @@
+# Release, Signaturen und Updater im Detail
+
+[Doku-Übersicht](../README.md) · [Zur Anleitung](../UPDATES.md)
+
+[Signieren](#repository-vorbereiten) · [Private Quelle](#erstinstallation-aus-einem-release) · [Updater](#updater-auf-dem-server-einrichten) · [Rückfall](#fehler-und-rückfall)
+
+## Hinweise zu v0.2.19
+
+v0.2.19 bündelt die kräftigere Gestaltung aller Haupt- und Unteransichten mit Standortkarten und verbesserter Namensdarstellung. Das Serverupdate genügt; für diese Änderungen ist kein Austausch der Hosthelfer nötig.
+
+Unter **Hosts → Ansicht gruppieren** zwischen Automatik, Standort, Servertyp, IPv4-Netz (`/24`) und einer gemeinsamen Liste wählen. Die Auswahl gilt auch für Suchergebnisse und wird in diesem Browser gespeichert. Manuelle Hostgruppen haben Vorrang. Automatische Standortvorschläge aus gemeinsamen Namensteilen oder `/24`-Netzen sind begründet gekennzeichnet. Sie ändern keine gespeicherten Hostgruppen. Eindeutige passende Gruppen können neue Hosts als Vorschlag einordnen; widersprüchliche manuelle Gruppen bleiben getrennt. Einen Standort über die Gruppe in den Hosteinstellungen ausdrücklich festlegen.
+
+Die Anzeige berücksichtigt CP, RS, GS, FZ, Gym und technische Abkürzungen auch in nummerierten Namen und FQDNs. Katalognamen, SSH-Ziele und IDs bleiben erhalten. Die Inhalte von Sicherungen und PBS-Datastores werden durch diese Darstellungsänderungen nicht verändert.
+
+## Hinweise zu v0.2.18
+
+v0.2.18 zeigt Ursachen unvollständiger oder fehlgeschlagener Sicherungen direkt beim Host, Sicherungsstand und Auftrag. Ein technischer Hinweis mit geschützten Angaben verdeckt nicht mehr automatisch die fachliche Erklärung und Abhilfe. Ungültige Pfadangaben, fehlende Pflichtpfade, nicht erfasste Verweise und fehlende Berechtigungen werden getrennt eingeordnet. Ein Verweis außerhalb des erfassten Dateibaums belegt nicht, dass die Datei auf dem Host fehlt. Die Einordnung gilt auch für bereits gespeicherte Warnungen; die Sicherungsdateien werden dafür nicht umgeschrieben.
+
+Das Serverupdate genügt für die neue Anzeige. Für genauere Formatgründe aus dem Hosthelfer vorhandene PVE-/PBS-Hosts über **Verbindung einrichten** aktualisieren und anschließend eine neue Sicherung starten. Fehlende Dateien und falsche Profile müssen anhand der konkreten Ursache korrigiert werden; das Update repariert keine unbekannten Hostkonfigurationen automatisch. **Sicherungsprofil prüfen** öffnet die Host-Einstellungen. Fehlgeschlagene Aufträge mit erhaltenem Teilstand bieten **Unvollständige Sicherung prüfen** direkt an. Datastore-Inhalte bleiben ausgeschlossen.
+
+Die gemeinsame Notion-Kartenbasis mit versetzten Schatten gilt jetzt auch für Haupt- und Unteransichten, Dialoge, Anmeldung, Formulare, Tabellen, Vergleiche, Konfigurationsreise und Wiederherstellungsschritte. Themenakzente und technische Details ergänzen die beschrifteten Betriebszustände.
+
+## Hinweise zu v0.2.17
+
+v0.2.17 ersetzt die bisherige Netzsuche durch eine fortsetzbare PVE-/PBS-Suche. Kurze TCP-Prüfungen beider Webports filtern die HTTPS-Erkennung; unklare Verbindungen erhalten eine langsamere Nachprüfung. Bekannte Adressen, konfigurierte Peers und aus Treffern gelernte Adressendungen werden bevorzugt. Trotzdem werden alle ausgewählten Adressen geprüft, auch bei einzelnen Hosts pro Standort. Abbruch, Zeitfenster und Neustart behalten den gespeicherten Stand; **Suche fortsetzen** verwendet die ursprünglichen Netze und Ports. Ein abrupt beendeter Prozess kann die Arbeit seit dem letzten Speicherpunkt wiederholen. Vor einem Update hält Anker laufende Suchen an und speichert den Fortschritt.
+
+Das Serverupdate ersetzt vorhandene Hosthelfer nicht automatisch. Für zusätzliche Hinweise aus bekannten PVE-Clustern und PBS-Remote-Konfigurationen die Hosts über **Verbindung einrichten** aktualisieren. Standalone-PVE-Hosts brauchen keine Clusterabfrage; ohne aktualisierten Helfer funktioniert die normale Netzsuche weiterhin. Konfigurierte DNS-Namen ohne IP-Hinweis bleiben für die vollständige Suche offen. Hinweise erweitern die ausgewählten Netze nicht und ersetzen keine SSH-Fingerprintbestätigung. Datastore-Inhalte bleiben ausgeschlossen. Registrierungscode-Anmeldung ist noch nicht enthalten.
+
+## Hinweise zu v0.2.16
+
+v0.2.16 ergänzt PBS-Konfigurationsbackup und geführte PBS-Konfigurationswiederherstellung sowie die Proxmox-VE-Serversuche mit Sammelanbindung. Das Serverupdate ersetzt vorhandene Hosthelfer weiterhin nicht automatisch. PBS-Ziele vor der ersten geführten Übernahme über **Hosts → Verbindung neu einrichten** aktualisieren. Danach die PBS-Dienste am Ziel stoppen und eine frische Zielaufnahme erstellen. Alte PBS-Helfer bleiben für Schreiboperationen gesperrt.
+
+Die Wiederherstellung erhält Datastore-Inhalte und vorhandene Ziel-Anbindungen. Zurückgespielte Jobfassungen werden ohne automatische Auslöser vorbereitet; Anker startet keine Dienste oder Jobs. Vor einem späteren manuellen Dienststart alle vorhandenen Job- und Aufbewahrungsregeln prüfen. [PBS-Wiederherstellung im Handbuch](../HANDBOOK.md#pbs-konfiguration-geführt-wiederherstellen)
+
+## Repository vorbereiten
+
+Ein öffentliches GitHub-Repository ohne zusätzliche Schreibberechtigte reicht aus. Besucher können den Code herunterladen oder einen Fork erstellen. Sie können nicht in das Original pushen. MIT erlaubt ausdrücklich Änderungen und Weitergabe eigener Kopien; die Schreibrechte am Original bleiben davon unberührt.
+
+Vor dem ersten Release:
+
+1. Das öffentliche Repository `jahartmann/Anker` anlegen beziehungsweise den vorhandenen Projektstand dort übernehmen. Noch keine produktiven Backups, Schlüssel oder Configdateien einchecken.
+2. `main` gegen Force-Push und Löschen schützen. Für Änderungen bestandene „Checks“ verlangen. Schreibrechte nur gezielt vergeben. Tags `v*` über eine Ruleset-Regel auf Maintainer beschränken.
+3. In „Settings → Security“ private vulnerability reporting und die verfügbaren Secret-Scanning-Funktionen aktivieren.
+4. Die Actions-Umgebung `release` anlegen, auf Release-Tags beschränken und – falls verfügbar – eine Maintainer-Freigabe verlangen. Fork-Pull-Requests erhalten den Signierschlüssel nicht.
+5. Ein Signierschlüsselpaar außerhalb des Repositorys erzeugen:
+
+```sh
+go run ./cmd/anker-release -mode keygen -dir /sicherer/pfad/anker-release-keys
+```
+
+`private.key` enthält den privaten Ed25519-Schlüssel als Base64. Als Secret `ANKER_SIGNING_KEY` in der Umgebung `release` hinterlegen. Den privaten Schlüssel offline sichern. `public.key` und `public.pem` dürfen veröffentlicht werden; ihren Fingerprint zusätzlich über einen vertrauenswürdigen Kanal bekanntgeben.
+
+```sh
+openssl pkey -pubin -in /sicherer/pfad/anker-release-keys/public.pem -outform DER | openssl dgst -sha256
+```
+
+Der Server braucht nur `public.key`. Ein öffentlicher Release braucht keinen GitHub-Zugangsschlüssel.
+
+Für die offizielle Quelle liegen `public.key` und `public.pem` im Projekt; derselbe Base64-Schlüssel steht in `internal/updater/official_public.key`. Der Release-Build prüft, dass der verwendete private Schlüssel dazu passt. Einen bestehenden Signierschlüssel weiterverwenden; ein Austausch benötigt eine geplante Vertrauensänderung auf bereits installierten Servern.
+
+## Erstinstallation aus einem Release
+
+Der geführte Weg benötigt einen veröffentlichten stabilen Release. Aus einem bekannten Projektstand auf dem Linux-Server:
+
+```sh
+sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
+```
+
+Der Installer erkennt amd64/arm64, lädt über die GitHub-API, prüft Signatur, Version, Architektur, Größe und SHA-256 und entpackt erst danach. Links, Gerätedateien und ausbrechende Archivpfade werden abgelehnt. Anschließend fragt Anker die Ersteinrichtung ab, erzeugt die beiden SSH-Schlüssel und aktiviert die Dienste. Der bereits vertraute öffentliche Schlüssel wird für Updates übernommen. Repository und Schlüssel werden im normalen Assistenten nicht erneut abgefragt; Änderungen über `sudo anker setup --updates`. Pakete enthalten ausschließlich den öffentlichen Schlüssel, keine private Signieridentität.
+
+Für ein privates Repository:
+
+```sh
+sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem --repo OWNER/Anker --private
+```
+
+Der GitHub-Token wird verdeckt abgefragt. Ein Fine-grained Token mit Zugriff nur auf dieses Repository und **Contents: read-only** reicht für Release-Downloads. Er wird root-eigen mit `0600` gespeichert und bei Weiterleitungen zu Asset-Storage nicht übertragen. Alternativ `--token-file /etc/mein-geschützter-token`. Bei Ablauf oder Widerruf des Tokens scheitert die Updateprüfung; Anker selbst und vorhandene Sicherungen bleiben lokal nutzbar. Privates GitHub ist jederzeit vom Server erreichbar, solange Token, Repositoryberechtigung und Netzwerk verfügbar sind. SSH-Deploy-Keys erlauben einen Quellcode-Clone, ersetzen aber nicht den HTTP-Token für die Release-API.
+
+Die Einrichtung kann mit `sudo anker setup` wiederholt werden. Bestehende Benutzer und private SSH-Schlüssel werden erhalten; unvollständige öffentliche Schlüssel und Dateirechte werden repariert. Die Einrichtung sperrt den Updater während Änderungen. Bei der ersten Einrichtung wird HTTPS für LAN/VPN vorgeschlagen; der Assistent erzeugt auf Wunsch ein Zertifikat für den angegebenen DNS-Namen oder die IP. Ein selbst erzeugtes Zertifikat braucht eine unabhängige Fingerprintprüfung im Browser. Alternativ vorhandene CA-Dateien importieren oder den lokalen SSH-Tunnel wählen. Gültige bestehende TLS-Dateien bleiben bei Wiederholung erhalten. [Webzugriff und TLS im Handbuch](../HANDBOOK.md#webzugriff-und-tls)
+
+Unterbrechung während der Installation: Solange `/etc/anker/install-pending` existiert, dasselbe geprüfte Installationsskript erneut ausführen. Der Hauptprogrammwechsel erfolgt erst nach synchronisierten Grundlagen. Ist die Installation abgeschlossen, `anker setup` verwenden; der Installer erkennt eine bestehende Installation und aktualisiert die Programme mit Sicherung und Startprüfung. Ein Quellcode-Checkout wird mit `scripts/install-server.sh` automatisch gebaut und installiert; fehlende Werkzeuge werden unter Debian/Ubuntu über APT installiert. `--no-setup` lässt nur den abschließenden interaktiven Assistenten aus.
+
+Manueller Paketweg:
+
+Zum Prozessor passendes Paket, `release.json` und `release.json.sig` herunterladen. `amd64` gilt für übliche Intel-/AMD-Server, `arm64` für 64-Bit-ARM.
+
+Den öffentlichen Schlüssel vor der ersten Installation unabhängig prüfen. Ein Schlüssel aus demselben ungeprüften Download beweist keine Identität. Auch das Prüfskript aus einem bekannten Projektstand verwenden. OpenSSL 3 und Python 3 reichen für die Paketprüfung; kein Go oder Node auf dem Server nötig.
+
+```sh
+/path/zum/geprüften/projekt/scripts/verify-release.sh /path/zum/geprüften/public.pem anker-linux-amd64.tar.gz
+mkdir anker-install
+# Erst nach bestandener Prüfung entpacken.
+tar -xzf anker-linux-amd64.tar.gz -C anker-install
+cd anker-install
+sudo ./scripts/install-server.sh ./anker
+```
+
+Das Installationsskript öffnet die Einrichtung automatisch. Der Installer erkennt vorhandene Installationen und verwendet für den Programmaustausch den Update-Mechanismus mit Sicherung und Startprüfung. Laufende Sicherungen und Wiederherstellungen verhindern einen Austausch; später erneut starten.
+
+Die root-eigene Zertifikatsverwaltung verwendet denselben Dienst und startet auch ohne `update.json`. Für bestehende Installationen einmal `sudo anker setup` ausführen: dabei wird die frühere Dienstbedingung für eine vorhandene Updatequelle entfernt, ohne lokale Unit-Einstellungen zu verwerfen. Eine OTA-Aktualisierung tauscht weiterhin die Binärdateien; dieser einmalige Einrichtungsschritt registriert bestehende selbst erzeugte Zertifikate für die Automatik. In der Demo bleiben sämtliche Zertifikatsänderungen gesperrt.
+
+## Updater auf dem Server einrichten
+
+Im Web unter **Einstellungen → Updates → Updatequelle einrichten** die Anker-Quelle wählen und bestätigen. Repository und öffentlicher Schlüssel sind in der Anwendung enthalten. Der Dialog zeigt den Fingerprint; nur ein angemeldeter Administrator kann die Quelle speichern. Die Änderung gilt sofort und bleibt nach einem Neustart erhalten. Fehlt ein veröffentlichter Release, kann die Quelle trotzdem eingerichtet werden; installiert wird erst eine erfolgreich geprüfte verfügbare Version.
+
+Der mitgelieferte Ed25519-Schlüssel hat folgenden SHA-256-Fingerprint über seine 32 Rohbytes:
+
+```text
+SHA256:611d12f97e705bec95321ee726be1b8e36b8a258c293805d554145a1a033da11
+```
+
+Bei einer eigenen Quelle Repository und unabhängig geprüften öffentlichen Base64-Schlüssel eintragen und den Wechsel bestätigen. Während einer Installation oder offenen Einrichtung bleibt der Wechsel gesperrt. Ein vorhandener privater GitHub-Zugang bleibt nur beim selben Repository erhalten; bei Quellenwechsel wird er nicht an ein anderes Repository übertragen. Private Zugänge werden weiterhin ausdrücklich auf dem Server eingerichtet.
+
+Für eine normale Anker-Installation ist die folgende manuelle Einrichtung nicht nötig. Für Administration und eigene Builds:
+
+`/etc/anker/update.json` für `jahartmann/Anker` mit dem Inhalt von `public.key` erstellen:
+
+```json
+{
+  "repository": "jahartmann/Anker",
+  "public_key": "BASE64_PUBLIC_KEY"
+}
+```
+
+```sh
+sudo chown root:anker /etc/anker/update.json
+sudo chmod 0640 /etc/anker/update.json
+sudo systemctl enable --now anker-updater.service
+sudo anker update check
+```
+
+`BASE64_PUBLIC_KEY` durch den Inhalt von `public.key` ersetzen. Der Updater akzeptiert keine Konfigurationsdatei, die andere Benutzer beschreiben können. Bei einem privaten Repository kann zusätzlich `token_file` auf eine root-eigene Datei mit einem passenden GitHub-Lese-Token verweisen. Den Token nicht in die Weboberfläche oder die Befehlszeile kopieren.
+
+Der Webdienst läuft als `anker`. Der Updater läuft als `root` und stellt Status, bestätigte Quelleneinrichtung, Prüfung und Installation über `/run/anker-updater/socket` bereit. Konfigurations- und Installationspfade sind fest vorgegeben. Öffentliche Vertrauensinformationen werden angezeigt; GitHub-Token und ihre Dateipfade werden nicht an den Browser ausgegeben. Es gibt keinen allgemeinen Shell- oder Download-Endpunkt. Mitglieder der Gruppe `anker` haben damit administrative Updateberechtigung; keine gewöhnlichen Benutzer dieser Gruppe hinzufügen.
+
+## Release erstellen
+
+`CHANGELOG.md` aktualisieren, den geprüften Stand auf `main` übernehmen und einen Tag setzen:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+GitHub Actions führt die Tests aus, baut die Weboberfläche ins Binary ein und erstellt Linux-Pakete für beide Architekturen. Der Release enthält Binärdateien, Installer, systemd-Units, Hosthelfer, Dokumentation und Lizenzhinweise. `release.json` enthält Größe und SHA-256 der Binärdateien und Pakete; `release.json.sig` signiert das komplette Manifest.
+
+Der Workflow erstellt einen **Entwurf**. Paketinhalt und Release-Hinweise prüfen, zuerst auf einem Testserver installieren, dann den Entwurf veröffentlichen. Anker prüft nur veröffentlichte stabile Releases, keine Entwürfe oder Pre-Releases. Veröffentlichte Assets nicht nachträglich ersetzen; für Korrekturen einen neuen Versions-Tag verwenden.
+
+## Update installieren
+
+Web: „Einstellungen → Updates → Nach Updates suchen“. Version und Release-Hinweise prüfen, danach „Update installieren“ bestätigen.
+
+Shell:
+
+```sh
+sudo anker update check
+sudo anker update install
+sudo anker update status
+```
+
+`install` stößt die Installation an. `status` zeigt den Fortschritt beziehungsweise das Ergebnis. Die Oberfläche prüft den Zustand während eines Updates automatisch erneut. Eine Anmeldung bleibt bis zum ursprünglichen Ablaufdatum erhalten.
+
+Ablauf:
+
+1. Signatur, Release-Tag, Format und Plattform prüfen.
+2. Download begrenzen, Dateigröße und SHA-256 prüfen. Freien Platz für Staging, Katalogkopie und Rückfall prüfen, dann die Binärdatei auf dem Ziellaufwerk vorbereiten.
+3. Neue Aufträge sperren. Bei aktiven Aufträgen oder laufender Aufbewahrungsprüfung abbrechen; keine Wiederherstellung unterbrechen.
+4. Dienst stoppen. Vorherige Binärdatei und Katalog einschließlich eines gegebenenfalls verbliebenen SQLite-WAL im root-eigenen `/var/lib/anker-updater` sichern.
+5. Binärdatei atomar austauschen, Dienst starten und über den lokalen Socket die tatsächlich laufende Version prüfen. Während der Prüfung bleiben automatische Wartung und Schreibaktionen gesperrt.
+6. Bei Erfolg die Sperre aufheben, die separate Updater-Binärdatei atomar erneuern und den Updater neu starten. Bei Fehlern vorherige Binärdatei und Katalog zurückspielen und deren Start ebenfalls prüfen.
+
+Der Updater startet aus der separaten, root-eigenen Datei `/usr/local/libexec/anker-updater`. Diese wird erst nach bestandener Startprüfung erneuert. Ein defektes neues Hauptprogramm kann deshalb den Rückfall nach einem Neustart nicht verhindern.
+
+Die persistente Sperrdatei `/etc/anker/update-maintenance` und ein root-eigenes Journal verhindern neue Aufträge während der Wiederanlaufprüfung nach einem abgebrochenen Update. Der Updater behandelt ein offenes Journal beim nächsten Start, bevor er weitere Installationen annimmt.
+
+Die Wartungssperre wird erst entfernt und das Verzeichnis synchronisiert, wenn der laufende Dienst die Freigabe bestätigt hat. Ist dessen Socket beim Booten noch nicht bereit, bleibt der Marker für den nächsten Versuch erhalten.
+
+## GitHub meldet HTTP 403
+
+HTTP 403 kann ein erreichtes API-Abfragelimit bedeuten. Bei öffentlichen Releases teilen sich anonyme Anfragen hinter derselben öffentlichen IP das GitHub-Limit. Häufiges erneutes Prüfen hilft während der Sperre nicht. Die Fehlererkennung ab v0.2.16 unterscheidet Limit und Zugriffsfehler, zeigt die nächste Prüfzeit ausdrücklich in UTC und wartet vor weiteren Anfragen. Bestehende v0.2.15- und ältere Installationen zeigen noch die allgemeinere Meldung zu Repository, Zugriff und API-Limit.
+
+Ohne Zugangsdaten auf dem Anker-Server die Antwortheader prüfen:
+
+```sh
+curl -sS -D - -o /dev/null https://api.github.com/repos/jahartmann/Anker/releases/latest
+```
+
+`x-ratelimit-remaining: 0` zusammen mit HTTP 403/429 bedeutet: bis `x-ratelimit-reset` warten. Der Reset ist ein Unix-Zeitstempel; unter Linux mit `date -d @ZEITSTEMPEL` in die Serverzeitzone umrechnen. `retry-after` gibt eine zusätzliche Wartezeit in Sekunden an. Danach einmal **Nach Updates suchen** beziehungsweise `sudo anker update check` ausführen. Die URL muss bei einer eigenen Quelle angepasst werden.
+
+Ohne Limithinweis die konfigurierte Quelle und bei privatem Repository den hinterlegten Lese-Token prüfen. HTTP 401 weist auf ungültige oder abgelaufene Zugangsdaten hin; HTTP 404 kann auch fehlenden privaten Zugriff oder ein noch nicht veröffentlichtes Release bedeuten. Für die öffentliche offizielle Quelle sind keine zusätzlichen Repositoryrechte erforderlich. Zugangsdaten ausschließlich geschützt auf dem Server hinterlegen, nicht in Fehlerberichte kopieren.
+
+Quelle: [GitHub: Rate limits for the REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+## Fehler und Rückfall
+
+```sh
+sudo anker update status
+sudo journalctl -u anker -u anker-updater -n 100 --no-pager
+sudo systemctl restart anker-updater.service
+```
+
+Ein Neustart des Updaters stößt bei vorhandenem Journal die Wiederherstellung der vorherigen Version an. Scheitert auch deren Start, bleibt das Journal erhalten; weitere Installationen sind gesperrt. Dann zuerst Dienstkonfiguration, Speicher und Katalog prüfen. Das Journal nicht unbesehen löschen.
+
+Das Verfahren sichert Programm und Katalog, keine komplette Maschine. SSH-Schlüssel, TLS-Dateien, Servicekonfiguration und Backupordner bleiben beim Update unverändert und gehören weiterhin in das betriebliche Sicherungskonzept. Releases mit inkompatiblen Datenformaten brauchen eine gesonderte Migration; der normale Updater führt sie nicht aus.
+
+Lokale Tests prüfen unter anderem beschädigte Downloads, volle Datenträger, defekte Kandidaten, Katalog/WAL-Rückfall und unterbrochene Prozesse. Der GitHub-Workflow ergänzt eine isolierte Linux-VM mit echten systemd-Diensten: interaktive Erst- und Wiederholeinrichtung, Programmwechsel, defektes neues Binary, Journal-Wiederherstellung vor und nach dem Katalogsnapshot, Sitzungen und Dienstneustarts. Das sind Dienst- und Prozessneustarts, kein tatsächlicher Maschinen-Reboot oder Stromausfall. Ein kontrollierter Reboot-/Stromausfalltest auf der Zielumgebung bleibt erforderlich; eine hundertprozentige Garantie lässt sich daraus nicht ableiten.
