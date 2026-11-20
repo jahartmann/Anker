@@ -1,5 +1,11 @@
 # Änderungen
 
+## v0.2.23 – 20. November 2026
+
+- Wiederherstellungsassistent mit Ordnerauswahl, Sammelentscheidungen für offene Dateien, vorausgewähltem Quellhost als Ziel und Vorschlägen für passende Storage-Zuordnungen. Plan-ID-Bestätigung und Ausführung stehen oben in der Planansicht.
+- Freigegebene Dateien können jetzt auch beim Host- oder Cluster-Wiederaufbau und beim Ersatz eines Cluster-Knotens übernommen werden. Geschützte Systemdateien benötigen eine eigene Bestätigung im Plan. Änderungen unter `/etc/pve/` können sofort im Cluster wirksam werden.
+- Weboberfläche gestrafft. Host- und Sicherungsansichten zeigen weniger doppelte Hinweise. Livevergleich und Helferübersicht sind wieder verfügbar.
+
 ## v0.2.22 – 29. Oktober 2026
 
 - Ursachen über betroffene Hosts gruppieren; Kenntnisnahme, laufende Arbeit, belegte Erledigung und erneutes Auftreten getrennt anzeigen. Vorhandene Sicherungen behalten ihre Warnungen.
