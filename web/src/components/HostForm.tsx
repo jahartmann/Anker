@@ -9,6 +9,7 @@ import type { Notify } from "./shared";
 export function HostForm({
   host,
   automatic = !host,
+  startFirstBackup = true,
   initialEndpoint,
   onClose,
   onSaved,
@@ -16,6 +17,7 @@ export function HostForm({
 }: {
   host?: Host;
   automatic?: boolean;
+  startFirstBackup?: boolean;
   initialEndpoint?: { address: string; port: number };
   onClose: () => void;
   onSaved: () => void;
@@ -27,6 +29,7 @@ export function HostForm({
     <HostConnection
       {...props}
       initialEndpoint={initialEndpoint}
+      startFirstBackup={startFirstBackup}
       onManual={() => setMethod("manual")}
     />
   ) : (
@@ -37,6 +40,7 @@ export function HostForm({
 function HostConnection({
   host,
   initialEndpoint,
+  startFirstBackup,
   onClose,
   onSaved,
   notify,
@@ -44,6 +48,7 @@ function HostConnection({
 }: {
   host?: Host;
   initialEndpoint?: { address: string; port: number };
+  startFirstBackup: boolean;
   onClose: () => void;
   onSaved: () => void;
   notify: Notify;
@@ -70,6 +75,7 @@ function HostConnection({
   const [password, setPassword] = useState("");
   const [identity, setIdentity] = useState<HostIdentity | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [firstBackup, setFirstBackup] = useState(startFirstBackup);
   const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState<"inspect" | "enroll" | null>(null);
   const [error, setError] = useState("");
@@ -107,7 +113,7 @@ function HostConnection({
         setIdentity(result);
         setConfirmed(false);
       } else {
-        await api<Host>("hosts/connection/enroll", "POST", {
+        const saved = await api<Host>("hosts/connection/enroll", "POST", {
           host: {
             id: value.id,
             name: value.name,
@@ -130,7 +136,24 @@ function HostConnection({
           confirmed: true,
         });
         setPassword("");
-        notify("Host angebunden");
+        if (!host && firstBackup) {
+          try {
+            await api(
+              "hosts/" + encodeURIComponent(saved.id) + "/backup?verify=1",
+              "POST",
+            );
+            notify(
+              "Host angebunden. Die erste Sicherung wird erstellt und geprüft.",
+            );
+          } catch {
+            notify(
+              "Host angebunden. Die erste Sicherung konnte nicht gestartet werden. Unter „Aufträge“ prüfen und bei Bedarf am Host erneut starten.",
+              true,
+            );
+          }
+        } else {
+          notify("Host angebunden");
+        }
         onSaved();
         onClose();
       }
@@ -198,6 +221,17 @@ function HostConnection({
                   />
                   Fingerprint geprüft und bestätigt
                 </label>
+                {!host && (
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={firstBackup}
+                      disabled={!!busy}
+                      onChange={(e) => setFirstBackup(e.target.checked)}
+                    />
+                    Erste Sicherung erstellen und prüfen
+                  </label>
+                )}
               </>
             )}
             <button

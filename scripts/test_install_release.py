@@ -15,6 +15,16 @@ installer=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
 class InstallerTests(unittest.TestCase):
+ def test_installer_accepts_only_the_expected_release_fingerprint(self):
+  root=pathlib.Path(__file__).resolve().parents[1]
+  public=root/'public.pem'
+  der=installer.openssl('pkey','-pubin','-in',public,'-outform','DER')
+  fingerprint=hashlib.sha256(der).hexdigest()
+  self.assertIn(fingerprint,(root/'docs/HANDBOOK.md').read_text(encoding='utf-8'))
+  self.assertEqual(installer.public_key(public,fingerprint.upper()),(root/'internal/updater/official_public.key').read_text().strip())
+  with self.assertRaisesRegex(ValueError,'Fingerprint'):
+   installer.public_key(public,'0'*64)
+
  def test_redirect_drops_token_and_rejects_http(self):
   handler=installer.SafeRedirect()
   req=urllib.request.Request('https://api.github.com/repos/example/anker',headers={'Authorization':'Bearer private-fixture'})

@@ -796,6 +796,13 @@ test("automatic host connection inspects without credentials and requires identi
 }) => {
   const inspected: unknown[] = [],
     enrolled: any[] = [];
+  let backupRequests = 0;
+  await page.route("**/api/hosts/pve-auto/backup?verify=1", (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(enrolled).toHaveLength(1);
+    backupRequests++;
+    return route.fulfill({ json: { id: "first-backup" } });
+  });
   await page.route("**/api/hosts/connection/inspect", (route) => {
     inspected.push(route.request().postDataJSON());
     return route.fulfill({
@@ -812,7 +819,7 @@ test("automatic host connection inspects without credentials and requires identi
   await page.route("**/api/hosts/connection/enroll", (route) => {
     enrolled.push(route.request().postDataJSON());
     return route.fulfill({
-      json: { ...enrolled.at(-1).host, name: "pve-auto" },
+      json: { ...enrolled.at(-1).host, id: "pve-auto", name: "pve-auto" },
     });
   });
   await page
@@ -847,10 +854,15 @@ test("automatic host connection inspects without credentials and requires identi
     exact: true,
   });
   await expect(connect).toBeDisabled();
+  await expect(
+    dialog.getByLabel("Erste Sicherung erstellen und prüfen"),
+  ).toBeChecked();
+  expect(backupRequests).toBe(0);
   await dialog.getByLabel("Fingerprint geprüft und bestätigt").check();
   await connect.click();
   await expect(dialog).toHaveCount(0);
   expect(enrolled).toHaveLength(1);
+  expect(backupRequests).toBe(1);
   expect(enrolled[0]).toMatchObject({
     username: "root",
     password: "one-time-secret",

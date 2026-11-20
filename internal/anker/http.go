@@ -655,7 +655,11 @@ func handleAPI(s *Service, a *Auth, u User, w http.ResponseWriter, r *http.Reque
 			return jsonOut(w, redactRecovery(h))
 		}
 		if action == "backup" && method == "POST" {
-			j, err := s.QueueBackup(id)
+			queue := s.QueueBackup
+			if r.URL.Query().Get("verify") == "1" {
+				queue = s.queueVerifiedBackup
+			}
+			j, err := queue(id)
 			if err != nil {
 				return err
 			}

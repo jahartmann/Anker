@@ -6,17 +6,25 @@
 
 **Ziel:** Anker einrichten, einen Host anbinden und den ersten Sicherungsstand prüfen.
 
-**Voraussetzungen:** Eigenes Linux-System, VM oder LXC mit systemd, `amd64` oder `arm64`, Python 3 und OpenSSL 3. SSH vom Anker-Server zum Proxmox-Host muss erreichbar sein. Einen vorgesehenen Daten-Mount unter `/srv/anker` vor der Einrichtung bereitstellen.
+Eigenes Linux-System, VM oder LXC mit systemd auf `amd64` oder `arm64`. Für den Installer brauchst du curl, Python 3 und OpenSSL 3. Falls `/srv/anker` auf einem eigenen Datenträger liegen soll, binde ihn vorher ein.
 
 ### 1. Release installieren
 
-Aus einem vertrauenswürdigen Anker-Checkout auf dem Zielserver starten. Den öffentlichen Signierschlüssel vorher aus einer unabhängigen Quelle prüfen.
+Den Block auf dem Anker-Server ins Terminal kopieren. Er lädt den Installer aus dem Anker-Repository. Der eingetragene SHA-256-Fingerprint gehört zum offiziellen Release-Schlüssel.
 
 ```sh
-sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem
+(
+  installer=$(mktemp) || exit 1
+  trap 'rm -f -- "$installer"' EXIT
+  curl -fsS --proto '=https' \
+    https://raw.githubusercontent.com/jahartmann/Anker/main/scripts/install-release.py \
+    -o "$installer" &&
+  sudo python3 "$installer" --public-key-sha256 \
+    a04ebe871bc31e5a7bca03376a7fa883582866e6efed63466d471a17865ad9b4
+)
 ```
 
-Der Installer prüft Paket und Signatur und startet den Einrichtungsassistenten. [Signierte Downloads](https://github.com/jahartmann/Anker/releases) · [Quellcode, privates Repository und manuelle Paketprüfung](UPDATES.md#weitere-installationswege)
+Der Installer prüft Schlüssel, Signatur und Paket und öffnet den Assistenten. Einen bereits unabhängig geprüften Schlüssel kannst du direkt angeben. [Installationsvarianten und Schlüsselprüfung](UPDATES.md#weitere-installationswege)
 
 <a name="erste-einrichtung"></a>
 
@@ -58,7 +66,7 @@ Anker richtet getrennte SSH-Zugänge für Sicherung und Wiederherstellung ein. [
 
 ### 4. Ersten Stand prüfen
 
-**Jetzt sichern** starten. Den Auftrag unter **Aufträge → Ablauf ansehen** öffnen. Im fertigen Stand die benötigten Pfade kontrollieren und die Integrität prüfen. [Prüfbefehle und Fehlerbilder](OPERATIONS.md#erstprüfung-und-regelbetrieb)
+Wenn der Dialog **Erste Sicherung erstellen und prüfen** anbietet, ist die Option vorausgewählt. Andernfalls am Host **Jetzt sichern** wählen und den fertigen Stand auf Integrität prüfen. Den Auftrag unter **Aufträge** ansehen und im fertigen Stand die benötigten Pfade kontrollieren. [Prüfung und Fehlerbilder](OPERATIONS.md#erstprüfung-und-regelbetrieb)
 
 ## Im Alltag
 

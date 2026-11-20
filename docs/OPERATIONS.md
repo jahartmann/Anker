@@ -4,7 +4,18 @@
 
 ## Erstprüfung und Regelbetrieb
 
-Auf dem Anker-Server:
+Im normalen Betrieb reicht die Weboberfläche:
+
+| Prüfen | Wo |
+| --- | --- |
+| Welche Hosts Handlungsbedarf haben | **Übersicht** |
+| Ob ein Auftrag erfolgreich war und was er gesichert hat | **Aufträge → Ablauf ansehen** |
+| Ob `/srv/anker` auf dem vorgesehenen Dateisystem liegt und genug Platz hat | **Einstellungen → Betrieb → Speicher** |
+
+Je Host prüfen, ob der Stand vollständig ist, die benötigten Dateien enthält und die Integritätsprüfung besteht. Datum und Sicherungs-ID für den Wiederherstellungstest festhalten.
+
+<details>
+<summary>Prüfen, wenn die Weboberfläche nicht erreichbar ist</summary>
 
 ```sh
 sudo systemctl status anker anker-updater --no-pager
@@ -15,7 +26,7 @@ sudo anker jobs
 
 Wenn `/srv/anker` ein eigener Mount sein soll, Quelle und Ziel mit der Planung vergleichen. Bei einer Abweichung vor der ersten Sicherung den Mount korrigieren.
 
-Je Host einmal prüfen, ob der Stand vollständig ist, die benötigten Dateien enthält und die Integritätsprüfung besteht. Datum und Sicherungs-ID für den Wiederherstellungstest festhalten.
+</details>
 
 ## Zeitplan und Aufträge
 

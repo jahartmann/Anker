@@ -142,6 +142,9 @@ func (s *Service) RecoverJobs() error {
 func (s *Service) QueueBackup(hostID string) (Job, error) {
 	return s.queueBackup(hostID, nil)
 }
+func (s *Service) queueVerifiedBackup(hostID string) (Job, error) {
+	return s.queue(hostID, "backup_verify", s.remediationRunner(hostID))
+}
 func (s *Service) queueBackup(hostID string, at *time.Time) (Job, error) {
 	return s.queueAt(hostID, "backup", at, s.backupRunner(hostID))
 }

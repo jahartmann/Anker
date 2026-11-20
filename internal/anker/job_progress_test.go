@@ -4,9 +4,30 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
+
+func TestHostBackupRequestCanVerifyInTheSameJob(t *testing.T) {
+	s := testService(t)
+	defer s.StopJobs(context.Background())
+	r := httptest.NewRequest(http.MethodPost, "/api/hosts/host1/backup?verify=1", nil)
+	r.Header.Set("X-Anker-Request", "1")
+	w := httptest.NewRecorder()
+	Handler(s, NewAuth(s.Store), true).ServeHTTP(w, r)
+	var queued Job
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &queued) != nil || queued.Kind != "backup_verify" {
+		t.Fatalf("expected verification job, got %d: %s", w.Code, w.Body.String())
+	}
+	done := waitReliabilityJob(t, s, queued.ID, finishedJob)
+	backup, err := s.Backup(done.ResultID)
+	if err != nil || done.State != "successful" || backup.VerifiedAt == "" {
+		t.Fatal(done, backup.VerifiedAt, err)
+	}
+}
 
 func TestBackupJobPublishesObservedStagesAndCounts(t *testing.T) {
 	s := testService(t)

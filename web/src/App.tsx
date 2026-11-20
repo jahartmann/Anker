@@ -658,6 +658,7 @@ export default function App() {
         )}
         {connectTarget && user.role === "admin" && (
           <HostForm
+            startFirstBackup={false}
             notify={notify}
             onSaved={refresh}
             onClose={() => {

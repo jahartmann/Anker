@@ -3,7 +3,6 @@
 import argparse
 import base64
 import getpass
-import grp
 import hashlib
 import json
 import os
@@ -50,10 +49,12 @@ def openssl(*arguments):
  try:return subprocess.run(['openssl',*map(str,arguments)],check=True,capture_output=True).stdout
  except subprocess.CalledProcessError as error:raise ValueError('OpenSSL-Prüfung fehlgeschlagen; Signatur/Schlüssel und OpenSSL 3 prüfen') from error
 
-def public_key(public):
+def public_key(public,expected_sha256=None):
  der=openssl('pkey','-pubin','-in',public,'-outform','DER')
  prefix=bytes.fromhex('302a300506032b6570032100')
  if len(der)!=44 or not der.startswith(prefix):raise ValueError('Ein öffentlicher Ed25519-Schlüssel wird benötigt')
+ if expected_sha256 is not None and hashlib.sha256(der).hexdigest()!=expected_sha256.lower():
+  raise ValueError('SHA-256-Fingerprint des Release-Schlüssels stimmt nicht')
  return base64.b64encode(der[12:]).decode()
 
 def verify_package(public,raw,signature,package,tag,arch):
@@ -108,18 +109,22 @@ def write_config(path,content,mode,gid=0):
 
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
- parser.add_argument('--public-key',required=True,help='Unabhängig geprüfte public.pem')
+ trust=parser.add_mutually_exclusive_group(required=True)
+ trust.add_argument('--public-key',help='Unabhängig geprüfte public.pem')
+ trust.add_argument('--public-key-sha256',help='Vorab geprüfter SHA-256-Fingerprint des öffentlichen Schlüssels (DER, hex)')
  parser.add_argument('--repo',default='jahartmann/Anker')
  parser.add_argument('--private',action='store_true',help='GitHub-Lese-Token verdeckt abfragen')
  parser.add_argument('--token-file',help='Vorhandene geschützte Datei mit GitHub-Lese-Token')
  args=parser.parse_args()
+ if args.public_key_sha256 is not None and not re.fullmatch(r'[0-9a-fA-F]{64}',args.public_key_sha256):
+  parser.error('--public-key-sha256 erwartet 64 Hex-Zeichen')
  if platform.system()!='Linux' or os.geteuid()!=0:raise ValueError('Als root auf dem zentralen Linux-/systemd-Server ausführen')
+ import grp
  if not pathlib.Path('/run/systemd/system').is_dir():raise ValueError('Laufendes systemd wird benötigt')
  if not REPOSITORY.fullmatch(args.repo) or '..' in args.repo:raise ValueError('Repository als owner/repo angeben')
  if pathlib.Path('/usr/local/bin/anker').exists() and not pathlib.Path('/etc/anker/install-pending').is_file():raise ValueError('Anker ist bereits installiert: sudo anker setup oder sudo anker update install verwenden')
  if args.private and args.token_file:raise ValueError('Entweder --private oder --token-file verwenden')
  if not os.isatty(0):raise ValueError('Die Ersteinrichtung benötigt ein Terminal')
- public=pathlib.Path(args.public_key).resolve();raw_key=public_key(public)
  token=''
  if args.token_file:
   info=pathlib.Path(args.token_file).lstat()
@@ -137,6 +142,12 @@ def main():
   return download('https://api.github.com/repos/'+args.repo+'/releases/assets/'+str(matches[0]['id']),limit,token,True)
  with tempfile.TemporaryDirectory(prefix='anker-install-') as temp:
   root=pathlib.Path(temp);package=root/('anker-linux-'+arch+'.tar.gz')
+  public=root/'public.pem'
+  if args.public_key is not None:
+   public.write_bytes(pathlib.Path(args.public_key).read_bytes())
+  else:
+   public.write_bytes(asset('public.pem',4096))
+  raw_key=public_key(public,args.public_key_sha256)
   raw=asset('release.json',1024*1024);signature=asset('release.json.sig',1024)
   package.write_bytes(asset(package.name,MAX_DOWNLOAD))
   verify_package(public,raw,signature,package,latest['tag_name'],arch)

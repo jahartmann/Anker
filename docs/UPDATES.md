@@ -11,6 +11,7 @@ Die [vier Schritte im Handbuch](HANDBOOK.md#installation) führen von der Instal
 | Fall | Anleitung |
 | --- | --- |
 | Aus einem Git-Checkout bauen | [Quellcode installieren](reference/SETUP.md#installation) |
+| Bereits unabhängig geprüfte Schlüsseldatei verwenden | `sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public.pem` aus einem vertrauenswürdigen Checkout |
 | Privates Repository oder Paket manuell prüfen | [Installationsvarianten und Signaturprüfung](reference/UPDATES.md#erstinstallation-aus-einem-release) |
 | Setup nach Abbruch fortsetzen | [Einrichtung wiederholen](reference/SETUP.md#erste-einrichtung) |
 | Release erstellen und signieren | [Repository vorbereiten](reference/UPDATES.md#repository-vorbereiten) · [Release erstellen](reference/UPDATES.md#release-erstellen) |
@@ -21,11 +22,16 @@ Die [vier Schritte im Handbuch](HANDBOOK.md#installation) führen von der Instal
 2. Laufende Sicherungen und Wiederherstellungen abwarten. Das Update starten und den Status beobachten.
 3. Nach dem Neustart laufende Version und Dienststatus prüfen. Anschließend den nächsten Sicherungslauf kontrollieren.
 
+<details>
+<summary>Update im Terminal starten</summary>
+
 ```sh
 sudo anker update check
 sudo anker update install
 sudo anker update status
 ```
+
+</details>
 
 Der Updater prüft Signatur und Prüfsumme, sichert Programm und Katalog und prüft den Dienststart. Die Hosthelfer werden dabei nicht ausgetauscht. [Details zum Updateablauf](reference/UPDATES.md#update-installieren) · [Helferstand prüfen](OPERATIONS.md#weitere-betriebsaufgaben)
 
