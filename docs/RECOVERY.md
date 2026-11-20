@@ -1,14 +1,16 @@
 # Wiederherstellung
 
+[Dokumentation](README.md) · [PBS-Wiederherstellung](HANDBOOK.md#pbs-konfiguration-geführt-wiederherstellen)
+
 ## Fünf Schritte
 
 1. **Quelle und Situation:** Sicherung und `files` (Einzeldateien), `host` (Host/Hardware), `cluster-node` (Ersatznode) oder `cluster-disaster` (isolierter Clusterverlust) wählen. Die Auswahl nennt erhaltene Zielbestandteile; Root, Boot, Swap und fremde/shared Clusterteile werden nicht pauschal ersetzt.
 2. **Ziel vergleichen:** Ziel anbinden und **Ziel prüfen**. Der feste lesende Helfer erfasst ausgewählte Dateien und nötige Abhängigkeiten mit Inhalt und Metadaten in einer privaten, zeitlich begrenzten Aufnahme. Fehlend, nicht lesbar, verändert, zu groß und unbekannt sind verschiedene Zustände. Ohne vollständigen Nachweis keine automatische Übernahme. Die Prüfung legt noch keinen Plan an.
-3. **Entscheidungen:** Für jede Datei Original aus Sicherung, vorbereitete Fassung, Ziel behalten oder manuelle Bearbeitung wählen. Ganze Ordner lassen sich in Schritt 1 mit einem Haken auswählen. Offene Entscheidungen bleiben offen; die Sammelaktionen setzen ausschließlich offene Dateien auf „Original aus Sicherung“ oder auf manuell. Benötigte Ports und Storage-IDs zuordnen. Vorschläge prüfen; gleicher Name oder gleiche ID belegt keine Identität.
+3. **Entscheidungen:** Für jede Datei Original aus Sicherung, vorbereitete Fassung, Ziel behalten oder manuelle Bearbeitung wählen. Ganze Ordner lassen sich in Schritt 1 auswählen. Sammelaktionen ändern nur offene Entscheidungen. Benötigte Ports und Storage-IDs zuordnen und die Vorschläge mit der tatsächlichen Zielkonfiguration abgleichen.
 4. **Plan prüfen:** Quelle → vorbereitet, Ziel → vorbereitet und Quelle → Ziel vergleichen. Inhalte, Metadaten, Änderungszeit, fehlende Seiten und geschützte Inhalte bleiben getrennt. Jede tatsächliche Feldänderung nennt Vorher/Nachher und Grund. Der Plan kopiert die geprüfte Zielaufnahme privat und bleibt nach deren Ablauf exportierbar. Vor Übernahme prüft Anker Integrität, Zielidentität, aktive Dateien und Abhängigkeiten erneut; Drift verlangt erneute Vorbereitung. Änderungen an behaltenen/unbeteiligten Dateien erzeugen keinen Schreibbedarf.
 5. **Übernehmen und prüfen:** Nur freigegebene gewöhnliche Einzeldateien nach exakter Plan-ID übernehmen. Identischer Inhalt und wirksame Metadaten ergeben kein erneutes Schreiben; reine MTime-Abweichung ist Vergleichsinformation. Journalabgleich, Rücksetzung, Dienst-/Erreichbarkeits-/Neustartprüfungen sind eigene Schritte. Benutzerbestätigungen tragen Benutzer und Zeitpunkt und ersetzen keinen maschinellen Nachweis.
 
-**Geschützte Systemdateien** (zum Beispiel `etc/hosts`, `etc/hostname`, `etc/network/`, `etc/ssh/`, `etc/pve/`, `etc/corosync/`, Benutzer- und Gruppendateien) sind wiederherstellbar. Sie werden nur geschrieben, wenn der Plan dafür beim Speichern eine eigene Bestätigung trägt (`protected_confirmed`); ohne sie bleiben sie manuell. Der vorherige Inhalt liegt wie bei allen Dateien im Rücksetzjournal. In `etc/pve/` setzt das Clusterdateisystem Eigentümer und Rechte selbst; Änderungen dort wirken sofort im ganzen Cluster. Netzwerkdateien verlangen zusätzlich die Bestätigung des Konsolenzugangs. Geschriebene Werte werden erst mit Dienstneustart oder Reboot wirksam. Geschützte Dateien werden nie automatisch gelöscht. Nur Dateien unter `etc/` und `usr/local/` werden geschrieben; andere Einträge einer Sicherung (etwa `recovery/config.db`) sind Ankers eigene Auswertung.
+**Geschützte Systemdateien** (zum Beispiel `etc/hosts`, `etc/hostname`, `etc/network/`, `etc/ssh/`, `etc/pve/`, `etc/corosync/`, Benutzer- und Gruppendateien) können nach separater Bestätigung im Plan übernommen werden (`protected_confirmed`). Der vorherige Inhalt liegt im Rücksetzjournal. In `etc/pve/` setzt das Clusterdateisystem Eigentümer und Rechte selbst. Änderungen dort können sofort im gesamten Cluster wirken. Bei Netzwerkdateien den Konsolenzugang vor der Übernahme prüfen. Der Webassistent fragt ihn bei der Zielprüfung ab, wenn der Plan ihn erfordert. Dienste und Netzwerkeinstellungen anschließend am Ziel prüfen und gezielt aktivieren. Geschützte Dateien werden nie automatisch gelöscht. Der Schreibbereich ist auf `etc/` und `usr/local/` begrenzt. `recovery/config.db` dient der Auswertung der Sicherung.
 
 Web, CLI und Terminal verwenden dieselben Entscheidungen, Snapshots, Plan- und Journalregeln. Der Webvergleich bietet Suche und Seiteneinteilung. Im Terminal öffnet `c` auf einem gespeicherten Plan den einzelnen Dateivergleich mit wählbarer Vergleichsbasis; `Esc` führt zurück. `Ctrl+R` erneuert im Vorbereitungsformular die Zielprüfung, `Ctrl+E` wechselt Dateiliste und direkte Pfadeingabe. Einen paginierten Sicherungsvergleich bietet das Terminal derzeit nicht. Lokale Socketverwaltung verwendet die administrativen Rechte des Socketzugangs.
 
@@ -29,7 +31,7 @@ anker restore plan --backup ID --target HOST --scenario files \
 
 Storagezuordnung bearbeitet Gastreferenzen nur bei nachgewiesen kompatiblem Backing, Inhaltstyp, Nodeanwendbarkeit und exakt vorhandenem passenden Volume. Unbekannte oder fremde Gastzuordnung, MAC-/PCI-/Bridge-/Hookabhängigkeiten bleiben ausdrücklich offen. Gleiche Storage-IDs sind kein Nachweis. Anker formatiert, erzeugt, benennt oder verschiebt keine Pools, Datenträger oder Volumes. PBS und Gastdaten werden separat wiederhergestellt. Nodepfade werden nicht geraten.
 
-Konten und Eigentümer werden anhand erfasster UID/GID-Namen geprüft; unbekannte oder widersprüchliche Konten bleiben manuell. Accounts, Identität, Boot, Cluster, Paketquellen, Netzwerk, Zugangs- und Anker-Helferkonfiguration, Links und Extended Attributes bleiben manuell. `fstab` ist eine Referenz: Root, Boot und Swap des Ziels erhalten und andere Mounts einzeln prüfen. **Netzwerk wird nicht automatisch geschrieben oder aktiviert.** Konsolenbestätigung und manuelle Aufgaben heben diese Grenze nicht auf.
+Anker prüft Eigentümer und Gruppen anhand der erfassten UID/GID-Namen. Fehlende oder widersprüchliche Zuordnungen, Symlinks und Dateien mit ACLs oder Extended Attributes manuell prüfen. Bei `fstab` Root, Boot und Swap des Ziels erhalten und weitere Mounts einzeln abgleichen. Unterstützte geschützte Dateien kann Anker nach Planbestätigung schreiben. Die Aktivierung des Netzwerks und die Prüfung des laufenden Systems bleiben Aufgabe des Administrators.
 
 ## Alte Helfer, Sicherungen und Pläne
 
@@ -59,7 +61,7 @@ Ein erfolgreich abgeglichenes, passendes Journal darf weiterhin `interrupted` me
 6. Hardwareabhängige Configs und Identität anhand der Planhinweise übernehmen. Netzwerk erst mit Konsole und einem Rückweg aktivieren.
 7. PBS-Anbindung herstellen, vorhandene VM-/Containerbackups separat zurückspielen, Funktionen und Neustart prüfen.
 
-Gesamtszenarien bleiben auf realen Hosts manuell geführt. Auch eine erfolgreiche Dateiübernahme ist keine bestätigte vollständige Wiederherstellung.
+Die freigegebenen Dateischritte können auch im Gesamtszenario ausgeführt werden. Für die Abnahme des wiederaufgebauten Hosts bleiben Boot, Netzwerk, Storage, Dienste und gegebenenfalls Cluster und Gastdaten separat zu prüfen.
 
 ## Cluster und Versionswechsel
 

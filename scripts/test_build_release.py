@@ -16,6 +16,9 @@ class BuildReleaseTests(unittest.TestCase):
    for directory in ['scripts','deploy','host','docs','web','internal/updater']:(root/directory).mkdir(parents=True)
    for file in ['scripts/build-release.sh','scripts/install-server.sh','scripts/install-state.py','scripts/install-release.py','scripts/verify-release.sh','scripts/install-host.sh','scripts/host-authorize.py','scripts/setup-sftp-export.sh','deploy/anker.service','deploy/anker-updater.service','deploy/anker.1','host/anker_host.py','docs/OPERATIONS.md','docs/RECOVERY.md','docs/UPDATES.md','docs/SUPPORT.md','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md']:
     shutil.copyfile(source/file,root/file)
+   for document in ('README.md','HANDBOOK.md'):
+    shutil.copyfile(source/'docs'/document,root/'docs'/document)
+   shutil.copytree(source/'docs/readme',root/'docs/readme')
    (root/'internal/updater/official_public.key').write_text('trusted fixture key\n')
    (root/'scripts/release-notices.py').write_text('import pathlib,sys\npathlib.Path(sys.argv[1]).write_text("fixture dependency notice\\n")\n')
    def executable(name,body):
@@ -51,11 +54,13 @@ fi
       self.assertEqual(package.extractfile('./deploy/anker.1').read(),(source/'deploy/anker.1').read_bytes())
       self.assertEqual(package.extractfile('./LICENSE').read(),(source/'LICENSE').read_bytes())
       self.assertEqual(package.extractfile('./THIRD_PARTY_NOTICES.txt').read(),b'fixture dependency notice\n')
+      for file in [source/'docs/README.md', source/'docs/HANDBOOK.md', *sorted((source/'docs/readme').iterdir())]:
+       self.assertEqual(package.extractfile('./'+file.relative_to(source).as_posix()).read(),file.read_bytes())
    else:
     self.assertFalse(list((root/'dist').glob('*.tar.gz')),'mismatched key produced a release package')
    return result,log.read_text()
 
- def test_both_architecture_packages_include_manual_and_licenses(self):
+ def test_both_architecture_packages_include_documentation_and_licenses(self):
   self.run_release()
 
  def test_different_signing_key_aborts_before_frontend_or_binary_build(self):

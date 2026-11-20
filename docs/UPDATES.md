@@ -1,5 +1,7 @@
 # Installation und Updates
 
+[Dokumentation](README.md) · [Erste Einrichtung](HANDBOOK.md#erste-einrichtung)
+
 Der Updateweg gilt für den zentralen Anker-Server auf Linux mit systemd. Die Proxmox-Helfer werden damit nicht automatisch ausgetauscht. Das SSH-Nachrichtenformat bleibt Version 1; die abgesicherte Dateiübernahme verlangt Restore-Protokoll 2. Ab 0.2.8 vorhandene Hosts über **Hosts → Verbindung neu einrichten** aktualisieren und einen neuen Stand sichern. Alte Helfer werden bis dahin für automatische Übernahmen gesperrt; bestehende Sicherungen bleiben exportierbar.
 
 ## Hinweise zu v0.2.19
@@ -28,7 +30,7 @@ Das Serverupdate ersetzt vorhandene Hosthelfer nicht automatisch. Für zusätzli
 
 v0.2.16 ergänzt PBS-Konfigurationsbackup und geführte PBS-Konfigurationswiederherstellung sowie die Proxmox-VE-Serversuche mit Sammelanbindung. Das Serverupdate ersetzt vorhandene Hosthelfer weiterhin nicht automatisch. PBS-Ziele vor der ersten geführten Übernahme über **Hosts → Verbindung neu einrichten** aktualisieren. Danach die PBS-Dienste am Ziel stoppen und eine frische Zielaufnahme erstellen. Alte PBS-Helfer bleiben für Schreiboperationen gesperrt.
 
-Die Wiederherstellung erhält Datastore-Inhalte und vorhandene Ziel-Anbindungen. Zurückgespielte Jobfassungen werden ohne automatische Auslöser vorbereitet; Anker startet keine Dienste oder Jobs. Vor einem späteren manuellen Dienststart alle vorhandenen Job- und Aufbewahrungsregeln prüfen. Ablauf und unterstützter Umfang stehen in der [README](../README.md#pbs-konfiguration-geführt-wiederherstellen).
+Die Wiederherstellung erhält Datastore-Inhalte und vorhandene Ziel-Anbindungen. Zurückgespielte Jobfassungen werden ohne automatische Auslöser vorbereitet; Anker startet keine Dienste oder Jobs. Vor einem späteren manuellen Dienststart alle vorhandenen Job- und Aufbewahrungsregeln prüfen. [PBS-Wiederherstellung im Handbuch](HANDBOOK.md#pbs-konfiguration-geführt-wiederherstellen)
 
 ## Repository vorbereiten
 
@@ -74,7 +76,7 @@ sudo python3 scripts/install-release.py --public-key /pfad/zur/geprüften/public
 
 Der GitHub-Token wird verdeckt abgefragt. Ein Fine-grained Token mit Zugriff nur auf dieses Repository und **Contents: read-only** reicht für Release-Downloads. Er wird root-eigen mit `0600` gespeichert und bei Weiterleitungen zu Asset-Storage nicht übertragen. Alternativ `--token-file /etc/mein-geschützter-token`. Bei Ablauf oder Widerruf des Tokens scheitert die Updateprüfung; Anker selbst und vorhandene Sicherungen bleiben lokal nutzbar. Privates GitHub ist jederzeit vom Server erreichbar, solange Token, Repositoryberechtigung und Netzwerk verfügbar sind. SSH-Deploy-Keys erlauben einen Quellcode-Clone, ersetzen aber nicht den HTTP-Token für die Release-API.
 
-Die Einrichtung kann mit `sudo anker setup` wiederholt werden. Bestehende Benutzer und private SSH-Schlüssel werden erhalten; unvollständige öffentliche Schlüssel und Dateirechte werden repariert. Die Einrichtung sperrt den Updater während Änderungen. Bei der ersten Einrichtung wird HTTPS für LAN/VPN vorgeschlagen; der Assistent erzeugt auf Wunsch ein Zertifikat für den angegebenen DNS-Namen oder die IP. Ein selbst erzeugtes Zertifikat braucht eine unabhängige Fingerprintprüfung im Browser. Alternativ vorhandene CA-Dateien importieren oder den lokalen SSH-Tunnel wählen. Gültige bestehende TLS-Dateien bleiben bei Wiederholung erhalten. Details zu Vertrauen und Erneuerung stehen in der README.
+Die Einrichtung kann mit `sudo anker setup` wiederholt werden. Bestehende Benutzer und private SSH-Schlüssel werden erhalten; unvollständige öffentliche Schlüssel und Dateirechte werden repariert. Die Einrichtung sperrt den Updater während Änderungen. Bei der ersten Einrichtung wird HTTPS für LAN/VPN vorgeschlagen; der Assistent erzeugt auf Wunsch ein Zertifikat für den angegebenen DNS-Namen oder die IP. Ein selbst erzeugtes Zertifikat braucht eine unabhängige Fingerprintprüfung im Browser. Alternativ vorhandene CA-Dateien importieren oder den lokalen SSH-Tunnel wählen. Gültige bestehende TLS-Dateien bleiben bei Wiederholung erhalten. [Webzugriff und TLS im Handbuch](HANDBOOK.md#webzugriff-und-tls)
 
 Unterbrechung während der Installation: Solange `/etc/anker/install-pending` existiert, dasselbe geprüfte Installationsskript erneut ausführen. Der Hauptprogrammwechsel erfolgt erst nach synchronisierten Grundlagen. Ist die Installation abgeschlossen, `anker setup` verwenden; der Installer erkennt eine bestehende Installation und aktualisiert die Programme mit Sicherung und Startprüfung. Ein Quellcode-Checkout wird mit `scripts/install-server.sh` automatisch gebaut und installiert; fehlende Werkzeuge werden unter Debian/Ubuntu über APT installiert. `--no-setup` lässt nur den abschließenden interaktiven Assistenten aus.
 

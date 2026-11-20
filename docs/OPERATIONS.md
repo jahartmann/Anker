@@ -1,5 +1,36 @@
 # Betrieb
 
+[Dokumentation](README.md) · [Handbuch](HANDBOOK.md) · [Wiederherstellung](RECOVERY.md)
+
+## Erstprüfung und Regelbetrieb
+
+Nach der Einrichtung auf dem Anker-Server Dienste, Datenträger und Aufträge prüfen:
+
+```sh
+sudo systemctl status anker anker-updater --no-pager
+findmnt --target /srv/anker
+df -h /srv/anker
+sudo anker jobs
+```
+
+Wenn `/srv/anker` ein eigener Mount sein soll, Quelle und Mountpunkt mit der geplanten Konfiguration vergleichen. Bei einer Abweichung zuerst den Mount korrigieren. Andernfalls schreibt der Dienst auf das darunterliegende Dateisystem.
+
+Für jeden neu angebundenen Host einmal **Jetzt sichern** starten. Unter **Aufträge → Ablauf ansehen** das Ergebnis öffnen. Im Sicherungsstand die benötigten Pfade kontrollieren und die Integrität prüfen. Die Prüfung und den Wiederherstellungstest mit Datum und Sicherungs-ID dokumentieren.
+
+| Befund | Prüfen |
+| --- | --- |
+| Kein neuer Stand | Zeitplan, Wartungsstatus und letzten Auftrag prüfen. |
+| Unvollständige Sicherung | Fehlende oder nicht lesbare Pfade im Stand ansehen. Pflichtpfade und Hostprofil prüfen. Danach einen neuen Stand sichern. |
+| Prüfsummenfehler | Den beschädigten Stand von der Quellenauswahl ausschließen. Den letzten intakten Stand prüfen und die Ursache im Speicherpfad suchen. |
+| Dienst startet nicht | Status und Journal auf dem Anker-Server prüfen. Bei einem fehlgeschlagenen Update den [Rückfallstatus](UPDATES.md#fehler-und-rückfall) abfragen. |
+| Verbindung während einer Übernahme verloren | **Hostzustand abgleichen** öffnen und das Ziel an der Konsole prüfen. Die Übernahme nicht erneut starten. [Unterbrechung und Rücksetzung](RECOVERY.md#unterbrechung-und-rücksetzung) |
+
+```sh
+sudo journalctl -u anker -u anker-updater -b -n 100 --no-pager
+```
+
+Bei einem Problem Auftrags-ID, Host, Zeitpunkt und den relevanten Logausschnitt festhalten. Zugangsdaten und private Sicherungsinhalte bleiben auf dem Server.
+
 ## Interner Testbetrieb
 
 Der geprüfte Kandidat heißt `0.2.0-internal.20261026`. Die lokalen Ergebnisse stehen im [Prüfbericht](internal-test-2026-10-26.json), die offenen Plattformprüfungen im [Unterstützungsstand](SUPPORT.md). Die manuell verteilten Linux-Testarchive enthalten eine `INTERNAL-TEST.txt` mit Start- und Laboranleitung, `test-report.json` und Lizenzhinweisen. Sie sind nicht signiert und werden nicht über den signierten Updater installiert. Prüfsummen vergleichen die Dateien, bestätigen aber keine unabhängige Herkunft.
